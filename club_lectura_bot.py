@@ -466,7 +466,7 @@ async def cita(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"📖 **Cita compartida**\n\n"
-        f""{cita_texto}"\n\n"
+        f'"{cita_texto}"\n\n'
         f"— Compartida por {user.first_name}"
     )
 
@@ -482,7 +482,7 @@ async def citas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = "📚 **Citas Compartidas**\n\n"
     
     for cita in reversed(ultimas_citas):
-        mensaje += f""{cita['cita']}"\n"
+        mensaje += f'"{cita["cita"]}"\n'
         mensaje += f"— {cita['compartida_por']}\n\n"
     
     mensaje += f"Total de citas: {len(bot_data.data['citas'])}"

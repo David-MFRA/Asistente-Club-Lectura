@@ -18,7 +18,6 @@ from telegram.ext import (
 import json
 import os
 from dotenv import load_dotenv
-from database import Database
 
 # Cargar variables de entorno
 load_dotenv()
@@ -30,15 +29,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Archivo para persistencia de datos
+DATA_FILE = 'club_data.json'
+
 class ClubLecturaBot:
     def __init__(self):
-        self.db = Database()
-        self.data = self.db.cargar_datos()
-        logger.info(f"📚 Bot inicializado con {len(self.data.get('libros_leidos', []))} libros en el historial")
+        self.data = self.cargar_datos()
+    
+    def cargar_datos(self):
+        """Carga los datos desde archivo JSON"""
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {
+            'libros_sugeridos': [],
+            'libro_actual': None,
+            'libros_leidos': [],
+            'proxima_reunion': None,
+            'miembros': {},
+            'discusiones': [],
+            'votaciones_activas': {},
+            'citas': []
+        }
     
     def guardar_datos(self):
-        """Guarda los datos usando el módulo de base de datos"""
-        self.db.guardar_datos(self.data)
+        """Guarda los datos en archivo JSON"""
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
 
 # Instancia global del bot
 bot_data = ClubLecturaBot()

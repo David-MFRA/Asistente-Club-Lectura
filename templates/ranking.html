@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ranking · Club de Lectura</title>
+    <style>
+        :root{
+            --bg1:#0f172a;
+            --bg2:#111827;
+            --card:rgba(255,255,255,0.08);
+            --border:rgba(255,255,255,0.12);
+            --text:#f8fafc;
+            --muted:#94a3b8;
+            --primary:#6366f1;
+            --primary2:#8b5cf6;
+            --gold:#fbbf24;
+            --silver:#cbd5e1;
+            --bronze:#f59e0b;
+            --shadow:0 18px 38px rgba(0,0,0,.28);
+            --radius:20px;
+        }
+
+        *{box-sizing:border-box}
+        html,body{
+            margin:0;
+            min-height:100%;
+            font-family:Inter,Arial,sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(99,102,241,.22), transparent 35%),
+                radial-gradient(circle at bottom right, rgba(139,92,246,.18), transparent 35%),
+                linear-gradient(135deg,var(--bg1),var(--bg2));
+            color:var(--text);
+        }
+
+        body{padding:16px}
+        .container{max-width:1100px;margin:0 auto}
+
+        .topbar{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            flex-wrap:wrap;
+            gap:12px;
+            margin-bottom:18px;
+        }
+
+        .brand{
+            display:flex;
+            align-items:center;
+            gap:12px;
+        }
+
+        .badge{
+            width:52px;height:52px;border-radius:16px;
+            background:linear-gradient(135deg,var(--primary),var(--primary2));
+            display:flex;align-items:center;justify-content:center;
+            font-size:24px;
+        }
+
+        h1{margin:0;font-size:1.5rem}
+        .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
+
+        .btn{
+            display:inline-flex;
+            padding:12px 16px;
+            border-radius:14px;
+            text-decoration:none;
+            font-weight:700;
+            border:1px solid var(--border);
+            color:var(--text);
+            background:var(--card);
+        }
+
+        .card{
+            background:var(--card);
+            border:1px solid var(--border);
+            border-radius:var(--radius);
+            box-shadow:var(--shadow);
+            backdrop-filter:blur(16px);
+            padding:18px;
+        }
+
+        .list{
+            display:grid;
+            gap:12px;
+        }
+
+        .item{
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            align-items:center;
+            padding:16px;
+            border-radius:16px;
+            background:rgba(255,255,255,.05);
+            border:1px solid rgba(255,255,255,.08);
+        }
+
+        .left{
+            display:flex;
+            align-items:center;
+            gap:14px;
+        }
+
+        .pos{
+            width:44px;
+            height:44px;
+            border-radius:14px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-weight:900;
+        }
+
+        .gold{background:rgba(251,191,36,.16); color:#fde68a}
+        .silver{background:rgba(203,213,225,.16); color:#e2e8f0}
+        .bronze{background:rgba(245,158,11,.16); color:#fcd34d}
+        .normal{background:rgba(99,102,241,.14); color:#c7d2fe}
+
+        .title{font-weight:800}
+        .meta{margin-top:6px;color:var(--muted);font-size:.9rem}
+
+        .score{
+            text-align:right;
+        }
+
+        .score-value{
+            font-size:1.25rem;
+            font-weight:900;
+        }
+
+        .score-meta{
+            margin-top:4px;
+            color:var(--muted);
+            font-size:.85rem;
+        }
+
+        .empty{
+            text-align:center;
+            padding:18px;
+            color:var(--muted);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand">
+            <div class="badge">🏆</div>
+            <div>
+                <h1>Ranking de libros</h1>
+                <div class="subtitle">Valoraciones históricas del club</div>
+            </div>
+        </div>
+
+        <a class="btn" href="/admin">Dashboard</a>
+    </div>
+
+    <section class="card">
+        {% if ranking %}
+            <div class="list">
+                {% for b in ranking %}
+                    <div class="item">
+                        <div class="left">
+                            {% set idx = loop.index %}
+                            <div class="pos {% if idx == 1 %}gold{% elif idx == 2 %}silver{% elif idx == 3 %}bronze{% else %}normal{% endif %}">
+                                {{ idx }}
+                            </div>
+                            <div>
+                                <div class="title">{{ b.title }}</div>
+                                <div class="meta">{{ b.author if b.author else "Autor desconocido" }}</div>
+                            </div>
+                        </div>
+
+                        <div class="score">
+                            <div class="score-value">{{ b.avg_score if b.avg_score else "—" }}</div>
+                            <div class="score-meta">{{ b.total_reviews }} reseñas</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty">Todavía no hay valoraciones.</div>
+        {% endif %}
+    </section>
+</div>
+</body>
+</html>

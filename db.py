@@ -1,165 +1,645 @@
 import os
+from contextlib import contextmanager
+from datetime import datetime
+
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+from psycopg2.extras import RealDictCursor
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
+if not DATABASE_URL:
+    raise RuntimeError("Falta DATABASE_URL")
+
+pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=5,
+    dsn=DATABASE_URL
+)
+
+
+@contextmanager
+def get_conn():
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
+
+
+@contextmanager
+def get_cursor(commit=False):
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            yield cur
+            if commit:
+                conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
 
 def init_db():
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS books(
-        id SERIAL PRIMARY KEY,
-        title TEXT,
-        author TEXT,
-        description TEXT,
-        cover TEXT,
-        proposed_by TEXT,
-        votes INT DEFAULT 0
-    )
-    """)
+    with get_cursor(commit=True) as cur:
+        # ---------------- BOOKS ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS books(
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            author TEXT,
+            description TEXT,
+            cover TEXT,
+            pages INTEGER,
+            language_code TEXT,
+            source TEXT,
+            source_id TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS votes(
-        user_name TEXT,
-        book_id INT
-    )
-    """)
+        cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_books_title_author
+        ON books (title, author)
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS meetings(
-        id SERIAL PRIMARY KEY,
-        date TEXT
-    )
-    """)
+        # ---------------- BOOK PROPOSALS ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS book_proposals(
+            id SERIAL PRIMARY KEY,
+            book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            proposed_by TEXT NOT NULL,
+            cycle_key TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE(book_id, cycle_key)
+        )
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS attendance(
-        user_name TEXT,
-        meeting_id INT
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS book_votes(
+            id SERIAL PRIMARY KEY,
+            proposal_id INTEGER NOT NULL REFERENCES book_proposals(id) ON DELETE CASCADE,
+            user_name TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(proposal_id, user_name)
+        )
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS ratings(
-        user_name TEXT,
-        book_id INT,
-        score INT,
-        review TEXT
-    )
-    """)
+        # ---------------- THEMES ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS themes(
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            cycle_key TEXT NOT NULL,
+            created_by TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE(name, cycle_key)
+        )
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS themes(
-        id SERIAL PRIMARY KEY,
-        theme TEXT,
-        votes INT DEFAULT 0
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS theme_votes(
+            id SERIAL PRIMARY KEY,
+            theme_id INTEGER NOT NULL REFERENCES themes(id) ON DELETE CASCADE,
+            user_name TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(theme_id, user_name)
+        )
+        """)
 
-    conn.commit()
+        # ---------------- MEETINGS ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS meetings(
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            cycle_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft',
+            book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
+            final_date TIMESTAMP NULL,
+            summary TEXT,
+            notes TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS meeting_date_options(
+            id SERIAL PRIMARY KEY,
+            meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            option_date TIMESTAMP NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(meeting_id, option_date)
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS meeting_date_votes(
+            id SERIAL PRIMARY KEY,
+            option_id INTEGER NOT NULL REFERENCES meeting_date_options(id) ON DELETE CASCADE,
+            user_name TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(option_id, user_name)
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS meeting_attendance(
+            id SERIAL PRIMARY KEY,
+            meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            user_name TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(meeting_id, user_name)
+        )
+        """)
+
+        # ---------------- RATINGS ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS book_ratings(
+            id SERIAL PRIMARY KEY,
+            book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            user_name TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+            review TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(book_id, user_name)
+        )
+        """)
 
 
-def insert_book(book, proposed_by="telegram"):
-    cur.execute("""
-    INSERT INTO books(title, author, description, cover, proposed_by, votes)
-    VALUES(%s, %s, %s, %s, %s, %s)
-    """, (
-        book.get("title", ""),
-        book.get("author", ""),
-        book.get("description", ""),
-        book.get("cover", ""),
-        proposed_by,
-        0
-    ))
-    conn.commit()
+# =========================================================
+# HELPERS GENERALES
+# =========================================================
+
+def current_cycle_key(dt=None):
+    dt = dt or datetime.utcnow()
+    return dt.strftime("%Y-%m")
 
 
-def get_books():
-    cur.execute("""
-    SELECT id, title, author, description, cover, proposed_by, votes
-    FROM books
-    ORDER BY votes DESC, id ASC
-    """)
-    rows = cur.fetchall()
+def get_current_cycle_key():
+    return current_cycle_key()
 
-    return [
-        {
-            "id": r[0],
-            "title": r[1],
-            "author": r[2],
-            "description": r[3],
-            "cover": r[4],
-            "proposed_by": r[5],
-            "votes": r[6]
-        }
-        for r in rows
-    ]
+
+# =========================================================
+# BOOKS / PROPUESTAS
+# =========================================================
+
+def _get_book_by_title_author(title, author):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT *
+        FROM books
+        WHERE title = %s
+          AND author IS NOT DISTINCT FROM %s
+        LIMIT 1
+        """, (title, author))
+        return cur.fetchone()
+
+
+def create_or_get_book(book):
+    title = (book.get("title") or "").strip()
+    author = (book.get("author") or "").strip() or None
+
+    existing = _get_book_by_title_author(title, author)
+    if existing:
+        return dict(existing)
+
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO books(title, author, description, cover, pages, language_code, source, source_id)
+        VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING *
+        """, (
+            title,
+            author,
+            book.get("description"),
+            book.get("cover"),
+            book.get("pages"),
+            book.get("language_code"),
+            book.get("source"),
+            book.get("source_id"),
+        ))
+        return dict(cur.fetchone())
+
+
+def insert_book(book, proposed_by="telegram", cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
+    book_row = create_or_get_book(book)
+
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO book_proposals(book_id, proposed_by, cycle_key)
+        VALUES(%s, %s, %s)
+        ON CONFLICT (book_id, cycle_key) DO UPDATE
+        SET proposed_by = EXCLUDED.proposed_by
+        RETURNING *
+        """, (book_row["id"], proposed_by, cycle_key))
+        return dict(cur.fetchone())
+
+
+def get_books(cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
+
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            bp.id AS proposal_id,
+            b.id,
+            b.title,
+            b.author,
+            b.description,
+            b.cover,
+            bp.proposed_by,
+            COUNT(bv.id)::int AS votes
+        FROM book_proposals bp
+        JOIN books b ON b.id = bp.book_id
+        LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
+        WHERE bp.cycle_key = %s
+          AND bp.is_active = TRUE
+        GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, bp.proposed_by
+        ORDER BY votes DESC, b.title ASC
+        """, (cycle_key,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_book_proposals(cycle_key=None):
+    return get_books(cycle_key)
+
+
+def get_proposal_by_id(proposal_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            bp.id AS proposal_id,
+            b.id,
+            b.title,
+            b.author,
+            b.description,
+            b.cover,
+            bp.proposed_by,
+            COUNT(bv.id)::int AS votes
+        FROM book_proposals bp
+        JOIN books b ON b.id = bp.book_id
+        LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
+        WHERE bp.id = %s
+        GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, bp.proposed_by
+        """, (proposal_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def vote_book(proposal_id, user_name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO book_votes(proposal_id, user_name)
+        VALUES(%s, %s)
+        ON CONFLICT (proposal_id, user_name) DO NOTHING
+        RETURNING id
+        """, (proposal_id, user_name))
+        row = cur.fetchone()
+        return row is not None
+
+
+def get_cycle_results(cycle_key=None):
+    return get_books(cycle_key)
+
+
+def close_cycle_proposals(cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        UPDATE book_proposals
+        SET is_active = FALSE
+        WHERE cycle_key = %s
+        """, (cycle_key,))
+
+
+def get_winner_book(cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
+    books = get_books(cycle_key)
+    if not books:
+        return None
+    return books[0]
 
 
 def get_book_by_id(book_id):
-    cur.execute("""
-    SELECT id, title, author, description, cover, proposed_by, votes
-    FROM books
-    WHERE id = %s
-    """, (book_id,))
-    r = cur.fetchone()
-
-    if not r:
-        return None
-
-    return {
-        "id": r[0],
-        "title": r[1],
-        "author": r[2],
-        "description": r[3],
-        "cover": r[4],
-        "proposed_by": r[5],
-        "votes": r[6]
-    }
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM books WHERE id = %s", (book_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
-def vote_book(user_name, book_id):
-    cur.execute("""
-    SELECT 1
-    FROM votes
-    WHERE user_name = %s AND book_id = %s
-    """, (user_name, book_id))
-    exists = cur.fetchone()
+# =========================================================
+# THEMES
+# =========================================================
 
-    if exists:
-        return False
+def create_theme(name, created_by=None, cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
 
-    cur.execute("""
-    INSERT INTO votes(user_name, book_id)
-    VALUES(%s, %s)
-    """, (user_name, book_id))
-
-    cur.execute("""
-    UPDATE books
-    SET votes = votes + 1
-    WHERE id = %s
-    """, (book_id,))
-
-    conn.commit()
-    return True
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO themes(name, cycle_key, created_by)
+        VALUES(%s, %s, %s)
+        ON CONFLICT (name, cycle_key) DO NOTHING
+        RETURNING *
+        """, (name.strip(), cycle_key, created_by))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
-def get_winner_book():
-    cur.execute("""
-    SELECT id, title, votes
-    FROM books
-    ORDER BY votes DESC, id ASC
-    LIMIT 1
-    """)
-    row = cur.fetchone()
+def get_themes(cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
 
-    if not row:
-        return None
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            t.id,
+            t.name,
+            t.cycle_key,
+            COUNT(tv.id)::int AS votes
+        FROM themes t
+        LEFT JOIN theme_votes tv ON tv.theme_id = t.id
+        WHERE t.cycle_key = %s
+          AND t.is_active = TRUE
+        GROUP BY t.id, t.name, t.cycle_key
+        ORDER BY votes DESC, t.name ASC
+        """, (cycle_key,))
+        return [dict(r) for r in cur.fetchall()]
 
-    return {
-        "id": row[0],
-        "title": row[1],
-        "votes": row[2]
-    }
+
+def vote_theme(theme_id, user_name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO theme_votes(theme_id, user_name)
+        VALUES(%s, %s)
+        ON CONFLICT (theme_id, user_name) DO NOTHING
+        RETURNING id
+        """, (theme_id, user_name))
+        row = cur.fetchone()
+        return row is not None
+
+
+def get_top_theme(cycle_key=None):
+    cycle_key = cycle_key or current_cycle_key()
+    themes = get_themes(cycle_key)
+    return themes[0] if themes else None
+
+
+# =========================================================
+# MEETINGS
+# =========================================================
+
+def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_id=None, status="draft"):
+    cycle_key = cycle_key or current_cycle_key()
+
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status)
+        VALUES(%s, %s, %s, %s, %s, %s)
+        RETURNING *
+        """, (name.strip(), cycle_key, final_date, created_by, book_id, status))
+        return dict(cur.fetchone())
+
+
+def get_meetings(limit=50):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            m.*,
+            b.title AS book_title
+        FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        ORDER BY COALESCE(m.final_date, m.created_at) DESC
+        LIMIT %s
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_meeting(meeting_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            m.*,
+            b.title AS book_title
+        FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        WHERE m.id = %s
+        """, (meeting_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_latest_meeting():
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT *
+        FROM meetings
+        ORDER BY COALESCE(final_date, created_at) DESC
+        LIMIT 1
+        """)
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_latest_scheduled_meeting():
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT *
+        FROM meetings
+        WHERE status IN ('scheduled', 'draft')
+        ORDER BY COALESCE(final_date, created_at) DESC
+        LIMIT 1
+        """)
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def add_meeting_date_option(meeting_id, option_date):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO meeting_date_options(meeting_id, option_date)
+        VALUES(%s, %s)
+        ON CONFLICT (meeting_id, option_date) DO NOTHING
+        RETURNING *
+        """, (meeting_id, option_date))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_meeting_date_options(meeting_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            mdo.id,
+            mdo.option_date,
+            COUNT(mdv.id)::int AS votes
+        FROM meeting_date_options mdo
+        LEFT JOIN meeting_date_votes mdv ON mdv.option_id = mdo.id
+        WHERE mdo.meeting_id = %s
+        GROUP BY mdo.id, mdo.option_date
+        ORDER BY votes DESC, mdo.option_date ASC
+        """, (meeting_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def vote_meeting_date(option_id, user_name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO meeting_date_votes(option_id, user_name)
+        VALUES(%s, %s)
+        ON CONFLICT (option_id, user_name) DO NOTHING
+        RETURNING id
+        """, (option_id, user_name))
+        row = cur.fetchone()
+        return row is not None
+
+
+def set_meeting_final_date(meeting_id, final_date):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        UPDATE meetings
+        SET final_date = %s,
+            status = 'scheduled',
+            updated_at = NOW()
+        WHERE id = %s
+        """, (final_date, meeting_id))
+
+
+def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=None, book_id=None):
+    fields = []
+    values = []
+
+    if name is not None:
+        fields.append("name = %s")
+        values.append(name)
+    if final_date is not None:
+        fields.append("final_date = %s")
+        values.append(final_date)
+    if summary is not None:
+        fields.append("summary = %s")
+        values.append(summary)
+    if status is not None:
+        fields.append("status = %s")
+        values.append(status)
+    if book_id is not None:
+        fields.append("book_id = %s")
+        values.append(book_id)
+
+    if not fields:
+        return
+
+    fields.append("updated_at = NOW()")
+    values.append(meeting_id)
+
+    with get_cursor(commit=True) as cur:
+        cur.execute(f"""
+        UPDATE meetings
+        SET {", ".join(fields)}
+        WHERE id = %s
+        """, tuple(values))
+
+
+def delete_meeting(meeting_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM meetings WHERE id = %s", (meeting_id,))
+
+
+def add_attendance(meeting_id, user_name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO meeting_attendance(meeting_id, user_name)
+        VALUES(%s, %s)
+        ON CONFLICT (meeting_id, user_name) DO NOTHING
+        RETURNING id
+        """, (meeting_id, user_name))
+        row = cur.fetchone()
+        return row is not None
+
+
+def remove_attendance(meeting_id, user_name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        DELETE FROM meeting_attendance
+        WHERE meeting_id = %s
+          AND user_name = %s
+        """, (meeting_id, user_name))
+
+
+def get_attendance(meeting_id=None):
+    with get_cursor() as cur:
+        if meeting_id is None:
+            cur.execute("""
+            SELECT meeting_id, user_name
+            FROM meeting_attendance
+            ORDER BY meeting_id DESC, user_name ASC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+        SELECT user_name
+        FROM meeting_attendance
+        WHERE meeting_id = %s
+        ORDER BY user_name ASC
+        """, (meeting_id,))
+        return [r["user_name"] for r in cur.fetchall()]
+
+
+def get_meeting_attendance_count(meeting_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT COUNT(*)::int AS total
+        FROM meeting_attendance
+        WHERE meeting_id = %s
+        """, (meeting_id,))
+        return cur.fetchone()["total"]
+
+
+# =========================================================
+# RATINGS
+# =========================================================
+
+def rate_book(book_id, user_name, score, review=None):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO book_ratings(book_id, user_name, score, review)
+        VALUES(%s, %s, %s, %s)
+        ON CONFLICT (book_id, user_name)
+        DO UPDATE SET
+            score = EXCLUDED.score,
+            review = EXCLUDED.review
+        RETURNING *
+        """, (book_id, user_name, score, review))
+        return dict(cur.fetchone())
+
+
+def get_book_ranking():
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            b.id,
+            b.title,
+            b.author,
+            ROUND(AVG(br.score)::numeric, 2) AS avg_score,
+            COUNT(br.id)::int AS total_reviews
+        FROM book_ratings br
+        JOIN books b ON b.id = br.book_id
+        GROUP BY b.id, b.title, b.author
+        ORDER BY avg_score DESC NULLS LAST, total_reviews DESC, b.title ASC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_book_ratings_for_book(book_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT user_name, score, review, created_at
+        FROM book_ratings
+        WHERE book_id = %s
+        ORDER BY created_at DESC
+        """, (book_id,))
+        return [dict(r) for r in cur.fetchall()]

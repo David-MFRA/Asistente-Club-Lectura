@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle reunión · Club de Lectura</title>
+    <style>
+        :root{
+            --bg1:#0f172a;
+            --bg2:#111827;
+            --card:rgba(255,255,255,0.08);
+            --border:rgba(255,255,255,0.12);
+            --text:#f8fafc;
+            --muted:#94a3b8;
+            --primary:#6366f1;
+            --primary2:#8b5cf6;
+            --danger:#ef4444;
+            --success:#10b981;
+            --shadow:0 18px 38px rgba(0,0,0,.28);
+            --radius:20px;
+        }
+
+        *{box-sizing:border-box}
+        html,body{
+            margin:0;
+            min-height:100%;
+            font-family:Inter,Arial,sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(99,102,241,.22), transparent 35%),
+                radial-gradient(circle at bottom right, rgba(139,92,246,.18), transparent 35%),
+                linear-gradient(135deg,var(--bg1),var(--bg2));
+            color:var(--text);
+        }
+
+        body{padding:16px}
+        .container{max-width:1200px;margin:0 auto}
+
+        .topbar{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            flex-wrap:wrap;
+            gap:12px;
+            margin-bottom:18px;
+        }
+
+        .brand{
+            display:flex;
+            align-items:center;
+            gap:12px;
+        }
+
+        .badge{
+            width:52px;height:52px;border-radius:16px;
+            background:linear-gradient(135deg,var(--primary),var(--primary2));
+            display:flex;align-items:center;justify-content:center;
+            font-size:24px;
+        }
+
+        h1{margin:0;font-size:1.5rem}
+        .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
+
+        .actions{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+        }
+
+        .btn{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            text-decoration:none;
+            border:none;
+            cursor:pointer;
+            border-radius:14px;
+            padding:12px 16px;
+            font-weight:700;
+            font-size:.95rem;
+            transition:.18s ease;
+        }
+
+        .btn-primary{
+            background:linear-gradient(135deg,var(--primary),var(--primary2));
+            color:#fff;
+        }
+
+        .btn-soft{
+            background:var(--card);
+            color:var(--text);
+            border:1px solid var(--border);
+        }
+
+        .btn-danger{
+            background:rgba(239,68,68,.16);
+            color:#fecaca;
+            border:1px solid rgba(239,68,68,.3);
+        }
+
+        .card{
+            background:var(--card);
+            border:1px solid var(--border);
+            border-radius:var(--radius);
+            box-shadow:var(--shadow);
+            backdrop-filter:blur(16px);
+            padding:18px;
+            margin-bottom:16px;
+        }
+
+        .grid{
+            display:grid;
+            grid-template-columns:repeat(12,1fr);
+            gap:16px;
+        }
+
+        .span-6{grid-column:span 6}
+        .span-12{grid-column:span 12}
+
+        .field{
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            margin-bottom:12px;
+        }
+
+        label{
+            color:var(--muted);
+            font-size:.9rem;
+        }
+
+        input, select, textarea{
+            width:100%;
+            padding:13px 14px;
+            border-radius:14px;
+            border:1px solid rgba(255,255,255,.12);
+            background:rgba(255,255,255,.06);
+            color:var(--text);
+            outline:none;
+            font-size:.95rem;
+        }
+
+        textarea{min-height:120px;resize:vertical}
+
+        .section-title{
+            margin:0 0 10px;
+            font-size:1.05rem;
+        }
+
+        .muted{color:var(--muted);font-size:.92rem}
+
+        .list{
+            display:grid;
+            gap:10px;
+        }
+
+        .item{
+            padding:14px;
+            border-radius:14px;
+            background:rgba(255,255,255,.05);
+            border:1px solid rgba(255,255,255,.08);
+        }
+
+        .empty{
+            text-align:center;
+            color:var(--muted);
+            padding:16px;
+        }
+
+        @media (max-width: 900px){
+            .span-6,.span-12{grid-column:span 12}
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand">
+            <div class="badge">🗓️</div>
+            <div>
+                <h1>{{ meeting.name }}</h1>
+                <div class="subtitle">Detalle, asistentes y gestión de fechas</div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-soft" href="/meetings">Reuniones</a>
+            <a class="btn btn-soft" href="/admin">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-6">
+            <h2 class="section-title">Editar reunión</h2>
+            <p class="muted">Actualiza nombre, fecha, estado y acta.</p>
+
+            <form method="post" action="/meeting/{{ meeting.id }}/edit">
+                <div class="field">
+                    <label for="name">Nombre</label>
+                    <input id="name" name="name" type="text" value="{{ meeting.name }}">
+                </div>
+
+                <div class="field">
+                    <label for="final_date">Fecha final</label>
+                    <input id="final_date" name="final_date" type="text" value="{{ meeting.final_date if meeting.final_date else '' }}" placeholder="2026-03-28 19:00">
+                </div>
+
+                <div class="field">
+                    <label for="status">Estado</label>
+                    <select id="status" name="status">
+                        <option value="draft" {% if meeting.status == "draft" %}selected{% endif %}>draft</option>
+                        <option value="scheduled" {% if meeting.status == "scheduled" %}selected{% endif %}>scheduled</option>
+                        <option value="closed" {% if meeting.status == "closed" %}selected{% endif %}>closed</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="summary">Resumen / Acta</label>
+                    <textarea id="summary" name="summary" placeholder="Resumen de la reunión">{{ meeting.summary if meeting.summary else '' }}</textarea>
+                </div>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button class="btn btn-primary" type="submit">Guardar cambios</button>
+                </div>
+            </form>
+
+            <form method="post" action="/meeting/{{ meeting.id }}/delete" style="margin-top:12px;">
+                <button class="btn btn-danger" type="submit" onclick="return confirm('¿Seguro que quieres borrar esta reunión?')">Borrar reunión</button>
+            </form>
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">Opciones de fecha</h2>
+            <p class="muted">Añade fechas candidatas o cierra una definitiva.</p>
+
+            <form method="post" action="/meeting/{{ meeting.id }}/date-option" style="margin-bottom:12px;">
+                <div class="field">
+                    <label for="option_date">Nueva opción</label>
+                    <input id="option_date" name="option_date" type="text" placeholder="2026-03-27 19:00">
+                </div>
+                <button class="btn btn-primary" type="submit">Añadir opción</button>
+            </form>
+
+            <form method="post" action="/meeting/{{ meeting.id }}/close-date">
+                <div class="field">
+                    <label for="final_date_close">Cerrar fecha definitiva</label>
+                    <input id="final_date_close" name="final_date" type="text" placeholder="2026-03-28 19:00">
+                </div>
+                <button class="btn btn-soft" type="submit">Cerrar fecha</button>
+            </form>
+
+            <div style="margin-top:16px">
+                {% if date_options %}
+                    <div class="list">
+                        {% for d in date_options %}
+                            <div class="item">
+                                {{ d.option_date }} — {{ d.votes }} votos
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty">No hay opciones de fecha.</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="card span-12">
+            <h2 class="section-title">Asistentes</h2>
+            <p class="muted">Participantes apuntados a esta reunión.</p>
+
+            {% if attendees %}
+                <div class="list">
+                    {% for a in attendees %}
+                        <div class="item">{{ a }}</div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty">No hay asistentes todavía.</div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+</body>
+</html>

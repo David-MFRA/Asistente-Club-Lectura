@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reuniones · Club de Lectura</title>
+    <style>
+        :root{
+            --bg1:#0f172a;
+            --bg2:#111827;
+            --card:rgba(255,255,255,0.08);
+            --card-2:rgba(255,255,255,0.12);
+            --border:rgba(255,255,255,0.12);
+            --text:#f8fafc;
+            --muted:#94a3b8;
+            --primary:#6366f1;
+            --primary2:#8b5cf6;
+            --danger:#ef4444;
+            --success:#10b981;
+            --warning:#f59e0b;
+            --shadow:0 18px 38px rgba(0,0,0,.28);
+            --radius:20px;
+        }
+
+        *{box-sizing:border-box}
+        html,body{
+            margin:0;
+            padding:0;
+            min-height:100%;
+            font-family:Inter,Arial,sans-serif;
+            color:var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(99,102,241,.22), transparent 35%),
+                radial-gradient(circle at bottom right, rgba(139,92,246,.18), transparent 35%),
+                linear-gradient(135deg,var(--bg1),var(--bg2));
+        }
+
+        body{padding:16px}
+
+        .container{
+            max-width:1200px;
+            margin:0 auto;
+        }
+
+        .topbar{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:12px;
+            flex-wrap:wrap;
+            margin-bottom:18px;
+        }
+
+        .brand{
+            display:flex;
+            align-items:center;
+            gap:12px;
+        }
+
+        .badge{
+            width:52px;
+            height:52px;
+            border-radius:16px;
+            background:linear-gradient(135deg,var(--primary),var(--primary2));
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:24px;
+            box-shadow:0 10px 24px rgba(99,102,241,.35);
+        }
+
+        h1{
+            margin:0;
+            font-size:1.5rem;
+        }
+
+        .subtitle{
+            margin-top:4px;
+            color:var(--muted);
+            font-size:.94rem;
+        }
+
+        .actions{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+        }
+
+        .btn{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            text-decoration:none;
+            border:none;
+            cursor:pointer;
+            border-radius:14px;
+            padding:12px 16px;
+            font-weight:700;
+            font-size:.95rem;
+            transition:.18s ease;
+        }
+
+        .btn-primary{
+            background:linear-gradient(135deg,var(--primary),var(--primary2));
+            color:#fff;
+        }
+
+        .btn-soft{
+            background:var(--card);
+            color:var(--text);
+            border:1px solid var(--border);
+        }
+
+        .btn:hover{transform:translateY(-1px)}
+
+        .card{
+            background:var(--card);
+            border:1px solid var(--border);
+            border-radius:var(--radius);
+            box-shadow:var(--shadow);
+            backdrop-filter:blur(16px);
+            -webkit-backdrop-filter:blur(16px);
+            padding:18px;
+            margin-bottom:16px;
+        }
+
+        .card h2{
+            margin:0 0 8px;
+            font-size:1.05rem;
+        }
+
+        .muted{
+            color:var(--muted);
+            font-size:.92rem;
+        }
+
+        .grid{
+            display:grid;
+            grid-template-columns:repeat(12,1fr);
+            gap:16px;
+        }
+
+        .span-4{grid-column:span 4}
+        .span-8{grid-column:span 8}
+        .span-12{grid-column:span 12}
+
+        .meeting-list{
+            display:grid;
+            gap:14px;
+        }
+
+        .meeting-item{
+            background:rgba(255,255,255,.05);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:18px;
+            padding:16px;
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            align-items:flex-start;
+        }
+
+        .meeting-title{
+            font-size:1rem;
+            font-weight:800;
+            margin-bottom:6px;
+        }
+
+        .meeting-meta{
+            color:var(--muted);
+            font-size:.9rem;
+            line-height:1.5;
+        }
+
+        .pill{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding:8px 10px;
+            border-radius:999px;
+            font-size:.82rem;
+            font-weight:800;
+            white-space:nowrap;
+        }
+
+        .pill-draft{background:rgba(245,158,11,.15); color:#fde68a}
+        .pill-scheduled{background:rgba(16,185,129,.15); color:#d1fae5}
+        .pill-other{background:rgba(99,102,241,.15); color:#c7d2fe}
+
+        .meeting-actions{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-top:12px;
+        }
+
+        .small-btn{
+            display:inline-flex;
+            padding:10px 12px;
+            border-radius:12px;
+            text-decoration:none;
+            background:rgba(255,255,255,.08);
+            border:1px solid rgba(255,255,255,.08);
+            color:var(--text);
+            font-size:.88rem;
+            font-weight:700;
+        }
+
+        .field{
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            margin-bottom:12px;
+        }
+
+        label{
+            color:var(--muted);
+            font-size:.9rem;
+        }
+
+        input, select, textarea{
+            width:100%;
+            padding:13px 14px;
+            border-radius:14px;
+            border:1px solid rgba(255,255,255,.12);
+            background:rgba(255,255,255,.06);
+            color:var(--text);
+            outline:none;
+            font-size:.95rem;
+        }
+
+        input:focus, select:focus, textarea:focus{
+            border-color:rgba(99,102,241,.65);
+            box-shadow:0 0 0 4px rgba(99,102,241,.16);
+        }
+
+        .empty{
+            text-align:center;
+            padding:18px;
+            color:var(--muted);
+            background:rgba(255,255,255,.04);
+            border-radius:16px;
+        }
+
+        @media (max-width: 920px){
+            .span-4,.span-8,.span-12{grid-column:span 12}
+        }
+
+        @media (max-width: 560px){
+            body{padding:12px}
+            h1{font-size:1.28rem}
+            .meeting-item{
+                flex-direction:column;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand">
+            <div class="badge">📅</div>
+            <div>
+                <h1>Reuniones</h1>
+                <div class="subtitle">Consulta, crea y edita las reuniones del club</div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-soft" href="/admin">Dashboard</a>
+            <a class="btn btn-primary" href="/admin/logout">Salir</a>
+        </div>
+    </div>
+
+    <div class="grid">
+        <section class="card span-4">
+            <h2>Nueva reunión</h2>
+            <p class="muted">Crea una reunión mensual con nombre y fecha inicial.</p>
+
+            <form method="post" action="/create_meeting">
+                <div class="field">
+                    <label for="meeting_name">Nombre</label>
+                    <input id="meeting_name" name="meeting_name" type="text" placeholder="Ej. Reunión de marzo" required>
+                </div>
+
+                <div class="field">
+                    <label for="meeting_date">Fecha y hora</label>
+                    <input id="meeting_date" name="meeting_date" type="text" placeholder="2026-03-28 19:00" required>
+                </div>
+
+                <button class="btn btn-primary" type="submit">Crear reunión</button>
+            </form>
+        </section>
+
+        <section class="card span-8">
+            <h2>Listado de reuniones</h2>
+            <p class="muted">Pulsa en una reunión para ver detalle, editarla o cerrar su fecha.</p>
+
+            {% if meetings %}
+                <div class="meeting-list">
+                    {% for m in meetings %}
+                        <div class="meeting-item">
+                            <div>
+                                <div class="meeting-title">{{ m.name }}</div>
+                                <div class="meeting-meta">
+                                    Ciclo: {{ m.cycle_key }}<br>
+                                    Fecha final: {{ m.final_date if m.final_date else "Sin cerrar" }}<br>
+                                    Libro: {{ m.book_title if m.book_title else "Sin asignar" }}
+                                </div>
+
+                                <div class="meeting-actions">
+                                    <a class="small-btn" href="/meeting/{{ m.id }}">Ver detalle</a>
+                                </div>
+                            </div>
+
+                            <div>
+                                {% if m.status == "draft" %}
+                                    <span class="pill pill-draft">draft</span>
+                                {% elif m.status == "scheduled" %}
+                                    <span class="pill pill-scheduled">scheduled</span>
+                                {% else %}
+                                    <span class="pill pill-other">{{ m.status }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty">No hay reuniones creadas.</div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+</body>
+</html>

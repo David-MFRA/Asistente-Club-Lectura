@@ -170,6 +170,21 @@ def init_db():
             END IF;
         END$$;
         """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS reading_progress (
+            id SERIAL PRIMARY KEY,
+            user_name TEXT NOT NULL,
+            book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            pages_read INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(user_name, book_id)
+        )""")
 
 
 # =========================================================
@@ -180,8 +195,25 @@ def current_cycle_key(dt=None):
     dt = dt or datetime.utcnow()
     return dt.strftime("%Y-%m")
 
+def get_config(key, default=None):
+    try:
+        with get_cursor() as cur:
+            cur.execute("SELECT value FROM app_config WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row["value"] if row else default
+    except Exception:
+        return default
+
+def set_config(key, value):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO app_config(key, value) VALUES(%s,%s)
+        ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+        """, (key, str(value)))
+
 def get_current_cycle_key():
-    return current_cycle_key()
+    stored = get_config("active_cycle_key")
+    return stored if stored else current_cycle_key()
 
 
 # =========================================================
@@ -214,7 +246,7 @@ def create_or_get_book(book):
 
 
 def insert_book(book, proposed_by="telegram", cycle_key=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     book_row  = create_or_get_book(book)
     with get_cursor(commit=True) as cur:
         cur.execute("""
@@ -233,7 +265,7 @@ def remove_book_proposal(proposal_id):
 
 
 def get_books(cycle_key=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor() as cur:
         cur.execute("""
         SELECT
@@ -283,7 +315,7 @@ def get_cycle_results(cycle_key=None):
 
 
 def close_cycle_proposals(cycle_key=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor(commit=True) as cur:
         cur.execute("UPDATE book_proposals SET is_active = FALSE WHERE cycle_key = %s", (cycle_key,))
 
@@ -310,7 +342,7 @@ def get_votes():
 # =========================================================
 
 def create_theme(name, created_by=None, cycle_key=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO themes(name, cycle_key, created_by)
@@ -321,7 +353,7 @@ def create_theme(name, created_by=None, cycle_key=None):
 
 
 def get_themes(cycle_key=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor() as cur:
         cur.execute("""
         SELECT t.id, t.name, t.cycle_key, COUNT(tv.id)::int AS votes
@@ -353,7 +385,7 @@ def get_top_theme(cycle_key=None):
 # =========================================================
 
 def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_id=None, status="draft"):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status)
@@ -544,7 +576,7 @@ def get_book_ratings_for_book(book_id):
 # =========================================================
 
 def save_poll(chat_id, message_id, poll_id, poll_type="books", cycle_key=None, meeting_id=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO telegram_polls(cycle_key, chat_id, message_id, poll_id, poll_type, meeting_id)
@@ -555,7 +587,7 @@ def save_poll(chat_id, message_id, poll_id, poll_type="books", cycle_key=None, m
 
 
 def get_open_poll(poll_type="books", cycle_key=None, meeting_id=None):
-    cycle_key = cycle_key or current_cycle_key()
+    cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor() as cur:
         if meeting_id is not None:
             cur.execute("""
@@ -651,6 +683,104 @@ def get_all_meetings_history():
         ORDER BY COALESCE(m.final_date, m.created_at) DESC
         """)
         return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# CONFIG & CYCLE MANAGEMENT
+# =========================================================
+
+def close_cycle(cycle_key=None):
+    cycle_key = cycle_key or get_current_cycle_key()
+    with get_cursor(commit=True) as cur:
+        cur.execute("UPDATE book_proposals SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
+        cur.execute("UPDATE themes SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
+
+def get_all_cycle_keys():
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT DISTINCT cycle_key FROM (
+            SELECT cycle_key FROM book_proposals
+            UNION SELECT cycle_key FROM themes
+            UNION SELECT cycle_key FROM meetings
+        ) t ORDER BY cycle_key DESC
+        """)
+        return [r["cycle_key"] for r in cur.fetchall()]
+
+
+# =========================================================
+# READING PROGRESS
+# =========================================================
+
+def log_reading_progress(user_name, book_id, pages_read):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO reading_progress(user_name, book_id, pages_read, updated_at)
+        VALUES(%s,%s,%s,NOW())
+        ON CONFLICT(user_name, book_id) DO UPDATE
+            SET pages_read=EXCLUDED.pages_read, updated_at=NOW()
+        RETURNING *
+        """, (user_name, book_id, pages_read))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+def get_reading_progress(book_id):
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT user_name, pages_read, updated_at
+        FROM reading_progress WHERE book_id=%s
+        ORDER BY pages_read DESC
+        """, (book_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# USER STATS
+# =========================================================
+
+def get_user_stats(user_name):
+    stats = {}
+    cycle = get_current_cycle_key()
+    with get_cursor() as cur:
+        cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s", (user_name,))
+        stats["proposals_total"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s AND cycle_key=%s", (user_name, cycle))
+        stats["proposals_cycle"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*)::int AS n FROM book_votes WHERE user_name=%s", (user_name,))
+        stats["book_votes"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*)::int AS n FROM theme_votes WHERE user_name=%s", (user_name,))
+        stats["theme_votes"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*)::int AS n FROM meeting_attendance WHERE user_name=%s", (user_name,))
+        stats["meetings"] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*)::int AS n, ROUND(AVG(score)::numeric,1) AS avg FROM book_ratings WHERE user_name=%s", (user_name,))
+        row = cur.fetchone()
+        stats["ratings"] = row["n"]
+        stats["avg_score"] = float(row["avg"]) if row["avg"] else None
+        cur.execute("""
+        SELECT rp.pages_read, b.pages AS total, b.title
+        FROM reading_progress rp JOIN books b ON b.id=rp.book_id
+        WHERE rp.user_name=%s ORDER BY rp.updated_at DESC LIMIT 1
+        """, (user_name,))
+        row = cur.fetchone()
+        stats["last_progress"] = dict(row) if row else None
+    return stats
+
+
+# =========================================================
+# BOOK MANAGEMENT (admin edit)
+# =========================================================
+
+def update_book(book_id, title=None, author=None, description=None, pages=None, cover=None):
+    fields, values = [], []
+    if title is not None:       fields.append("title=%s");       values.append(title)
+    if author is not None:      fields.append("author=%s");      values.append(author or None)
+    if description is not None: fields.append("description=%s"); values.append(description or None)
+    if pages is not None:       fields.append("pages=%s");       values.append(int(pages) if pages else None)
+    if cover is not None:       fields.append("cover=%s");       values.append(cover or None)
+    if not fields:
+        return
+    values.append(book_id)
+    with get_cursor(commit=True) as cur:
+        cur.execute(f"UPDATE books SET {', '.join(fields)} WHERE id=%s", tuple(values))
 
 
 # =========================================================

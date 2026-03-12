@@ -98,6 +98,20 @@
 </head>
 <body>
 <div class="container">
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:8px">
+            {% for cat, msg in messages %}
+                <div style="padding:13px 16px;border-radius:13px;font-size:.92rem;font-weight:600;
+                    {% if cat == 'success' %}background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#d1fae5;
+                    {% elif cat == 'danger' %}background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#fecaca;
+                    {% else %}background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#fde68a;{% endif %}">
+                    {{ msg }}
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
     <div class="topbar">
         <div class="brand">
             <div class="brand-badge">📚</div>
@@ -181,6 +195,18 @@
             </form>
         </section>
 
+        <!-- CICLO ACTIVO -->
+        <section class="card" style="grid-column:span 12">
+            <h2>🔄 Ciclo activo</h2>
+            <p class="card-sub">El ciclo define en qué «bolsa» se agrupan propuestas y temáticas. <a href="/admin/ciclo" style="color:#a5b4fc">Gestión completa →</a></p>
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                <div style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);padding:10px 18px;border-radius:12px;font-weight:800;font-size:1.1rem;color:#c7d2fe">
+                    {{ books[0].cycle_key if books else 'sin datos' }}
+                </div>
+                <a class="btn btn-soft" href="/admin/ciclo">⚙️ Gestionar ciclo</a>
+            </div>
+        </section>
+
         <!-- RECORDATORIOS MANUALES -->
         <section class="card" style="grid-column:span 12">
             <h2>📣 Enviar recordatorios ahora</h2>
@@ -203,6 +229,19 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- MENSAJE PERSONALIZADO AL GRUPO -->
+        <section class="card" style="grid-column:span 12">
+            <h2>💬 Enviar mensaje personalizado al grupo</h2>
+            <p class="card-sub">Escribe cualquier mensaje y se enviará directamente al grupo de Telegram sin formato especial.</p>
+            <form action="/admin/send/custom" method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <div class="field" style="flex:1;min-width:300px;margin:0">
+                    <label>Mensaje</label>
+                    <textarea name="message" rows="2" placeholder="Escribe aquí el mensaje para el grupo…" style="resize:vertical" required></textarea>
+                </div>
+                <button class="btn btn-primary" type="submit" style="white-space:nowrap">📨 Enviar al grupo</button>
+            </form>
         </section>
 
         <!-- ENCUESTA LIBROS -->
@@ -357,16 +396,37 @@
                                 <td style="color:var(--muted);font-size:.88rem">{{ b.proposed_by }}</td>
                                 <td><span class="vote-badge">{{ b.votes }}</span></td>
                                 <td>
-                                    <form action="/admin/book/{{ b.proposal_id }}/delete" method="post"
-                                          onsubmit="return confirm('¿Quitar «{{ b.title }}» de las propuestas?')">
-                                        <button class="btn btn-danger btn-sm" type="submit">🗑 Quitar</button>
-                                    </form>
+                                    <div style="display:flex;gap:6px;align-items:center">
+                                        <form action="/admin/book/{{ b.proposal_id }}/delete" method="post"
+                                              onsubmit="return confirm('¿Quitar «{{ b.title }}» de las propuestas?')">
+                                            <button class="btn btn-danger btn-sm" type="submit">🗑 Quitar</button>
+                                        </form>
+                                        <button class="btn btn-soft btn-sm" type="button" onclick="toggleBookEdit({{ b.id }}, {{ b.proposal_id }})">✏️</button>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                <!-- INLINE EDIT FORMS -->
+                {% for b in books %}
+                <div id="book-edit-{{ b.id }}" style="display:none;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:16px;margin-top:6px">
+                    <form action="/admin/book/{{ b.id }}/edit" method="post">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+                            <div class="field" style="margin:0"><label>Título</label><input name="title" type="text" value="{{ b.title }}"></div>
+                            <div class="field" style="margin:0"><label>Autor</label><input name="author" type="text" value="{{ b.author or '' }}"></div>
+                            <div class="field" style="margin:0"><label>Páginas</label><input name="pages" type="number" value="{{ b.pages or '' }}"></div>
+                            <div class="field" style="margin:0"><label>URL portada</label><input name="cover" type="text" value="{{ b.cover or '' }}"></div>
+                        </div>
+                        <div class="field" style="margin-bottom:10px"><label>Descripción</label><textarea name="description" rows="2" style="resize:vertical">{{ b.description or '' }}</textarea></div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-success btn-sm" type="submit">✓ Guardar cambios</button>
+                            <button class="btn btn-soft btn-sm" type="button" onclick="toggleBookEdit({{ b.id }}, {{ b.proposal_id }})">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+                {% endfor %}
             {% else %}
                 <div class="empty">No hay propuestas todavía. Los miembros las añaden con /proponer o tú desde arriba.</div>
             {% endif %}
@@ -403,6 +463,10 @@ function toggleEdit(id) {
         btns.style.display = 'none';
         form.querySelector('input').focus();
     }
+}
+function toggleBookEdit(bookId, proposalId) {
+    const el = document.getElementById('book-edit-' + bookId);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 </script>
 </body>

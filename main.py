@@ -4,12 +4,12 @@ import logging
 from datetime import datetime
 from http import HTTPStatus
 
-from flask import Flask, request, render_template, redirect, url_for, session, Response
+from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages
 from asgiref.wsgi import WsgiToAsgi
 import uvicorn
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, ContextTypes
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -32,6 +32,7 @@ FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY", "cambia-esto-en-render")
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
 ALLOWED_CHAT_ID   = os.getenv("ALLOWED_CHAT_ID")
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
 
 if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
@@ -101,6 +102,12 @@ def _allowed_chat(update):
         return True
     return str(update.effective_chat.id) == str(ALLOWED_CHAT_ID)
 
+def is_admin_user(update):
+    """Devuelve True si el remitente es el admin configurado."""
+    if not ADMIN_TELEGRAM_ID:
+        return False
+    return str(update.effective_user.id) == str(ADMIN_TELEGRAM_ID)
+
 async def send_to_group(text, parse_mode="MarkdownV2"):
     if not TELEGRAM_CHAT_ID:
         logger.warning("TELEGRAM_CHAT_ID no configurado")
@@ -164,18 +171,24 @@ async def start(update, context):
         f"📚 {bold('Club de Lectura')} — Comandos disponibles\n\n"
         f"📖 {bold('Libros')}\n"
         f"  /proponer _título_ — Propone un libro\n"
-        f"  /propuestas — Lista de propuestas\n"
+        f"  /propuestas — Lista con botones para votar\n"
         f"  /votar _id_ — Vota una propuesta\n"
-        f"  /resultados — Ranking de votos\n\n"
+        f"  /resultados — Ranking de votos\n"
+        f"  /libro — Libro del ciclo actual\n\n"
         f"🏷️ {bold('Temáticas')}\n"
         f"  /tema _nombre_ — Propone una temática\n"
-        f"  /temas — Lista de temáticas\n"
+        f"  /temas — Lista con botones para votar\n"
         f"  /votar\\_tema _id_ — Vota una temática\n\n"
         f"📅 {bold('Reunión')}\n"
         f"  /reunion — Info de la próxima reunión\n"
         f"  /asistir — Apuntarse a la reunión\n"
         f"  /noasistir — Quitarse de la reunión\n"
-        f"  /asistencia — Ver asistentes\n\n"
+        f"  /asistencia — Ver asistentes\n"
+        f"  /acta — Resumen de la última reunión\n\n"
+        f"📊 {bold('Tu actividad')}\n"
+        f"  /calificar _N_ _\\[reseña\\]_ — Valora el libro \\(1\\-5\\)\n"
+        f"  /progreso _páginas_ — Registra tu lectura\n"
+        f"  /estadisticas — Tus estadísticas del club\n\n"
         f"🎲 {bold('Extras')}\n"
         f"  /trivia — Pregunta para el debate\n"
         f"  /recomendar — Libros del tema activo"
@@ -248,8 +261,19 @@ async def propuestas(update, context):
                 f"{bold(str(b['proposal_id']))}\\. {esc(b['title'])}{author_str}\n"
                 f"   {stars} {bold(str(b['votes']))} voto{'s' if b['votes'] != 1 else ''}"
             )
-        lines.append(f"\n_Vota con /votar \\<id\\>_")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+        lines.append(f"\n_Pulsa un botón para votar directamente:_")
+        keyboard = []
+        row = []
+        for i, b in enumerate(books[:10]):
+            label = f"🗳️ #{b['proposal_id']} {b['title'][:25]}"
+            row.append(InlineKeyboardButton(label, callback_data=f"vb:{b['proposal_id']}"))
+            if len(row) == 1:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2", reply_markup=reply_markup)
     except Exception:
         logger.exception("Error en /propuestas")
         await update.message.reply_text("⚠️ Error obteniendo propuestas\\.", parse_mode="MarkdownV2")
@@ -433,8 +457,13 @@ async def temas(update, context):
                 f"{bold(str(t['id']))}\\. {esc(t['name'])}\n"
                 f"   {bar} {bold(str(t['votes']))} voto{'s' if t['votes'] != 1 else ''}"
             )
-        lines.append(f"\n_Vota con /votar\\_tema \\<id\\>_")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+        lines.append(f"\n_Pulsa un botón para votar:_")
+        keyboard = []
+        for t in rows[:10]:
+            label = f"🗳️ {t['name'][:30]}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"vt:{t['id']}")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2", reply_markup=reply_markup)
     except Exception:
         logger.exception("Error en /temas")
         await update.message.reply_text("⚠️ Error obteniendo temáticas\\.", parse_mode="MarkdownV2")
@@ -501,6 +530,286 @@ async def recomendar(update, context):
 
 
 # --------------------------------------------------
+# INLINE KEYBOARD CALLBACK HANDLER
+# --------------------------------------------------
+
+async def button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = query.from_user.first_name or query.from_user.username or "alguien"
+    try:
+        if data.startswith("vb:"):
+            proposal_id = int(data.split(":")[1])
+            ok = db.vote_book(proposal_id, user)
+            proposal = db.get_proposal_by_id(proposal_id)
+            book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
+            if ok:
+                await query.answer(f"✅ Voto registrado para «{book_name}»", show_alert=True)
+            else:
+                await query.answer(f"⚠️ Ya habías votado «{book_name}»", show_alert=True)
+        elif data.startswith("vt:"):
+            theme_id = int(data.split(":")[1])
+            ok = db.vote_theme(theme_id, user)
+            if ok:
+                await query.answer("✅ Voto de temática registrado", show_alert=True)
+            else:
+                await query.answer("⚠️ Ya habías votado esa temática", show_alert=True)
+    except Exception:
+        logger.exception("Error en button_handler")
+        await query.answer("⚠️ Error procesando el voto", show_alert=True)
+
+
+# --------------------------------------------------
+# NEW USER COMMANDS
+# --------------------------------------------------
+
+async def libro_cmd(update, context):
+    if not _allowed_chat(update): return
+    try:
+        winner = db.get_winner_book()
+        if not winner:
+            await update.message.reply_text("📭 No hay libro del ciclo todavía\\.", parse_mode="MarkdownV2")
+            return
+        lines = [f"📗 {bold('Libro del ciclo')}\n"]
+        lines.append(f"{bold(winner['title'])}")
+        if winner.get("author"):
+            lines.append(f"✍️ {italic(winner['author'])}")
+        if winner.get("pages"):
+            lines.append(f"📄 {esc(str(winner['pages']))} páginas")
+        if winner.get("description"):
+            desc = winner["description"]
+            if len(desc) > 400:
+                desc = desc[:397] + "…"
+            lines.append(f"\n📖 _{esc(desc)}_")
+        lines.append(f"\n🗳️ {bold(str(winner.get('votes',0)))} voto{'s' if winner.get('votes',0)!=1 else ''}")
+        caption = "\n".join(lines)
+        if winner.get("cover"):
+            try:
+                await update.message.reply_photo(photo=winner["cover"], caption=caption, parse_mode="MarkdownV2")
+                return
+            except Exception:
+                pass
+        await update.message.reply_text(caption, parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("Error en /libro")
+        await update.message.reply_text("⚠️ Error obteniendo el libro\\.", parse_mode="MarkdownV2")
+
+
+async def acta_cmd(update, context):
+    if not _allowed_chat(update): return
+    try:
+        meetings = db.get_meetings(limit=20)
+        meeting = next((m for m in meetings if m.get("status") == "closed" and m.get("summary")), None)
+        if not meeting:
+            await update.message.reply_text("📭 No hay acta disponible todavía\\.", parse_mode="MarkdownV2")
+            return
+        lines = [f"📋 {bold('Acta de la reunión')}\n"]
+        lines.append(f"📅 {bold(meeting['name'])}")
+        if meeting.get("final_date"):
+            lines.append(f"🗓️ {esc(str(meeting['final_date'])[:10])}")
+        lines.append(f"\n{esc(meeting['summary'])}")
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("Error en /acta")
+        await update.message.reply_text("⚠️ Error obteniendo el acta\\.", parse_mode="MarkdownV2")
+
+
+async def calificar_cmd(update, context):
+    if not _allowed_chat(update): return
+    if not context.args:
+        await update.message.reply_text(
+            f"⭐ Usa {code('/calificar puntuación [reseña]')}\n"
+            f"_Ej: /calificar 4 Muy buen libro_\n"
+            f"_Puntuación del 1 al 5_",
+            parse_mode="MarkdownV2"
+        )
+        return
+    try:
+        score = int(context.args[0])
+        if not 1 <= score <= 5:
+            await update.message.reply_text("❌ La puntuación debe ser entre 1 y 5\\.", parse_mode="MarkdownV2")
+            return
+        review = " ".join(context.args[1:]).strip() or None
+        winner = db.get_winner_book()
+        if not winner:
+            await update.message.reply_text("📭 No hay libro del ciclo para valorar\\.", parse_mode="MarkdownV2")
+            return
+        user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        db.rate_book(winner["id"], user, score, review)
+        stars = "⭐" * score
+        lines = [f"{stars} {bold('Valoración registrada')}\\!"]
+        lines.append(f"📗 {esc(winner['title'])}")
+        lines.append(f"Puntuación: {bold(str(score))}/5")
+        if review:
+            lines.append(f"💬 _{esc(review)}_")
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+    except ValueError:
+        await update.message.reply_text("❌ El primer argumento debe ser un número del 1 al 5\\.", parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("Error en /calificar")
+        await update.message.reply_text("⚠️ Error registrando valoración\\.", parse_mode="MarkdownV2")
+
+
+async def progreso_cmd(update, context):
+    if not _allowed_chat(update): return
+    if not context.args:
+        await update.message.reply_text(
+            f"📖 Usa {code('/progreso páginas')}\n_Ej: /progreso 120_",
+            parse_mode="MarkdownV2"
+        )
+        return
+    try:
+        pages = int(context.args[0])
+        winner = db.get_winner_book()
+        if not winner:
+            await update.message.reply_text("📭 No hay libro del ciclo activo\\.", parse_mode="MarkdownV2")
+            return
+        user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        db.log_reading_progress(user, winner["id"], pages)
+        total = winner.get("pages")
+        pct = int(pages / total * 100) if total and total > 0 else None
+        bar = ""
+        if pct is not None:
+            filled = int(pct / 10)
+            bar = "█" * filled + "░" * (10 - filled) + f" {pct}%"
+        lines = [f"📖 {bold('Progreso registrado')}"]
+        lines.append(f"_{esc(winner['title'])}_")
+        lines.append(f"Página {bold(str(pages))}" + (f" de {bold(str(total))}" if total else ""))
+        if bar:
+            lines.append(f"\n{esc(bar)}")
+        lines.append(f"\n_¡Sigue así\\! 💪_")
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+    except ValueError:
+        await update.message.reply_text("❌ El número de páginas debe ser un entero\\.", parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("Error en /progreso")
+        await update.message.reply_text("⚠️ Error registrando progreso\\.", parse_mode="MarkdownV2")
+
+
+async def estadisticas_cmd(update, context):
+    if not _allowed_chat(update): return
+    try:
+        user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        s = db.get_user_stats(user)
+        lines = [f"📊 {bold('Tus estadísticas')} — {italic(user)}\n"]
+        lines.append(f"📚 Propuestas: {bold(str(s['proposals_total']))} en total, {bold(str(s['proposals_cycle']))} este ciclo")
+        lines.append(f"🗳️ Votos emitidos: {bold(str(s['book_votes']))} libros, {bold(str(s['theme_votes']))} temáticas")
+        lines.append(f"📅 Reuniones asistidas: {bold(str(s['meetings']))}")
+        if s['ratings'] > 0:
+            avg_str = str(s['avg_score']) if s['avg_score'] else '?'
+            lines.append(f"⭐ Libros valorados: {bold(str(s['ratings']))} \\(media: {bold(avg_str)}/5\\)")
+        else:
+            lines.append(f"⭐ Aún no has valorado ningún libro")
+        if s.get("last_progress"):
+            p = s["last_progress"]
+            total_str = f" de {bold(str(p['total']))}" if p.get("total") else ""
+            lines.append(f"📖 Último progreso: {bold(str(p['pages_read']))} págs{total_str} \\— _{esc(p['title'])}_")
+        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("Error en /estadisticas")
+        await update.message.reply_text("⚠️ Error obteniendo estadísticas\\.", parse_mode="MarkdownV2")
+
+
+# --------------------------------------------------
+# ADMIN BOT COMMANDS (solo ADMIN_TELEGRAM_ID)
+# --------------------------------------------------
+
+async def admin_ayuda_cmd(update, context):
+    if not is_admin_user(update): return
+    text = (
+        f"🔐 {bold('Comandos de administrador')}\n\n"
+        f"🔄 {bold('Ciclos')}\n"
+        f"  /ciclo — Ver ciclo activo\n"
+        f"  /nuevo\\_ciclo \\[nombre\\] — Crear nuevo ciclo\n"
+        f"  /cerrar\\_ciclo — Cerrar ciclo actual\n\n"
+        f"📣 {bold('Mensajes')}\n"
+        f"  /anuncio \\<texto\\> — Enviar mensaje al grupo\n"
+        f"  /anunciar\\_ganador — Anunciar libro ganador\n\n"
+        f"🔔 {bold('Recordatorios')}\n"
+        f"  /enviar\\_recordatorio — Recordatorio de reunión\n"
+        f"  /enviar\\_lectura — Recordatorio de lectura"
+    )
+    await update.message.reply_text(text, parse_mode="MarkdownV2")
+
+
+async def ciclo_cmd(update, context):
+    if not is_admin_user(update): return
+    cycle = db.get_current_cycle_key()
+    books = db.get_book_proposals()
+    themes = db.get_themes()
+    winner = db.get_winner_book()
+    lines = [
+        f"🔄 {bold('Ciclo activo')}: {code(cycle)}\n",
+        f"📚 Propuestas de libros: {bold(str(len(books)))}",
+        f"🏷️ Temáticas: {bold(str(len(themes)))}",
+    ]
+    if winner:
+        lines.append(f"🏆 Libro líder: _{esc(winner['title'])}_")
+    await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+
+
+async def nuevo_ciclo_cmd(update, context):
+    if not is_admin_user(update): return
+    name = " ".join(context.args).strip() if context.args else None
+    if not name:
+        name = datetime.utcnow().strftime("%Y-%m")
+    db.set_config("active_cycle_key", name)
+    await update.message.reply_text(
+        f"✅ {bold('Nuevo ciclo creado')}: {code(name)}\n"
+        f"_A partir de ahora las propuestas y temáticas se guardan en este ciclo\\._",
+        parse_mode="MarkdownV2"
+    )
+
+
+async def cerrar_ciclo_cmd(update, context):
+    if not is_admin_user(update): return
+    cycle = db.get_current_cycle_key()
+    db.close_cycle(cycle)
+    await update.message.reply_text(
+        f"🔒 {bold('Ciclo cerrado')}: {code(cycle)}\n"
+        f"_Todas las propuestas y temáticas han sido desactivadas\\._\n"
+        f"_Usa /nuevo\\_ciclo para empezar uno nuevo\\._",
+        parse_mode="MarkdownV2"
+    )
+
+
+async def anuncio_cmd(update, context):
+    if not is_admin_user(update): return
+    text = " ".join(context.args).strip() if context.args else ""
+    if not text:
+        await update.message.reply_text("❌ Usa: /anuncio <texto del mensaje>", parse_mode=None)
+        return
+    ok = await send_to_group(text, parse_mode=None)
+    if ok:
+        await update.message.reply_text("✅ Mensaje enviado al grupo\\.", parse_mode="MarkdownV2")
+    else:
+        await update.message.reply_text("❌ Error enviando el mensaje\\.", parse_mode="MarkdownV2")
+
+
+async def anunciar_ganador_cmd(update, context):
+    if not is_admin_user(update): return
+    winner = db.get_winner_book()
+    if not winner:
+        await update.message.reply_text("📭 No hay libro ganador todavía\\.", parse_mode="MarkdownV2")
+        return
+    await announce_winner(winner)
+    await update.message.reply_text("✅ Anuncio enviado al grupo\\.", parse_mode="MarkdownV2")
+
+
+async def enviar_recordatorio_cmd(update, context):
+    if not is_admin_user(update): return
+    await send_meeting_reminder()
+    await update.message.reply_text("✅ Recordatorio de reunión enviado\\.", parse_mode="MarkdownV2")
+
+
+async def enviar_lectura_cmd(update, context):
+    if not is_admin_user(update): return
+    await send_reading_reminder()
+    await update.message.reply_text("✅ Recordatorio de lectura enviado\\.", parse_mode="MarkdownV2")
+
+
+# --------------------------------------------------
 # SCHEDULED REMINDERS
 # --------------------------------------------------
 
@@ -555,6 +864,14 @@ async def send_meeting_reminder():
                 f"{bold(str(pages_now))} páginas de {bold(str(pages))} en total ✨\n"
                 f"  _{esc(f'Son unos {daily_pace} páginas al día, ¡tú puedes!')}_"
             )
+        # Progreso del grupo
+        progress_list = db.get_reading_progress(winner["id"])
+        if progress_list and pages:
+            lines.append(f"\n📖 {bold('Progreso del grupo')}")
+            for p in progress_list[:5]:
+                pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
+                bar = "█" * int(pct/10) + "░" * (10 - int(pct/10))
+                lines.append(f"  • {esc(p['user_name'])}: {bold(str(p['pages_read']))} págs \\({pct}%\\)")
 
     lines.append(f"\n👥 Apuntados \\({bold(str(len(asistentes)))}\\):\n{names}")
     lines.append(f"\n_¿Aún no te has apuntado? Usa /asistir 📖_")
@@ -580,6 +897,40 @@ async def send_reading_reminder():
         f"_¡A leer se ha dicho\\! 🚀_"
     )
     await send_to_group(text)
+
+
+# --------------------------------------------------
+# DAY-BEFORE REMINDER
+# --------------------------------------------------
+
+async def send_day_before_reminder():
+    """Recordatorio cuando la reunión es mañana o hoy."""
+    meeting = db.get_latest_scheduled_meeting()
+    if not meeting or not meeting.get("final_date"):
+        return
+    final_dt = meeting["final_date"]
+    if isinstance(final_dt, str):
+        final_dt = datetime.fromisoformat(final_dt)
+    days_left = (final_dt - datetime.utcnow()).days
+    if days_left not in (0, 1):
+        return
+    winner = db.get_winner_book()
+    asistentes = db.get_attendance(meeting["id"])
+    if days_left == 1:
+        header = f"🔔 {bold('¡La reunión es MAÑANA!')}"
+    else:
+        header = f"🚨 {bold('¡La reunión es HOY!')}"
+    lines = [
+        header + "\n",
+        f"📅 {bold(meeting['name'])}",
+        f"🗓️ {esc(str(final_dt)[:16])}",
+    ]
+    if winner:
+        lines.append(f"📗 Libro: {bold(winner['title'])}")
+    names = "\n".join(f"  ✅ {esc(a)}" for a in asistentes) if asistentes else "_Nadie apuntado_"
+    lines.append(f"\n👥 Apuntados \\({bold(str(len(asistentes)))}\\):\n{names}")
+    lines.append(f"\n_¿Aún no te has apuntado? Usa /asistir 📚_")
+    await send_to_group("\n".join(lines))
 
 
 # --------------------------------------------------
@@ -645,7 +996,21 @@ telegram_app.add_handler(CommandHandler("temas",      temas))
 telegram_app.add_handler(CommandHandler("votar_tema", votar_tema))
 telegram_app.add_handler(CommandHandler("trivia",     trivia_cmd))
 telegram_app.add_handler(CommandHandler("recomendar", recomendar))
+telegram_app.add_handler(CommandHandler("libro",            libro_cmd))
+telegram_app.add_handler(CommandHandler("acta",             acta_cmd))
+telegram_app.add_handler(CommandHandler("calificar",        calificar_cmd))
+telegram_app.add_handler(CommandHandler("progreso",         progreso_cmd))
+telegram_app.add_handler(CommandHandler("estadisticas",     estadisticas_cmd))
+telegram_app.add_handler(CommandHandler("admin_ayuda",      admin_ayuda_cmd))
+telegram_app.add_handler(CommandHandler("ciclo",            ciclo_cmd))
+telegram_app.add_handler(CommandHandler("nuevo_ciclo",      nuevo_ciclo_cmd))
+telegram_app.add_handler(CommandHandler("cerrar_ciclo",     cerrar_ciclo_cmd))
+telegram_app.add_handler(CommandHandler("anuncio",          anuncio_cmd))
+telegram_app.add_handler(CommandHandler("anunciar_ganador", anunciar_ganador_cmd))
+telegram_app.add_handler(CommandHandler("enviar_recordatorio", enviar_recordatorio_cmd))
+telegram_app.add_handler(CommandHandler("enviar_lectura",   enviar_lectura_cmd))
 telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
+telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
 # --------------------------------------------------
 # FLASK — AUTH
@@ -1128,6 +1493,104 @@ def admin_db_truncate(table):
     return redirect(url_for("admin_db", table=table))
 
 # --------------------------------------------------
+# FLASK — BOOK EDIT (admin)
+# --------------------------------------------------
+
+@flask_app.post("/admin/book/<int:book_id>/edit")
+def admin_book_edit(book_id):
+    auth = require_admin()
+    if auth: return auth
+    title       = request.form.get("title", "").strip() or None
+    author      = request.form.get("author", "").strip() or None
+    description = request.form.get("description", "").strip() or None
+    pages       = request.form.get("pages", "").strip() or None
+    cover       = request.form.get("cover", "").strip() or None
+    try:
+        db.update_book(book_id, title=title, author=author, description=description, pages=pages, cover=cover)
+        flash("Libro actualizado correctamente", "success")
+    except Exception:
+        logger.exception("Error editando libro")
+        flash("Error actualizando el libro", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — SEND CUSTOM MESSAGE (admin)
+# --------------------------------------------------
+
+@flask_app.post("/admin/send/custom")
+async def admin_send_custom():
+    auth = require_admin()
+    if auth: return auth
+    text = request.form.get("message", "").strip()
+    if not text:
+        flash("El mensaje no puede estar vacío", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        ok = await send_to_group(text, parse_mode=None)
+        if ok:
+            flash("Mensaje enviado al grupo", "success")
+        else:
+            flash("Error enviando el mensaje (¿TELEGRAM_CHAT_ID configurado?)", "danger")
+    except Exception:
+        logger.exception("Error enviando mensaje custom")
+        flash("Error enviando el mensaje", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — CYCLE MANAGEMENT (admin)
+# --------------------------------------------------
+
+@flask_app.get("/admin/ciclo")
+def admin_ciclo():
+    auth = require_admin()
+    if auth: return auth
+    current_cycle = db.get_current_cycle_key()
+    all_cycles    = db.get_all_cycle_keys()
+    books         = db.get_book_proposals()
+    themes        = db.get_themes()
+    winner        = db.get_winner_book()
+    return render_template(
+        "admin_ciclo.html",
+        current_cycle=current_cycle,
+        all_cycles=all_cycles,
+        books=books, themes=themes, winner=winner,
+    )
+
+@flask_app.post("/admin/ciclo/nuevo")
+def admin_ciclo_nuevo():
+    auth = require_admin()
+    if auth: return auth
+    name = request.form.get("cycle_name", "").strip()
+    if not name:
+        flash("El nombre del ciclo no puede estar vacío", "danger")
+        return redirect(url_for("admin_ciclo"))
+    db.set_config("active_cycle_key", name)
+    flash(f"Ciclo «{name}» activado correctamente", "success")
+    return redirect(url_for("admin_ciclo"))
+
+@flask_app.post("/admin/ciclo/cerrar")
+def admin_ciclo_cerrar():
+    auth = require_admin()
+    if auth: return auth
+    cycle = db.get_current_cycle_key()
+    db.close_cycle(cycle)
+    flash(f"Ciclo «{cycle}» cerrado. Propuestas y temáticas desactivadas.", "success")
+    return redirect(url_for("admin_ciclo"))
+
+# --------------------------------------------------
+# FLASK — ASSIGN BOOK TO MEETING (admin)
+# --------------------------------------------------
+
+@flask_app.post("/meeting/<int:meeting_id>/set-book")
+def meeting_set_book(meeting_id):
+    auth = require_admin()
+    if auth: return auth
+    book_id = request.form.get("book_id", "").strip()
+    db.update_meeting(meeting_id=meeting_id, book_id=int(book_id) if book_id else None)
+    flash("Libro asignado a la reunión", "success")
+    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
+# --------------------------------------------------
 # WEBHOOK
 # --------------------------------------------------
 
@@ -1161,6 +1624,12 @@ async def startup():
     scheduler.add_job(
         send_reading_reminder, "interval",
         days=2, id="reading_reminder", replace_existing=True
+    )
+    # Recordatorio día antes — todos los días a las 10:00
+    scheduler.add_job(
+        send_day_before_reminder, "cron",
+        hour=10, minute=0,
+        id="day_before_reminder", replace_existing=True
     )
     scheduler.start()
 

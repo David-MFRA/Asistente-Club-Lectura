@@ -171,6 +171,25 @@
                 <div class="empty">No hay asistentes todavía.</div>
             {% endif %}
         </section>
+
+        <!-- ASIGNAR LIBRO -->
+        <section class="card span-12">
+            <h2>📗 Libro de la reunión</h2>
+            <p class="muted">Asigna el libro que se debatirá en esta reunión.</p>
+            {% if meeting.book_title %}
+                <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:13px;padding:13px;margin-bottom:14px">
+                    <div style="color:#6ee7b7;font-weight:700;font-size:.88rem">📗 Libro actual</div>
+                    <div style="font-weight:800;margin-top:4px">{{ meeting.book_title }}</div>
+                </div>
+            {% endif %}
+            <form method="post" action="/meeting/{{ meeting.id }}/set-book" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+                <div class="field" style="flex:1;min-width:200px;margin:0">
+                    <label>ID del libro (ver en Base de datos → books)</label>
+                    <input name="book_id" type="number" placeholder="ID del libro" value="{{ meeting.book_id if meeting.book_id else '' }}">
+                </div>
+                <button class="btn btn-primary" type="submit">Asignar libro</button>
+            </form>
+        </section>
     </div>
 </div>
 </body>

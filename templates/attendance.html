@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistencia · Club de Lectura</title>
+    <style>
+        :root{
+            --bg1:#0f172a; --bg2:#111827;
+            --card:rgba(255,255,255,0.08); --border:rgba(255,255,255,0.12);
+            --text:#f8fafc; --muted:#94a3b8;
+            --primary:#6366f1; --primary2:#8b5cf6;
+            --shadow:0 18px 38px rgba(0,0,0,.28); --radius:20px;
+        }
+        *{box-sizing:border-box}
+        html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;
+            background:radial-gradient(circle at top left,rgba(99,102,241,.22),transparent 35%),
+                radial-gradient(circle at bottom right,rgba(139,92,246,.18),transparent 35%),
+                linear-gradient(135deg,var(--bg1),var(--bg2));
+            color:var(--text)}
+        body{padding:16px}
+        .container{max-width:700px;margin:0 auto}
+        .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+        .brand{display:flex;align-items:center;gap:12px}
+        .badge{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:24px}
+        h1{margin:0;font-size:1.5rem}
+        .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
+        .btn{display:inline-flex;align-items:center;padding:11px 16px;border-radius:13px;text-decoration:none;font-weight:700;border:1px solid var(--border);color:var(--text);background:var(--card);font-size:.9rem}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(16px);padding:20px;margin-bottom:16px}
+        .meta{color:var(--muted);font-size:.9rem;margin-bottom:16px;line-height:1.6}
+        .list{display:grid;gap:10px}
+        .item{display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
+        .avatar{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+        .name{font-weight:700}
+        .empty{text-align:center;padding:22px;color:var(--muted)}
+        .count-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;background:rgba(99,102,241,.15);color:#c7d2fe;font-size:.88rem;font-weight:700;margin-bottom:14px}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand">
+            <div class="badge">👥</div>
+            <div>
+                <h1>Asistencia</h1>
+                <div class="subtitle">Participantes apuntados a la última reunión</div>
+            </div>
+        </div>
+        <a class="btn" href="/admin">← Dashboard</a>
+    </div>
+
+    {% if meeting %}
+        <div class="card">
+            <div class="meta">
+                <strong>Reunión:</strong> {{ meeting.name }}<br>
+                <strong>Fecha:</strong> {{ meeting.final_date if meeting.final_date else "Sin fecha cerrada" }}<br>
+                <strong>Estado:</strong> {{ meeting.status }}
+            </div>
+
+            {% if attendees %}
+                <div class="count-pill">✅ {{ attendees|length }} asistente{{ 's' if attendees|length != 1 else '' }}</div>
+                <div class="list">
+                    {% for a in attendees %}
+                    <div class="item">
+                        <div class="avatar">👤</div>
+                        <div class="name">{{ a }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty">Nadie se ha apuntado todavía.<br><span style="font-size:.87rem">Los miembros usan /asistir en el bot de Telegram.</span></div>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="card">
+            <div class="empty">No hay reuniones creadas todavía.</div>
+        </div>
+    {% endif %}
+</div>
+</body>
+</html>

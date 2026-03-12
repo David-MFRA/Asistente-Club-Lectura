@@ -6,169 +6,49 @@
     <title>Detalle reunión · Club de Lectura</title>
     <style>
         :root{
-            --bg1:#0f172a;
-            --bg2:#111827;
-            --card:rgba(255,255,255,0.08);
-            --border:rgba(255,255,255,0.12);
-            --text:#f8fafc;
-            --muted:#94a3b8;
-            --primary:#6366f1;
-            --primary2:#8b5cf6;
-            --danger:#ef4444;
-            --success:#10b981;
-            --shadow:0 18px 38px rgba(0,0,0,.28);
-            --radius:20px;
+            --bg1:#0f172a; --bg2:#111827;
+            --card:rgba(255,255,255,0.08); --border:rgba(255,255,255,0.12);
+            --text:#f8fafc; --muted:#94a3b8;
+            --primary:#6366f1; --primary2:#8b5cf6;
+            --danger:#ef4444; --success:#10b981;
+            --shadow:0 18px 38px rgba(0,0,0,.28); --radius:20px;
         }
-
         *{box-sizing:border-box}
-        html,body{
-            margin:0;
-            min-height:100%;
-            font-family:Inter,Arial,sans-serif;
-            background:
-                radial-gradient(circle at top left, rgba(99,102,241,.22), transparent 35%),
-                radial-gradient(circle at bottom right, rgba(139,92,246,.18), transparent 35%),
+        html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;
+            background:radial-gradient(circle at top left,rgba(99,102,241,.22),transparent 35%),
+                radial-gradient(circle at bottom right,rgba(139,92,246,.18),transparent 35%),
                 linear-gradient(135deg,var(--bg1),var(--bg2));
-            color:var(--text);
-        }
-
+            color:var(--text)}
         body{padding:16px}
         .container{max-width:1200px;margin:0 auto}
-
-        .topbar{
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            flex-wrap:wrap;
-            gap:12px;
-            margin-bottom:18px;
-        }
-
-        .brand{
-            display:flex;
-            align-items:center;
-            gap:12px;
-        }
-
-        .badge{
-            width:52px;height:52px;border-radius:16px;
-            background:linear-gradient(135deg,var(--primary),var(--primary2));
-            display:flex;align-items:center;justify-content:center;
-            font-size:24px;
-        }
-
+        .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+        .brand{display:flex;align-items:center;gap:12px}
+        .badge{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:24px}
         h1{margin:0;font-size:1.5rem}
+        h2{margin:0 0 8px;font-size:1.02rem}
         .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
-
-        .actions{
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-        }
-
-        .btn{
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            text-decoration:none;
-            border:none;
-            cursor:pointer;
-            border-radius:14px;
-            padding:12px 16px;
-            font-weight:700;
-            font-size:.95rem;
-            transition:.18s ease;
-        }
-
-        .btn-primary{
-            background:linear-gradient(135deg,var(--primary),var(--primary2));
-            color:#fff;
-        }
-
-        .btn-soft{
-            background:var(--card);
-            color:var(--text);
-            border:1px solid var(--border);
-        }
-
-        .btn-danger{
-            background:rgba(239,68,68,.16);
-            color:#fecaca;
-            border:1px solid rgba(239,68,68,.3);
-        }
-
-        .card{
-            background:var(--card);
-            border:1px solid var(--border);
-            border-radius:var(--radius);
-            box-shadow:var(--shadow);
-            backdrop-filter:blur(16px);
-            padding:18px;
-            margin-bottom:16px;
-        }
-
-        .grid{
-            display:grid;
-            grid-template-columns:repeat(12,1fr);
-            gap:16px;
-        }
-
-        .span-6{grid-column:span 6}
-        .span-12{grid-column:span 12}
-
-        .field{
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-            margin-bottom:12px;
-        }
-
-        label{
-            color:var(--muted);
-            font-size:.9rem;
-        }
-
-        input, select, textarea{
-            width:100%;
-            padding:13px 14px;
-            border-radius:14px;
-            border:1px solid rgba(255,255,255,.12);
-            background:rgba(255,255,255,.06);
-            color:var(--text);
-            outline:none;
-            font-size:.95rem;
-        }
-
-        textarea{min-height:120px;resize:vertical}
-
-        .section-title{
-            margin:0 0 10px;
-            font-size:1.05rem;
-        }
-
-        .muted{color:var(--muted);font-size:.92rem}
-
-        .list{
-            display:grid;
-            gap:10px;
-        }
-
-        .item{
-            padding:14px;
-            border-radius:14px;
-            background:rgba(255,255,255,.05);
-            border:1px solid rgba(255,255,255,.08);
-        }
-
-        .empty{
-            text-align:center;
-            color:var(--muted);
-            padding:16px;
-        }
-
-        @media (max-width: 900px){
-            .span-6,.span-12{grid-column:span 12}
-        }
+        .actions{display:flex;gap:10px;flex-wrap:wrap}
+        .btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:none;cursor:pointer;border-radius:13px;padding:11px 15px;font-weight:700;font-size:.9rem;transition:.18s ease}
+        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff}
+        .btn-soft{background:var(--card);color:var(--text);border:1px solid var(--border)}
+        .btn-danger{background:rgba(239,68,68,.14);color:#fecaca;border:1px solid rgba(239,68,68,.28)}
+        .btn:hover{transform:translateY(-1px)}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(16px);padding:18px;margin-bottom:16px}
+        .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+        .span-6{grid-column:span 6}.span-12{grid-column:span 12}
+        .field{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+        label{color:var(--muted);font-size:.88rem}
+        input,select,textarea{width:100%;padding:12px 13px;border-radius:13px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text);outline:none;font-size:.92rem}
+        input:focus,select:focus,textarea:focus{border-color:rgba(99,102,241,.65);box-shadow:0 0 0 4px rgba(99,102,241,.16)}
+        textarea{min-height:110px;resize:vertical}
+        .muted{color:var(--muted);font-size:.88rem}
+        .list{display:grid;gap:9px}
+        .item{padding:12px 14px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
+        .empty{text-align:center;color:var(--muted);padding:16px}
+        .poll-box{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);border-radius:15px;padding:14px;margin-bottom:14px}
+        .poll-box-title{font-weight:700;margin-bottom:6px}
+        .poll-box p{color:var(--muted);font-size:.86rem;margin:0 0 10px}
+        @media(max-width:900px){.span-6,.span-12{grid-column:span 12}}
     </style>
 </head>
 <body>
@@ -181,7 +61,6 @@
                 <div class="subtitle">Detalle, asistentes y gestión de fechas</div>
             </div>
         </div>
-
         <div class="actions">
             <a class="btn btn-soft" href="/meetings">Reuniones</a>
             <a class="btn btn-soft" href="/admin">Dashboard</a>
@@ -189,88 +68,102 @@
     </div>
 
     <div class="grid">
+        <!-- EDITAR -->
         <section class="card span-6">
-            <h2 class="section-title">Editar reunión</h2>
+            <h2>Editar reunión</h2>
             <p class="muted">Actualiza nombre, fecha, estado y acta.</p>
-
             <form method="post" action="/meeting/{{ meeting.id }}/edit">
                 <div class="field">
-                    <label for="name">Nombre</label>
-                    <input id="name" name="name" type="text" value="{{ meeting.name }}">
+                    <label>Nombre</label>
+                    <input name="name" type="text" value="{{ meeting.name }}">
                 </div>
-
                 <div class="field">
-                    <label for="final_date">Fecha final</label>
-                    <input id="final_date" name="final_date" type="text" value="{{ meeting.final_date if meeting.final_date else '' }}" placeholder="2026-03-28 19:00">
+                    <label>Fecha final</label>
+                    <input name="final_date" type="text" value="{{ meeting.final_date if meeting.final_date else '' }}" placeholder="2026-04-28 19:00">
                 </div>
-
                 <div class="field">
-                    <label for="status">Estado</label>
-                    <select id="status" name="status">
+                    <label>Estado</label>
+                    <select name="status">
                         <option value="draft" {% if meeting.status == "draft" %}selected{% endif %}>draft</option>
                         <option value="scheduled" {% if meeting.status == "scheduled" %}selected{% endif %}>scheduled</option>
                         <option value="closed" {% if meeting.status == "closed" %}selected{% endif %}>closed</option>
                     </select>
                 </div>
-
                 <div class="field">
-                    <label for="summary">Resumen / Acta</label>
-                    <textarea id="summary" name="summary" placeholder="Resumen de la reunión">{{ meeting.summary if meeting.summary else '' }}</textarea>
+                    <label>Resumen / Acta</label>
+                    <textarea name="summary" placeholder="Resumen de la reunión">{{ meeting.summary if meeting.summary else '' }}</textarea>
                 </div>
-
-                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
                     <button class="btn btn-primary" type="submit">Guardar cambios</button>
                 </div>
             </form>
-
-            <form method="post" action="/meeting/{{ meeting.id }}/delete" style="margin-top:12px;">
+            <form method="post" action="/meeting/{{ meeting.id }}/delete" style="margin-top:12px">
                 <button class="btn btn-danger" type="submit" onclick="return confirm('¿Seguro que quieres borrar esta reunión?')">Borrar reunión</button>
             </form>
         </section>
 
+        <!-- FECHAS + ENCUESTA -->
         <section class="card span-6">
-            <h2 class="section-title">Opciones de fecha</h2>
-            <p class="muted">Añade fechas candidatas o cierra una definitiva.</p>
+            <h2>Opciones de fecha</h2>
+            <p class="muted">Añade fechas candidatas y lanza una encuesta nativa de Telegram para que el grupo vote.</p>
 
-            <form method="post" action="/meeting/{{ meeting.id }}/date-option" style="margin-bottom:12px;">
+            <form method="post" action="/meeting/{{ meeting.id }}/date-option" style="margin-bottom:12px">
                 <div class="field">
-                    <label for="option_date">Nueva opción</label>
-                    <input id="option_date" name="option_date" type="text" placeholder="2026-03-27 19:00">
+                    <label>Nueva opción de fecha</label>
+                    <input name="option_date" type="text" placeholder="2026-04-27 19:00">
                 </div>
                 <button class="btn btn-primary" type="submit">Añadir opción</button>
             </form>
 
-            <form method="post" action="/meeting/{{ meeting.id }}/close-date">
-                <div class="field">
-                    <label for="final_date_close">Cerrar fecha definitiva</label>
-                    <input id="final_date_close" name="final_date" type="text" placeholder="2026-03-28 19:00">
+            {% if date_options %}
+                <div class="list" style="margin-bottom:14px">
+                    {% for d in date_options %}
+                    <div class="item">
+                        📆 {{ d.option_date }} &nbsp;—&nbsp; <strong>{{ d.votes }} voto{{ 's' if d.votes != 1 else '' }}</strong>
+                    </div>
+                    {% endfor %}
                 </div>
-                <button class="btn btn-soft" type="submit">Cerrar fecha</button>
-            </form>
 
-            <div style="margin-top:16px">
-                {% if date_options %}
-                    <div class="list">
-                        {% for d in date_options %}
-                            <div class="item">
-                                {{ d.option_date }} — {{ d.votes }} votos
-                            </div>
-                        {% endfor %}
+                <!-- Encuesta de fechas -->
+                {% if open_poll %}
+                    <div class="poll-box">
+                        <div class="poll-box-title">📊 Encuesta de fechas activa</div>
+                        <p>La votación está en marcha en Telegram. Al cerrarla, la fecha ganadora se asignará automáticamente a esta reunión.</p>
+                        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/cerrar/{{ open_poll.id }}">
+                            <button class="btn btn-danger" type="submit">🔒 Cerrar encuesta y asignar fecha ganadora</button>
+                        </form>
                     </div>
                 {% else %}
-                    <div class="empty">No hay opciones de fecha.</div>
+                    {% if date_options|length >= 2 %}
+                        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/crear">
+                            <button class="btn btn-primary" type="submit">📨 Lanzar encuesta de fechas en Telegram</button>
+                        </form>
+                    {% endif %}
                 {% endif %}
+            {% else %}
+                <div class="empty">No hay opciones de fecha. Añade al menos dos para poder lanzar una encuesta.</div>
+            {% endif %}
+
+            <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+                <p class="muted" style="margin:0 0 10px">O cierra la fecha manualmente:</p>
+                <form method="post" action="/meeting/{{ meeting.id }}/close-date">
+                    <div class="field">
+                        <label>Fecha definitiva</label>
+                        <input name="final_date" type="text" placeholder="2026-04-28 19:00">
+                    </div>
+                    <button class="btn btn-soft" type="submit">Establecer fecha definitiva</button>
+                </form>
             </div>
         </section>
 
+        <!-- ASISTENTES -->
         <section class="card span-12">
-            <h2 class="section-title">Asistentes</h2>
+            <h2>Asistentes</h2>
             <p class="muted">Participantes apuntados a esta reunión.</p>
-
             {% if attendees %}
                 <div class="list">
                     {% for a in attendees %}
-                        <div class="item">{{ a }}</div>
+                    <div class="item">👤 {{ a }}</div>
                     {% endfor %}
                 </div>
             {% else %}

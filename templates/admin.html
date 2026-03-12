@@ -285,6 +285,50 @@
         {% endif %}
     {% endwith %}
 
+    <!-- ── CYCLE WIZARD ── -->
+    {% if cycle_state %}
+    <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.25);border-radius:16px;padding:18px 20px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#a5b4fc">Ciclo {{ cycle_state.cycle }} — Paso actual</span>
+            </div>
+            <div style="font-size:1.05rem;font-weight:800;margin-bottom:4px">
+                {% if cycle_state.step == 'new_cycle' %}🆕
+                {% elif cycle_state.step == 'collecting_proposals' %}📬
+                {% elif cycle_state.step == 'poll_open' %}🗳️
+                {% elif cycle_state.step in ('awaiting_date','dates_poll_open') %}📅
+                {% elif cycle_state.step == 'meeting_scheduled' %}✅
+                {% endif %}
+                {{ cycle_state.step_label }}
+            </div>
+            <div style="color:var(--muted);font-size:.85rem">{{ cycle_state.step_desc }}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            {% if cycle_state.step_url and cycle_state.step_url != '#books' %}
+            <form action="{{ cycle_state.step_url }}" method="post">
+                <button type="submit" class="btn btn-primary" style="font-size:.88rem">
+                    {{ cycle_state.step_action }} →
+                </button>
+            </form>
+            {% endif %}
+            {% if cycle_state.step == 'new_cycle' %}
+            <small style="color:var(--muted);font-size:.78rem">O crea el ciclo manualmente en <a href="/admin/ciclo" style="color:#a5b4fc">Gestión de Ciclo</a></small>
+            {% endif %}
+        </div>
+    </div>
+    <!-- Barra de progreso del ciclo -->
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+        {% for sname in ['Inicio','Propuestas','Encuesta','Fecha','Reunión'] %}
+        {% set i = loop.index0 %}
+        {% set current_idx = 0 if cycle_state.step == 'new_cycle' else (1 if cycle_state.step == 'collecting_proposals' else (2 if cycle_state.step == 'poll_open' else (3 if cycle_state.step in ('awaiting_date','dates_poll_open') else 4))) %}
+        <div style="flex:1;text-align:center">
+            <div style="height:4px;border-radius:2px;margin-bottom:4px;background:{% if i <= current_idx %}var(--primary){% else %}rgba(255,255,255,.1){% endif %}"></div>
+            <div style="font-size:.68rem;color:{% if i == current_idx %}#a5b4fc{% else %}var(--muted){% endif %};font-weight:{% if i == current_idx %}700{% else %}400{% endif %}">{{ sname }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Stats bar -->
     {% set next_meeting = meetings[0] if meetings else None %}
     <div class="stats-bar">

@@ -312,6 +312,12 @@ async def proponer(update, context):
     if not _check_cooldown(update.effective_user.id, "proponer", 30):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
+    if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
+        await update.message.reply_text(
+            "❌ Las propuestas para este ciclo están cerradas. ¡Espera al siguiente ciclo!",
+            parse_mode=None
+        )
+        return
     title = " ".join(context.args).strip()
     if not title:
         await update.message.reply_text(
@@ -1143,7 +1149,12 @@ async def send_meeting_reminder():
     if not meeting:
         return
     asistentes = db.get_attendance(meeting["id"])
-    winner = db.get_winner_book()
+    # Usar el libro asociado a la reunión, no el ganador del ciclo
+    book = None
+    if meeting.get("book_id"):
+        book = db.get_book_by_id(meeting["book_id"])
+    if not book:
+        book = db.get_winner_book()
     now = datetime.utcnow()
 
     days_left = None
@@ -1176,12 +1187,12 @@ async def send_meeting_reminder():
         else:
             lines.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
 
-    if winner and winner.get("title"):
-        lines.append(f"\n📗 Libro: {winner['title']}")
-        if winner.get("author"):
-            lines.append(f"   ✍️ {winner['author']}")
+    if book and book.get("title"):
+        lines.append(f"\n📗 Libro: {book['title']}")
+        if book.get("author"):
+            lines.append(f"   ✍️ {book['author']}")
 
-        pages = winner.get("pages")
+        pages = book.get("pages")
         if pages and days_left and days_left > 0:
             total_days = 30
             elapsed    = max(0, total_days - days_left)
@@ -1192,7 +1203,7 @@ async def send_meeting_reminder():
                 f"  Para estar al día deberías llevar unas {pages_now} páginas de {pages} en total ✨\n"
                 f"  (Son unos {daily_pace} páginas al día, ¡tú puedes!)"
             )
-        progress_list = db.get_reading_progress(winner["id"])
+        progress_list = db.get_reading_progress(book["id"])
         if progress_list and pages:
             lines.append(f"\n📖 Progreso del grupo")
             for p in progress_list[:5]:
@@ -1216,17 +1227,22 @@ async def send_meeting_reminder():
 
 async def send_reading_reminder():
     """Recordatorio de lectura cada 2 días."""
-    winner  = db.get_winner_book()
     meeting = db.get_latest_scheduled_meeting()
-    if not winner:
+    # Usar el libro de la reunión, no el ganador del ciclo
+    book = None
+    if meeting and meeting.get("book_id"):
+        book = db.get_book_by_id(meeting["book_id"])
+    if not book:
+        book = db.get_winner_book()
+    if not book:
         return
     fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
     reunion_name = meeting["name"] if meeting else "Sin reunión"
-    author_line = f"\n✍️ {winner['author']}" if winner.get("author") else ""
+    author_line = f"\n✍️ {book['author']}" if book.get("author") else ""
     text = (
         f"📖 Recordatorio de lectura\n\n"
         f"El libro del ciclo es:\n"
-        f"📗 {winner['title']}{author_line}\n\n"
+        f"📗 {book['title']}{author_line}\n\n"
         f"📅 Reunión: {reunion_name}\n"
         f"📆 Fecha: {fecha}\n\n"
         f"¡A leer se ha dicho! 🚀"
@@ -1389,7 +1405,9 @@ async def preguntas_cmd(update, context):
             await update.message.reply_text("📭 No hay libro del ciclo activo.", parse_mode=None)
             return
         wait = await update.message.reply_text("🤔 Generando preguntas de debate...", parse_mode=None)
-        questions = ai_features.generate_discussion_questions(winner["title"], winner.get("author", ""))
+        questions = ai_features.generate_discussion_questions(
+            winner["title"], winner.get("author", ""), winner.get("description", "")
+        )
         await wait.delete()
         await update.message.reply_text(
             f"💬 Preguntas de debate — {winner['title']}\n\n{questions}",
@@ -1510,10 +1528,12 @@ def admin_dashboard():
     ranking          = db.get_book_ranking()
     open_poll_books  = db.get_open_poll(poll_type="books")
     open_poll_themes = db.get_open_poll(poll_type="themes")
+    cycle_state      = db.get_cycle_dashboard_state()
     return render_template(
         "admin.html",
         books=books, meetings=meetings, themes=themes, ranking=ranking,
         open_poll_books=open_poll_books, open_poll_themes=open_poll_themes,
+        cycle_state=cycle_state,
     )
 
 # --------------------------------------------------
@@ -2147,7 +2167,9 @@ async def admin_ai_questions():
         flash("No hay libro del ciclo activo", "danger")
         return redirect(url_for("admin_dashboard"))
     try:
-        questions = ai_features.generate_discussion_questions(winner["title"], winner.get("author", ""))
+        questions = ai_features.generate_discussion_questions(
+            winner["title"], winner.get("author", ""), winner.get("description", "")
+        )
         text = f"💬 Preguntas de debate — {winner['title']}\n\n{questions}"
         await send_to_group(text, parse_mode=None, message_type="ai_questions")
         flash("Preguntas de debate enviadas al grupo", "success")
@@ -2213,6 +2235,7 @@ def admin_ciclo_nuevo():
         flash("El nombre del ciclo no puede estar vacío", "danger")
         return redirect(url_for("admin_ciclo"))
     db.set_config("active_cycle_key", name)
+    db.set_config("proposals_locked_for", "")  # unlock proposals for new cycle
     flash(f"Ciclo «{name}» activado correctamente", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -2224,6 +2247,107 @@ def admin_ciclo_cerrar():
     db.close_cycle(cycle)
     flash(f"Ciclo «{cycle}» cerrado. Propuestas y temáticas desactivadas.", "success")
     return redirect(url_for("admin_ciclo"))
+
+# --------------------------------------------------
+# FLASK — CYCLE WIZARD
+# --------------------------------------------------
+
+@flask_app.post("/admin/wizard/new-cycle")
+async def admin_wizard_new_cycle():
+    """Inicia un nuevo ciclo y envía mensaje al grupo pidiendo propuestas."""
+    auth = require_admin()
+    if auth: return auth
+    from datetime import timezone as _tz
+    cycle_name = datetime.now(_tz.utc).strftime("%Y-%m")
+    db.set_config("active_cycle_key", cycle_name)
+    db.set_config("proposals_locked_for", "")
+    try:
+        text = (
+            f"📚 ¡Nuevo ciclo de lectura — {cycle_name}!\n\n"
+            f"Ha llegado el momento de elegir nuestro próximo libro. 🎉\n\n"
+            f"Sugiere tus propuestas con el comando:\n"
+            f"👉 /proponer título del libro\n\n"
+            f"¡Anímate a proponer y a votar! 🗳️"
+        )
+        await send_to_group(text, parse_mode=None, message_type="new_cycle")
+        flash(f"Ciclo {cycle_name} iniciado. Mensaje enviado al grupo.", "success")
+    except Exception:
+        logger.exception("Error en wizard new-cycle")
+        flash(f"Ciclo {cycle_name} creado pero no se pudo enviar el mensaje al grupo.", "warning")
+    return redirect(url_for("admin_dashboard"))
+
+
+@flask_app.post("/admin/wizard/lock-and-poll")
+async def admin_wizard_lock_and_poll():
+    """Cierra las propuestas y lanza la encuesta de libros."""
+    auth = require_admin()
+    if auth: return auth
+    cycle = db.get_current_cycle_key()
+    books = db.get_book_proposals(cycle)
+    if len(books) < 2:
+        flash("Necesitas al menos 2 propuestas para lanzar la encuesta.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    if not TELEGRAM_CHAT_ID:
+        flash("TELEGRAM_CHAT_ID no configurado.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        # Bloquear propuestas
+        db.set_config("proposals_locked_for", cycle)
+        # Crear encuesta de libros
+        options = []
+        for b in books[:10]:
+            label = b["title"]
+            if b.get("author"):
+                label = f"{b['title']} — {b['author']}"
+            options.append(label[:100])
+        msg = await telegram_app.bot.send_poll(
+            chat_id=TELEGRAM_CHAT_ID,
+            question="📚 ¿Qué libro leemos este ciclo?",
+            options=options,
+            is_anonymous=False,
+            allows_multiple_answers=False,
+        )
+        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
+                     poll_id=msg.poll.id, poll_type="books")
+        flash("Propuestas cerradas y encuesta de libros lanzada en Telegram.", "success")
+    except Exception:
+        logger.exception("Error en wizard lock-and-poll")
+        flash("Error lanzando la encuesta.", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+
+@flask_app.post("/admin/wizard/announce-date")
+async def admin_wizard_announce_date():
+    """Envía un mensaje al grupo anunciando la fecha de la reunión."""
+    auth = require_admin()
+    if auth: return auth
+    meeting = db.get_latest_scheduled_meeting()
+    if not meeting or not meeting.get("final_date"):
+        flash("No hay reunión con fecha confirmada.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        fecha = str(meeting["final_date"])[:16]
+        winner = db.get_winner_book()
+        book_line = f"\n📗 Libro: {winner['title']}" if winner else ""
+        location_line = f"\n📍 Lugar: {meeting['location']}" if meeting.get("location") else ""
+        text = (
+            f"📅 ¡Ya tenemos fecha para la reunión!\n\n"
+            f"📌 {meeting['name']}\n"
+            f"🗓️ {fecha}{location_line}{book_line}\n\n"
+            f"¡Apúntate con /asistir! 🙋"
+        )
+        keyboard = [[
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        ]]
+        await send_to_group(text, parse_mode=None,
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            message_type="date_announcement")
+        flash("Fecha de reunión anunciada en el grupo.", "success")
+    except Exception:
+        logger.exception("Error en wizard announce-date")
+        flash("Error enviando el anuncio.", "danger")
+    return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
 # FLASK — ASSIGN BOOK TO MEETING (admin)

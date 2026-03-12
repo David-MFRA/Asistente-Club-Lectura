@@ -909,6 +909,83 @@ def get_upcoming_meetings(limit=5):
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_cycle_dashboard_state():
+    """Detecta en qué paso del ciclo estamos para el wizard del dashboard."""
+    cycle = get_current_cycle_key()
+    proposals_locked = get_config("proposals_locked_for") == cycle
+    books = get_book_proposals(cycle)
+    open_book_poll = get_open_poll(poll_type="books")
+    winner = get_winner_book(cycle)
+    next_meeting = get_latest_scheduled_meeting()
+    open_dates_poll = None
+    if next_meeting:
+        open_dates_poll = get_open_poll(poll_type="dates", meeting_id=next_meeting["id"])
+
+    if not books and not proposals_locked:
+        step = "new_cycle"
+        step_label = "Nuevo ciclo"
+        step_desc = "Anuncia el inicio del ciclo y pide propuestas de libros al grupo."
+        step_action = "Iniciar ciclo y pedir propuestas"
+        step_url = "/admin/wizard/new-cycle"
+        step_color = "primary"
+    elif books and not proposals_locked and not open_book_poll:
+        step = "collecting_proposals"
+        step_label = "Recogiendo propuestas"
+        step_desc = f"Hay {len(books)} propuesta(s). Cuando estés listo, cierra las propuestas y lanza la encuesta."
+        step_action = "Cerrar propuestas y lanzar encuesta"
+        step_url = "/admin/wizard/lock-and-poll"
+        step_color = "warning"
+    elif open_book_poll:
+        step = "poll_open"
+        step_label = "Encuesta de libros abierta"
+        step_desc = "La encuesta está activa en Telegram. Ciérrala cuando haya suficientes votos."
+        step_action = f"Cerrar encuesta y anunciar ganador"
+        step_url = f"/admin/encuesta/{open_book_poll['id']}/cerrar"
+        step_color = "danger"
+    elif winner and (not next_meeting or not next_meeting.get("final_date")):
+        step = "awaiting_date"
+        step_label = "Esperando fecha de reunión"
+        step_desc = f"Libro: «{winner['title']}». Elige una fecha o lanza una encuesta de fechas."
+        step_action = "Gestionar fecha de reunión"
+        step_url = f"/meeting/{next_meeting['id']}" if next_meeting else "/meetings"
+        step_color = "warning"
+    elif open_dates_poll:
+        step = "dates_poll_open"
+        step_label = "Encuesta de fechas activa"
+        step_desc = "La encuesta de fechas está activa en Telegram."
+        step_action = "Cerrar encuesta de fechas"
+        step_url = f"/admin/encuesta/fechas/{next_meeting['id']}/cerrar/{open_dates_poll['id']}"
+        step_color = "danger"
+    elif winner and next_meeting and next_meeting.get("final_date"):
+        step = "meeting_scheduled"
+        step_label = "Reunión programada"
+        step_desc = f"Reunión: {next_meeting['name']} — {str(next_meeting['final_date'])[:16]}"
+        step_action = "Anunciar fecha al grupo"
+        step_url = "/admin/wizard/announce-date"
+        step_color = "success"
+    else:
+        step = "collecting_proposals"
+        step_label = "Recogiendo propuestas"
+        step_desc = "Añade propuestas de libros para este ciclo."
+        step_action = "Gestionar propuestas"
+        step_url = "#books"
+        step_color = "primary"
+
+    return {
+        "cycle": cycle,
+        "step": step,
+        "step_label": step_label,
+        "step_desc": step_desc,
+        "step_action": step_action,
+        "step_url": step_url,
+        "step_color": step_color,
+        "books_count": len(books),
+        "proposals_locked": proposals_locked,
+        "winner": winner,
+        "next_meeting": next_meeting,
+    }
+
+
 # =========================================================
 # USER STATS
 # =========================================================

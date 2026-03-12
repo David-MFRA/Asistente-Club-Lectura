@@ -41,14 +41,17 @@
   <p class="sub">Guía completa para gestionar el club de lectura desde el panel de administración.</p>
 
   <div class="section">
-    <h2>🔄 Ciclos</h2>
-    <p>Un <strong>ciclo</strong> es el período de tiempo en que el club lee un libro. Normalmente dura un mes.</p>
+    <h2>🔄 Flujo de un ciclo completo</h2>
+    <p>El <strong>dashboard</strong> te guía paso a paso a través del ciclo. El banner superior siempre indica en qué paso estás y qué acción tomar.</p>
     <ul>
-      <li>Cada ciclo tiene su propia lista de propuestas de libros y temáticas.</li>
-      <li>Al crear un nuevo ciclo, las propuestas anteriores quedan archivadas en el histórico.</li>
-      <li>Ve a <a href="/admin/ciclo">Gestión de Ciclo</a> para crear o cerrar ciclos.</li>
+      <li><strong>1. Iniciar ciclo</strong> — Pulsa "Iniciar ciclo y pedir propuestas". Se crea el ciclo y se envía un mensaje al grupo invitando a sugerir libros con <code>/proponer</code>.</li>
+      <li><strong>2. Recoger propuestas</strong> — Los miembros proponen libros en Telegram. Puedes añadirlos también desde el panel. Las propuestas se bloquean automáticamente al lanzar la encuesta.</li>
+      <li><strong>3. Encuesta de libros</strong> — Pulsa "Cerrar propuestas y lanzar encuesta". Se bloquean nuevas propuestas y se envía una encuesta nativa de Telegram.</li>
+      <li><strong>4. Cerrar encuesta</strong> — Cuando tengas suficientes votos, cierra la encuesta. El ganador se anuncia automáticamente.</li>
+      <li><strong>5. Fijar fecha</strong> — Ve al detalle de la reunión y añade la fecha directamente, o lanza una encuesta de fechas. Una vez decidida, pulsa "Anunciar fecha al grupo".</li>
+      <li><strong>6. Reunión</strong> — Los recordatorios automáticos gestionan el resto. Cuando pase la reunión, cierra la reunión desde su detalle.</li>
     </ul>
-    <div class="tip">💡 El ciclo activo se muestra en el dashboard. Usa el formato YYYY-MM (ej. 2026-04) o un nombre personalizado.</div>
+    <div class="tip">💡 También puedes crear ciclos con nombre personalizado desde <a href="/admin/ciclo">Gestión de Ciclo</a>.</div>
   </div>
 
   <div class="section">

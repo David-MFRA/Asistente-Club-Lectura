@@ -32,7 +32,10 @@ FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY", "cambia-esto-en-render")
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
 ALLOWED_CHAT_ID   = os.getenv("ALLOWED_CHAT_ID")
-ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+# Soporta múltiples admins separados por coma: "123456,789012"
+ADMIN_TELEGRAM_IDS = {
+    x.strip() for x in os.getenv("ADMIN_TELEGRAM_ID", "").split(",") if x.strip()
+}
 
 if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
@@ -103,10 +106,10 @@ def _allowed_chat(update):
     return str(update.effective_chat.id) == str(ALLOWED_CHAT_ID)
 
 def is_admin_user(update):
-    """Devuelve True si el remitente es el admin configurado."""
-    if not ADMIN_TELEGRAM_ID:
+    """Devuelve True si el remitente está en la lista de admins."""
+    if not ADMIN_TELEGRAM_IDS:
         return False
-    return str(update.effective_user.id) == str(ADMIN_TELEGRAM_ID)
+    return str(update.effective_user.id) in ADMIN_TELEGRAM_IDS
 
 async def send_to_group(text, parse_mode="MarkdownV2"):
     if not TELEGRAM_CHAT_ID:
@@ -255,23 +258,19 @@ async def propuestas(update, context):
             return
         lines = [f"📚 {bold('Propuestas del ciclo')}\n"]
         for b in books:
+            pos = b.get("cycle_position", b["proposal_id"])
             author_str = f" — _{esc(b['author'])}_" if b.get("author") else ""
             stars = "⭐" * min(b["votes"], 5) if b["votes"] > 0 else "·"
             lines.append(
-                f"{bold(str(b['proposal_id']))}\\. {esc(b['title'])}{author_str}\n"
+                f"{bold(str(pos))}\\. {esc(b['title'])}{author_str}\n"
                 f"   {stars} {bold(str(b['votes']))} voto{'s' if b['votes'] != 1 else ''}"
             )
         lines.append(f"\n_Pulsa un botón para votar directamente:_")
         keyboard = []
-        row = []
-        for i, b in enumerate(books[:10]):
-            label = f"🗳️ #{b['proposal_id']} {b['title'][:25]}"
-            row.append(InlineKeyboardButton(label, callback_data=f"vb:{b['proposal_id']}"))
-            if len(row) == 1:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
+        for b in books[:10]:
+            pos = b.get("cycle_position", b["proposal_id"])
+            label = f"🗳️ {pos}. {b['title'][:28]}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"vb:{b['proposal_id']}")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2", reply_markup=reply_markup)
     except Exception:
@@ -283,11 +282,24 @@ async def votar(update, context):
     if not _allowed_chat(update): return
     if not context.args:
         await update.message.reply_text(
-            f"🗳️ Usa {code('/votar id')} — consulta IDs con /propuestas\\.", parse_mode="MarkdownV2"
+            f"🗳️ Usa {code('/votar número')} — el número es la posición en /propuestas\\.", parse_mode="MarkdownV2"
         )
         return
     try:
-        proposal_id = int(context.args[0])
+        num = int(context.args[0])
+        # Resolver posición de ciclo → proposal_id real
+        books = db.get_book_proposals()
+        proposal = next((b for b in books if b.get("cycle_position") == num), None)
+        if not proposal:
+            # Fallback: intentar como proposal_id directo (backward compat)
+            proposal = db.get_proposal_by_id(num)
+        if not proposal:
+            await update.message.reply_text(
+                f"❌ No existe la propuesta \\#{bold(str(num))}\\. Usa /propuestas para ver la lista\\.",
+                parse_mode="MarkdownV2"
+            )
+            return
+        proposal_id = proposal["proposal_id"]
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         ok = db.vote_book(proposal_id, user)
         if ok:
@@ -753,7 +765,8 @@ async def nuevo_ciclo_cmd(update, context):
     if not is_admin_user(update): return
     name = " ".join(context.args).strip() if context.args else None
     if not name:
-        name = datetime.utcnow().strftime("%Y-%m")
+        from datetime import timezone as _tz
+        name = datetime.now(_tz.utc).strftime("%Y-%m")
     db.set_config("active_cycle_key", name)
     await update.message.reply_text(
         f"✅ {bold('Nuevo ciclo creado')}: {code(name)}\n"
@@ -1141,11 +1154,17 @@ async def admin_cerrar_encuesta(poll_db_id):
             return "Encuesta no encontrada", 404
         await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
         db.close_poll(poll_db_id)
-        # Anunciar ganador si es encuesta de libros
+        # Anunciar ganador y auto-asignar a la reunión próxima
         if poll.get("poll_type") == "books" and TELEGRAM_CHAT_ID:
             winner = db.get_winner_book()
             if winner:
                 await announce_winner(winner)
+                # Asignar automáticamente el libro ganador a la próxima reunión
+                next_meeting = db.get_latest_scheduled_meeting()
+                if next_meeting and not next_meeting.get("book_id"):
+                    db.update_meeting(meeting_id=next_meeting["id"], book_id=winner["id"])
+                    logger.info("Libro ganador '%s' asignado automáticamente a '%s'",
+                                winner["title"], next_meeting["name"])
     except Exception:
         logger.exception("Error cerrando encuesta")
         return "Error cerrando encuesta", 500

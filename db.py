@@ -1,6 +1,11 @@
 import os
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow():
+    """Retorna datetime UTC naive (sin tzinfo) sin deprecation warning."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
@@ -192,7 +197,7 @@ def init_db():
 # =========================================================
 
 def current_cycle_key(dt=None):
-    dt = dt or datetime.utcnow()
+    dt = dt or _utcnow()
     return dt.strftime("%Y-%m")
 
 def get_config(key, default=None):
@@ -268,16 +273,19 @@ def get_books(cycle_key=None):
     cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor() as cur:
         cur.execute("""
-        SELECT
-            bp.id AS proposal_id, b.id, b.title, b.author,
-            b.description, b.cover, b.pages, bp.proposed_by,
-            COUNT(bv.id)::int AS votes
-        FROM book_proposals bp
-        JOIN books b ON b.id = bp.book_id
-        LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
-        WHERE bp.cycle_key = %s AND bp.is_active = TRUE
-        GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
-        ORDER BY votes DESC, b.title ASC
+        SELECT ROW_NUMBER() OVER (ORDER BY sub.votes DESC, sub.title ASC)::int AS cycle_position, sub.*
+        FROM (
+            SELECT
+                bp.id AS proposal_id, b.id, b.title, b.author,
+                b.description, b.cover, b.pages, bp.proposed_by,
+                COUNT(bv.id)::int AS votes
+            FROM book_proposals bp
+            JOIN books b ON b.id = bp.book_id
+            LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
+            WHERE bp.cycle_key = %s AND bp.is_active = TRUE
+            GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
+        ) sub
+        ORDER BY sub.votes DESC, sub.title ASC
         """, (cycle_key,))
         return [dict(r) for r in cur.fetchall()]
 
@@ -429,7 +437,20 @@ def get_latest_meeting():
 
 
 def get_latest_scheduled_meeting():
+    """Devuelve la PRÓXIMA reunión (soonest future date). Si no hay con fecha futura, la más reciente."""
     with get_cursor() as cur:
+        # Próxima reunión futura (la más cercana)
+        cur.execute("""
+        SELECT * FROM meetings
+        WHERE status IN ('scheduled', 'draft')
+          AND (final_date IS NULL OR final_date > NOW())
+        ORDER BY final_date ASC NULLS LAST, created_at ASC
+        LIMIT 1
+        """)
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        # Fallback: la más reciente si no hay fechas futuras
         cur.execute("""
         SELECT * FROM meetings
         WHERE status IN ('scheduled', 'draft')

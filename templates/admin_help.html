@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ayuda · Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <style>
+    :root{--bg:#0b1120;--bg2:#111827;--panel:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.10);--text:#f1f5f9;--muted:#94a3b8;--primary:#6366f1;--success:#10b981;--warning:#f59e0b;--radius:14px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+    .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+    .header a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:600}
+    .header a:hover{color:var(--text)}
+    .brand{color:var(--text)!important;font-weight:800!important}
+    .main{max-width:800px;margin:0 auto;padding:28px 16px}
+    h1{font-size:24px;font-weight:800;margin-bottom:6px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:28px}
+    .section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+    .section h2{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+    .section p,.section li{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:6px}
+    .section li{margin-left:20px}
+    .badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;margin-right:4px}
+    .badge-draft{background:rgba(245,158,11,.15);color:var(--warning);border:1px solid rgba(245,158,11,.3)}
+    .badge-scheduled{background:rgba(16,185,129,.15);color:var(--success);border:1px solid rgba(16,185,129,.3)}
+    .badge-closed{background:rgba(148,163,184,.15);color:var(--muted);border:1px solid rgba(148,163,184,.3)}
+    code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:13px}
+    .tip{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);border-radius:8px;padding:10px 14px;font-size:13px;color:#a5b4fc;margin-top:10px}
+    a{color:#a5b4fc}
+  </style>
+</head>
+<body>
+<header class="header">
+  <a href="/admin" class="brand">📚 Club de Lectura</a>
+  <a href="/admin">Dashboard</a>
+  <a href="/admin/help" style="color:var(--text)">Ayuda</a>
+  <a href="/admin/logout" style="margin-left:auto">Salir</a>
+</header>
+<div class="main">
+  <h1>❓ Centro de Ayuda</h1>
+  <p class="sub">Guía completa para gestionar el club de lectura desde el panel de administración.</p>
+
+  <div class="section">
+    <h2>🔄 Ciclos</h2>
+    <p>Un <strong>ciclo</strong> es el período de tiempo en que el club lee un libro. Normalmente dura un mes.</p>
+    <ul>
+      <li>Cada ciclo tiene su propia lista de propuestas de libros y temáticas.</li>
+      <li>Al crear un nuevo ciclo, las propuestas anteriores quedan archivadas en el histórico.</li>
+      <li>Ve a <a href="/admin/ciclo">Gestión de Ciclo</a> para crear o cerrar ciclos.</li>
+    </ul>
+    <div class="tip">💡 El ciclo activo se muestra en el dashboard. Usa el formato YYYY-MM (ej. 2026-04) o un nombre personalizado.</div>
+  </div>
+
+  <div class="section">
+    <h2>📅 Estados de reunión</h2>
+    <p>Cada reunión puede estar en uno de estos estados:</p>
+    <ul>
+      <li><span class="badge badge-draft">⏳ Borrador</span> — Reunión creada pero sin fecha confirmada. Puedes añadir opciones de fecha y lanzar una encuesta.</li>
+      <li><span class="badge badge-scheduled">✅ Confirmada</span> — Fecha acordada. El bot incluirá esta reunión en los recordatorios automáticos.</li>
+      <li><span class="badge badge-closed">🔒 Cerrada</span> — La reunión ya ha pasado. Puedes añadir el acta/resumen.</li>
+    </ul>
+    <div class="tip">💡 Cuando cierras una encuesta de fechas, la reunión pasa automáticamente a "Confirmada".</div>
+  </div>
+
+  <div class="section">
+    <h2>🗳️ Encuestas</h2>
+    <ul>
+      <li><strong>Encuesta de libros</strong> — Se lanza desde el dashboard. Los miembros votan el libro del mes directamente en Telegram.</li>
+      <li><strong>Encuesta de temáticas</strong> — Similar, para elegir la temática del próximo ciclo.</li>
+      <li><strong>Encuesta de fechas</strong> — Desde el detalle de una reunión, para elegir la fecha de reunión.</li>
+    </ul>
+    <div class="tip">💡 Cierra siempre las encuestas desde el panel admin para que el sistema procese el ganador automáticamente.</div>
+  </div>
+
+  <div class="section">
+    <h2>✉️ Mensajes del bot</h2>
+    <p>Todos los textos que usa el bot son editables desde <a href="/admin/messages">Mensajes</a>.</p>
+    <ul>
+      <li>Si no personalizas un mensaje, se usa el texto por defecto.</li>
+      <li>Los mensajes admiten placeholders como <code>{user_name}</code>, <code>{book_title}</code>, <code>{meeting_date}</code>.</li>
+      <li>Puedes usar el botón "Vista previa" para ver cómo quedará el mensaje con datos de ejemplo.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>📌 Fijar mensajes</h2>
+    <p>El bot puede fijar mensajes importantes en el grupo (recordatorios de reunión, encuestas activas).</p>
+    <ul>
+      <li>Para fijar, el bot necesita ser <strong>administrador del grupo</strong> con permiso de "Fijar mensajes".</li>
+      <li>Usa el comando <code>/fijar</code> desde el chat para fijar el recordatorio actual.</li>
+      <li>Usa <code>/desfijar</code> para quitarlo.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>🤖 Funciones de IA</h2>
+    <p>El bot puede generar preguntas de debate y citas literarias usando inteligencia artificial.</p>
+    <ul>
+      <li>Requiere configurar la variable de entorno <code>GROQ_API_KEY</code> (gratis en <strong>console.groq.com</strong>).</li>
+      <li>Sin la clave, se usan textos de fallback predefinidos.</li>
+      <li>Comandos del bot: <code>/preguntas</code> y <code>/cita</code></li>
+      <li>También disponible desde el dashboard en la sección "IA".</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>⏰ Recordatorios automáticos</h2>
+    <ul>
+      <li><strong>Lunes a las 10:00</strong> — Recordatorio semanal con info de la reunión, libro y ritmo de lectura.</li>
+      <li><strong>Cada 2 días</strong> — Recordatorio de lectura con botones para apuntarse.</li>
+      <li><strong>Día anterior y día de la reunión</strong> — Aviso urgente con lista de asistentes.</li>
+    </ul>
+    <div class="tip">💡 También puedes enviar recordatorios manualmente desde el dashboard en cualquier momento.</div>
+  </div>
+
+  <div class="section">
+    <h2>📋 Comandos del bot (referencia rápida)</h2>
+    <p>Comandos de usuario: <code>/ayuda</code> <code>/proponer</code> <code>/propuestas</code> <code>/votar</code> <code>/resultados</code> <code>/reunion</code> <code>/asistir</code> <code>/noasistir</code> <code>/asistencia</code> <code>/tema</code> <code>/temas</code> <code>/libro</code> <code>/acta</code> <code>/progreso</code> <code>/estadisticas</code> <code>/trivia</code> <code>/preguntas</code> <code>/cita</code> <code>/recomendar</code></p>
+    <p style="margin-top:8px">Comandos de admin: <code>/admin_ayuda</code> <code>/ciclo</code> <code>/nuevo_ciclo</code> <code>/cerrar_ciclo</code> <code>/anuncio</code> <code>/anunciar_ganador</code> <code>/encuesta_libros</code> <code>/encuesta_temas</code> <code>/enviar_recordatorio</code> <code>/enviar_lectura</code> <code>/fijar</code> <code>/desfijar</code></p>
+  </div>
+</div>
+</body>
+</html>

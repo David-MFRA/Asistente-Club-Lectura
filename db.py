@@ -190,6 +190,42 @@ def init_db():
             updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
             UNIQUE(user_name, book_id)
         )""")
+        # Migrar columna location en meetings si no existe
+        cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='meetings' AND column_name='location'
+            ) THEN
+                ALTER TABLE meetings ADD COLUMN location TEXT;
+            END IF;
+        END$$;
+        """)
+        # Tabla de plantillas de mensajes editables desde admin
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS message_templates (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS sent_messages (
+            id SERIAL PRIMARY KEY,
+            message_type TEXT NOT NULL DEFAULT 'custom',
+            chat_id BIGINT NOT NULL,
+            message_id BIGINT,
+            text TEXT NOT NULL,
+            sent_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_messages (
+            id SERIAL PRIMARY KEY,
+            text TEXT NOT NULL,
+            send_at TIMESTAMP NOT NULL,
+            sent BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
 
 
 # =========================================================
@@ -388,6 +424,21 @@ def get_top_theme(cycle_key=None):
     return themes[0] if themes else None
 
 
+def get_theme_previous_cycles(name):
+    """Devuelve los ciclos anteriores donde esta temática fue usada."""
+    current = get_current_cycle_key()
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT cycle_key, COUNT(tv.id)::int AS votes
+        FROM themes t
+        LEFT JOIN theme_votes tv ON tv.theme_id = t.id
+        WHERE LOWER(t.name) = LOWER(%s) AND t.cycle_key != %s
+        GROUP BY t.cycle_key
+        ORDER BY t.cycle_key DESC
+        """, (name.strip(), current))
+        return [dict(r) for r in cur.fetchall()]
+
+
 # =========================================================
 # MEETINGS
 # =========================================================
@@ -500,13 +551,15 @@ def set_meeting_final_date(meeting_id, final_date):
         """, (final_date, meeting_id))
 
 
-def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=None, book_id=None):
+def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=None, book_id=None, location=None, notes=None):
     fields, values = [], []
     if name is not None:       fields.append("name = %s");       values.append(name)
     if final_date is not None: fields.append("final_date = %s"); values.append(final_date)
     if summary is not None:    fields.append("summary = %s");    values.append(summary)
     if status is not None:     fields.append("status = %s");     values.append(status)
     if book_id is not None:    fields.append("book_id = %s");    values.append(book_id)
+    if location is not None:   fields.append("location = %s");   values.append(location or None)
+    if notes is not None:      fields.append("notes = %s");      values.append(notes or None)
     if not fields:
         return
     fields.append("updated_at = NOW()")
@@ -755,6 +808,108 @@ def get_reading_progress(book_id):
 
 
 # =========================================================
+# MESSAGE TEMPLATES
+# =========================================================
+
+def get_message_template(key):
+    """Obtiene plantilla personalizada de la BD. Devuelve None si no existe."""
+    try:
+        with get_cursor() as cur:
+            cur.execute("SELECT value FROM message_templates WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row["value"] if row else None
+    except Exception:
+        return None
+
+def set_message_template(key, value):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO message_templates(key, value) VALUES(%s,%s)
+        ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+        """, (key, str(value)))
+
+def delete_message_template(key):
+    """Elimina plantilla personalizada (vuelve al valor por defecto)."""
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM message_templates WHERE key = %s", (key,))
+
+def get_all_message_templates():
+    with get_cursor() as cur:
+        cur.execute("SELECT key, value, updated_at FROM message_templates ORDER BY key ASC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# SENT MESSAGES LOG
+# =========================================================
+
+def log_sent_message(message_type, chat_id, text, message_id=None):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO sent_messages(message_type, chat_id, message_id, text)
+        VALUES(%s,%s,%s,%s)
+        """, (message_type, int(chat_id), message_id, text[:2000]))
+
+def get_sent_messages(limit=50):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM sent_messages ORDER BY sent_at DESC LIMIT %s", (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# SCHEDULED MESSAGES
+# =========================================================
+
+def schedule_message(text, send_at):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO scheduled_messages(text, send_at) VALUES(%s,%s) RETURNING *
+        """, (text, send_at))
+        return dict(cur.fetchone())
+
+def get_pending_scheduled_messages():
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT * FROM scheduled_messages
+        WHERE sent = FALSE AND send_at <= NOW()
+        ORDER BY send_at ASC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+def get_all_scheduled_messages():
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM scheduled_messages ORDER BY send_at DESC LIMIT 50")
+        return [dict(r) for r in cur.fetchall()]
+
+def mark_scheduled_message_sent(msg_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("UPDATE scheduled_messages SET sent=TRUE WHERE id=%s", (msg_id,))
+
+def delete_scheduled_message(msg_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM scheduled_messages WHERE id=%s", (msg_id,))
+
+
+# =========================================================
+# UPCOMING MEETINGS
+# =========================================================
+
+def get_upcoming_meetings(limit=5):
+    """Devuelve reuniones activas (draft/scheduled) con fecha futura o sin fecha, ordenadas por fecha ascendente."""
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT m.*, b.title AS book_title
+        FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        WHERE m.status IN ('draft', 'scheduled')
+          AND (m.final_date IS NULL OR m.final_date > NOW())
+        ORDER BY m.final_date ASC NULLS LAST, m.created_at ASC
+        LIMIT %s
+        """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
 # USER STATS
 # =========================================================
 
@@ -813,6 +968,7 @@ ALLOWED_TABLES = [
     "themes", "theme_votes",
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
+    "message_templates", "sent_messages", "scheduled_messages",
 ]
 
 

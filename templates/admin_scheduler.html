@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Programador · Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <style>
+    :root{--bg:#0b1120;--bg2:#111827;--panel:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.10);--text:#f1f5f9;--muted:#94a3b8;--primary:#6366f1;--success:#10b981;--danger:#ef4444;--radius:14px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+    .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+    .header a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:600}
+    .header a:hover{color:var(--text)}
+    .brand{color:var(--text)!important;font-weight:800!important}
+    .main{max-width:800px;margin:0 auto;padding:24px 16px}
+    h1{font-size:22px;font-weight:800;margin-bottom:6px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+    .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:14px;font-weight:600}
+    .flash.success{background:rgba(16,185,129,.13);border:1px solid rgba(16,185,129,.3);color:#6ee7b7}
+    .flash.danger{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.3);color:#fca5a5}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+    .card h2{font-size:16px;font-weight:700;margin-bottom:14px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:600}
+    input,textarea{width:100%;background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;margin-bottom:12px}
+    input:focus,textarea:focus{outline:none;border-color:var(--primary)}
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.6;cursor:pointer}
+    textarea{min-height:90px;resize:vertical}
+    .btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
+    .btn-primary{background:var(--primary);color:white}
+    .btn-danger{background:transparent;color:var(--danger);border:1px solid rgba(239,68,68,.4);font-size:12px;padding:4px 10px}
+    .btn:hover{opacity:.85}
+    .msg-row{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px}
+    .msg-info{flex:1}
+    .msg-date{font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px}
+    .msg-text{font-size:13px;color:var(--text);opacity:.8;white-space:pre-wrap;max-height:60px;overflow:hidden}
+    .badge-sent{font-size:11px;padding:2px 7px;border-radius:5px;background:rgba(16,185,129,.15);color:var(--success);border:1px solid rgba(16,185,129,.3)}
+    .badge-pending{font-size:11px;padding:2px 7px;border-radius:5px;background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)}
+    .empty{text-align:center;padding:30px;color:var(--muted);font-size:14px}
+  </style>
+</head>
+<body>
+<header class="header">
+  <a href="/admin" class="brand">📚 Club de Lectura</a>
+  <a href="/admin">Dashboard</a>
+  <a href="/admin/scheduler" style="color:var(--text)">Programador</a>
+  <a href="/admin/logout" style="margin-left:auto">Salir</a>
+</header>
+<div class="main">
+  <h1>⏰ Programador de Mensajes</h1>
+  <p class="sub">Programa mensajes para enviarlos automáticamente al grupo en una fecha y hora específica.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <h2>➕ Nuevo mensaje programado</h2>
+    <form method="post" action="/admin/scheduler/add">
+      <label>Mensaje</label>
+      <textarea name="text" placeholder="Escribe el mensaje que se enviará al grupo..." required></textarea>
+      <label>Enviar el</label>
+      <input type="datetime-local" name="send_at" required>
+      <button type="submit" class="btn btn-primary">Programar mensaje</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>📋 Mensajes programados</h2>
+    {% if scheduled %}
+      {% for msg in scheduled %}
+      <div class="msg-row">
+        <div class="msg-info">
+          <div class="msg-date">📅 {{ msg.send_at.strftime('%d/%m/%Y %H:%M') if msg.send_at else '' }}</div>
+          <div class="msg-text">{{ msg.text[:200] }}{% if msg.text|length > 200 %}…{% endif %}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+          {% if msg.sent %}
+          <span class="badge-sent">✅ Enviado</span>
+          {% else %}
+          <span class="badge-pending">⏳ Pendiente</span>
+          <form method="post" action="/admin/scheduler/{{ msg.id }}/delete">
+            <button type="submit" class="btn btn-danger">Cancelar</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">📭 No hay mensajes programados.</div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin · Club de Lectura</title>
+    <title>Dashboard · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
     <style>
         :root{
             --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
@@ -257,9 +258,13 @@
             <div class="drop-menu">
                 <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
                 <a class="drop-item" href="/admin/historico">📜 Histórico</a>
+                <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
                 <a class="drop-item" href="/export">📤 Exportar CSV</a>
             </div>
         </div>
+        <a class="nav-link" href="/admin/messages"><span>✉️ Mensajes</span></a>
+        <a class="nav-link" href="/admin/scheduler"><span>⏰ Programador</span></a>
+        <a class="nav-link" href="/admin/help"><span>❓ Ayuda</span></a>
         <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
     </nav>
 </header>
@@ -492,6 +497,7 @@
                 <div class="row">
                     <div class="field"><label>Nombre</label><input name="meeting_name" type="text" placeholder="Ej. Reunión de marzo" required></div>
                     <div class="field"><label>Fecha y hora (opcional)</label><input name="meeting_date" type="datetime-local"></div>
+                    <div class="field"><label>Lugar (opcional)</label><input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..."></div>
                 </div>
                 <button class="btn btn-primary" type="submit">Crear reunión</button>
                 <a class="btn btn-soft" href="/meetings" style="margin-left:8px">Ver todas →</a>
@@ -520,6 +526,14 @@
                         <button class="btn btn-warning" type="submit" data-tip="Envía el recordatorio de lectura ahora">📨 Enviar ahora</button>
                     </form>
                 </div>
+                <div class="rem-card">
+                    <div class="rem-icon">📣</div>
+                    <div class="rem-title">Info de reunión</div>
+                    <div class="rem-desc">Envía los detalles de la próxima reunión con botones de asistencia.</div>
+                    <form action="/admin/send/meeting-info" method="post">
+                        <button class="btn btn-success" type="submit" data-tip="Envía la info de la reunión con botones inline">📨 Enviar ahora</button>
+                    </form>
+                </div>
             </div>
             <div class="card" style="margin-top:10px">
                 <div class="card-label">Mensaje libre al grupo</div>
@@ -544,6 +558,22 @@
         </div>
     </details>
 
+    <!-- ── INTELIGENCIA ARTIFICIAL ── -->
+    <details>
+        <summary>🤖 Inteligencia Artificial</summary>
+        <div class="det-body">
+            <p style="color:var(--muted);font-size:.87rem;margin-bottom:12px">Genera contenido para el grupo usando IA. Requiere GROQ_API_KEY.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <form action="/admin/ai/questions" method="post">
+                    <button class="btn btn-soft" type="submit">💬 Generar preguntas de debate</button>
+                </form>
+                <form action="/admin/ai/quote" method="post">
+                    <button class="btn btn-soft" type="submit">✨ Generar cita literaria</button>
+                </form>
+            </div>
+        </div>
+    </details>
+
 </div>
 
 <!-- Bottom nav (mobile) -->
@@ -554,6 +584,9 @@
     <a href="/admin/db"><span class="bn-icon">🗄️</span>BD</a>
     <a href="/admin/historico"><span class="bn-icon">📜</span>Historial</a>
     <a href="/admin/ciclo"><span class="bn-icon">🔄</span>Ciclo</a>
+    <a href="/admin/messages"><span class="bn-icon">✉️</span>Mensajes</a>
+    <a href="/admin/scheduler"><span class="bn-icon">⏰</span>Prog.</a>
+    <a href="/admin/help"><span class="bn-icon">❓</span>Ayuda</a>
     <a href="/admin/logout" style="color:#fca5a5"><span class="bn-icon">🚪</span>Salir</a>
 </nav>
 

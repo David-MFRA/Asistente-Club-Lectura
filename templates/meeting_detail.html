@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detalle reunión · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
     <style>
         :root{
             --bg1:#0f172a; --bg2:#111827;
@@ -89,6 +90,14 @@
                         <option value="scheduled" {% if meeting.status == "scheduled" %}selected{% endif %}>scheduled</option>
                         <option value="closed" {% if meeting.status == "closed" %}selected{% endif %}>closed</option>
                     </select>
+                </div>
+                <div class="field">
+                    <label>Lugar</label>
+                    <input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..." value="{{ meeting.location if meeting.location else '' }}">
+                </div>
+                <div class="field">
+                    <label>Notas</label>
+                    <textarea name="notes" placeholder="Notas adicionales para el grupo">{{ meeting.notes if meeting.notes else '' }}</textarea>
                 </div>
                 <div class="field">
                     <label>Resumen / Acta</label>

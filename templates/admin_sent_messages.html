@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Historial de Mensajes · Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <style>
+    :root{--bg:#0b1120;--bg2:#111827;--panel:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.10);--text:#f1f5f9;--muted:#94a3b8;--primary:#6366f1;--radius:14px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+    .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+    .header a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:600}
+    .header a:hover{color:var(--text)}
+    .brand{color:var(--text)!important;font-weight:800!important}
+    .main{max-width:900px;margin:0 auto;padding:24px 16px}
+    h1{font-size:22px;font-weight:800;margin-bottom:6px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+    .msg-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
+    .msg-meta{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+    .msg-type{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;background:rgba(99,102,241,.2);color:#a5b4fc;border:1px solid rgba(99,102,241,.3)}
+    .msg-date{font-size:12px;color:var(--muted)}
+    .msg-text{font-size:13px;color:var(--text);white-space:pre-wrap;opacity:.85;max-height:120px;overflow:hidden;font-family:inherit}
+    .empty{text-align:center;padding:40px;color:var(--muted)}
+  </style>
+</head>
+<body>
+<header class="header">
+  <a href="/admin" class="brand">📚 Club de Lectura</a>
+  <a href="/admin">Dashboard</a>
+  <a href="/admin/sent-messages" style="color:var(--text)">Historial</a>
+  <a href="/admin/logout" style="margin-left:auto">Salir</a>
+</header>
+<div class="main">
+  <h1>📋 Historial de Mensajes Enviados</h1>
+  <p class="sub">Últimos 50 mensajes enviados al grupo de Telegram.</p>
+  {% if messages %}
+    {% for msg in messages %}
+    <div class="msg-card">
+      <div class="msg-meta">
+        <span class="msg-type">{{ msg.message_type }}</span>
+        <span class="msg-date">{{ msg.sent_at.strftime('%d/%m/%Y %H:%M') if msg.sent_at else '' }}</span>
+      </div>
+      <div class="msg-text">{{ msg.text[:300] }}{% if msg.text|length > 300 %}…{% endif %}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">📭 No hay mensajes en el historial todavía.</div>
+  {% endif %}
+</div>
+</body>
+</html>

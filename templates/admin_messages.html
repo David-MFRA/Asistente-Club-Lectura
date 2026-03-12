@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mensajes · Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <style>
+    :root{--bg:#0b1120;--bg2:#111827;--panel:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.10);--text:#f1f5f9;--muted:#94a3b8;--primary:#6366f1;--success:#10b981;--danger:#ef4444;--radius:14px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
+    .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+    .header a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:600}
+    .header a:hover{color:var(--text)}
+    .brand{color:var(--text)!important;font-weight:800!important}
+    .main{max-width:900px;margin:0 auto;padding:24px 16px}
+    h1{font-size:22px;font-weight:800;margin-bottom:6px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+    .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:14px;font-weight:600}
+    .flash.success{background:rgba(16,185,129,.13);border:1px solid rgba(16,185,129,.3);color:#6ee7b7}
+    .flash.danger{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.3);color:#fca5a5}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+    .card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .key{font-family:monospace;font-size:12px;color:#a5b4fc;font-weight:700}
+    .badge{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700}
+    .badge.custom{background:rgba(99,102,241,.2);color:#a5b4fc;border:1px solid rgba(99,102,241,.35)}
+    .badge.default{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+    .card-body{padding:14px 16px}
+    textarea{width:100%;min-height:90px;background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical}
+    textarea:focus{outline:none;border-color:var(--primary)}
+    .placeholders{font-size:11px;color:var(--muted);font-family:monospace;margin-top:6px;line-height:1.6}
+    .actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+    .btn{padding:7px 14px;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+    .btn-primary{background:var(--primary);color:white}
+    .btn-secondary{background:rgba(255,255,255,.07);color:var(--muted);border:1px solid var(--border)}
+    .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+    .btn:hover{opacity:.85}
+    .preview-box{margin-top:12px;background:rgba(0,0,0,.35);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:12px 14px;font-size:13px;white-space:pre-wrap;display:none;color:#d1d5db;font-family:inherit;line-height:1.7}
+    .preview-label{font-size:11px;color:var(--primary);font-weight:700;margin-bottom:6px}
+    .default-val{font-size:12px;color:var(--muted);margin-top:8px;font-style:italic}
+  </style>
+</head>
+<body>
+<header class="header">
+  <a href="/admin" class="brand">📚 Club de Lectura</a>
+  <a href="/admin">Dashboard</a>
+  <a href="/admin/messages" style="color:var(--text)">Mensajes</a>
+  <a href="/admin/help">Ayuda</a>
+  <a href="/admin/logout" style="margin-left:auto">Salir</a>
+</header>
+<div class="main">
+  <h1>✉️ Mensajes del Bot</h1>
+  <p class="sub">Personaliza los textos que usa el bot. Si no modificas un mensaje, se usa el texto por defecto.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+  {% endwith %}
+
+  {% for t in templates %}
+  <div class="card">
+    <div class="card-header">
+      <span class="key">{{ t.key }}</span>
+      <span class="badge {{ 'custom' if t.is_custom else 'default' }}">{{ 'Personalizado' if t.is_custom else 'Por defecto' }}</span>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/messages/{{ t.key }}/edit" id="form-{{ t.key }}">
+        <textarea name="value" id="ta-{{ t.key }}" rows="4">{{ t.value }}</textarea>
+        <div class="placeholders">Placeholders disponibles: {user_name} {book_title} {author} {meeting_name} {meeting_date} {location} {attendee_count} {count} {names}</div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary">💾 Guardar</button>
+          <button type="button" class="btn btn-ghost" onclick="previewMsg('{{ t.key }}')">👁 Vista previa</button>
+          {% if t.is_custom %}
+          <form method="post" action="/admin/messages/{{ t.key }}/reset" style="display:inline;margin:0">
+            <button type="submit" class="btn btn-secondary">↩ Restablecer</button>
+          </form>
+          {% endif %}
+        </div>
+      </form>
+      <div class="preview-box" id="preview-{{ t.key }}">
+        <div class="preview-label">👁 Vista previa con datos de ejemplo</div>
+        <div id="preview-text-{{ t.key }}"></div>
+      </div>
+      {% if t.is_custom %}
+      <div class="default-val">Por defecto: {{ t.default_value[:120] }}{% if t.default_value|length > 120 %}…{% endif %}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<script>
+async function previewMsg(key) {
+  const ta = document.getElementById('ta-' + key);
+  const box = document.getElementById('preview-' + key);
+  const textEl = document.getElementById('preview-text-' + key);
+  const fd = new FormData();
+  fd.append('template', ta.value);
+  try {
+    const r = await fetch('/admin/messages/preview', {method:'POST', body:fd});
+    const d = await r.json();
+    textEl.textContent = d.rendered;
+    box.style.display = 'block';
+  } catch(e) {
+    textEl.textContent = 'Error generando vista previa';
+    box.style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>

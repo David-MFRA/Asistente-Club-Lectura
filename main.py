@@ -1,6 +1,8 @@
 import os
 import re
 import logging
+import unicodedata
+import time as _time
 from datetime import datetime
 from http import HTTPStatus
 
@@ -17,6 +19,75 @@ import books_api
 import trivia
 import recommendations
 import db
+import ai_features
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# --------------------------------------------------
+# DEFAULT MESSAGES — textos editables desde el admin
+# --------------------------------------------------
+
+DEFAULT_MESSAGES = {
+    "welcome_message": (
+        "📚 *¡Bienvenid@ al Club de Lectura!*\n\n"
+        "Propón libros, vota, apúntate a reuniones y mucho más.\n\n"
+        "Usa /ayuda para ver todos los comandos disponibles. 🚀"
+    ),
+    "help_message": (
+        "📚 *Club de Lectura* — Comandos\n\n"
+        "📖 *Libros*\n"
+        "  /proponer título — Propone un libro\n"
+        "  /propuestas — Lista con botones para votar\n"
+        "  /votar N — Vota la propuesta número N\n"
+        "  /resultados — Ranking de votos\n"
+        "  /libro — Libro del ciclo actual\n\n"
+        "🏷️ *Temáticas*\n"
+        "  /tema nombre — Propone una temática\n"
+        "  /temas — Lista con botones para votar\n\n"
+        "📅 *Reunión*\n"
+        "  /reunion — Info de la próxima reunión\n"
+        "  /asistir — Apuntarse a la reunión\n"
+        "  /noasistir — Quitarse de la reunión\n"
+        "  /asistencia — Ver asistentes\n"
+        "  /acta — Resumen de la última reunión\n\n"
+        "📊 *Tu actividad*\n"
+        "  /progreso páginas — Registra tu lectura\n"
+        "  /estadisticas — Tus estadísticas del club\n\n"
+        "🎲 *Extras*\n"
+        "  /trivia — Pregunta para el debate\n"
+        "  /preguntas — Preguntas de debate con IA\n"
+        "  /cita — Cita literaria del libro actual\n"
+        "  /recomendar — Libros del tema activo"
+    ),
+    "next_meeting_message": (
+        "📅 *{meeting_name}*\n\n"
+        "📆 Fecha: {meeting_date}\n"
+        "{location_line}"
+        "👥 Apuntados: {attendee_count}"
+    ),
+    "proposal_confirmation_message": (
+        "✅ *¡Libro propuesto!* por {user_name}\n\n"
+        "📗 {book_title}\n"
+        "{author_line}"
+        "_Usa /propuestas para votar._"
+    ),
+    "attendance_join_message": "🎉 *{user_name}* se apuntó a *{meeting_name}*\n\n👥 Apuntados ({count}): {names}",
+    "attendance_leave_message": "👋 *{user_name}* se ha quitado de *{meeting_name}*\n\n👥 Quedan ({count}): {names}",
+    "attendance_prompt_message": "📅 ¿A qué reunión te apuntas? Elige una:",
+}
+
+
+def get_text(key, **kwargs):
+    """Obtiene texto del template (BD o default) y aplica placeholders."""
+    template = db.get_message_template(key)
+    if template is None:
+        template = DEFAULT_MESSAGES.get(key, "")
+    if kwargs:
+        try:
+            template = template.format(**kwargs)
+        except (KeyError, ValueError):
+            pass
+    return template
 
 # --------------------------------------------------
 # CONFIG
@@ -41,6 +112,19 @@ if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
 if not WEBHOOK_URL:
     raise RuntimeError("Falta WEBHOOK_URL")
+
+# Anti-spam: cooldown por usuario y comando
+_cooldowns: dict = {}  # {(user_id, command): last_used_timestamp}
+
+def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
+    """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
+    key = (user_id, command)
+    now = _time.monotonic()
+    last = _cooldowns.get(key, 0)
+    if now - last < seconds:
+        return False
+    _cooldowns[key] = now
+    return True
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -111,20 +195,63 @@ def is_admin_user(update):
         return False
     return str(update.effective_user.id) in ADMIN_TELEGRAM_IDS
 
-async def send_to_group(text, parse_mode="MarkdownV2"):
+async def send_to_group(text, parse_mode="MarkdownV2", reply_markup=None, message_type="custom"):
     if not TELEGRAM_CHAT_ID:
         logger.warning("TELEGRAM_CHAT_ID no configurado")
         return False
     try:
-        await telegram_app.bot.send_message(
+        msg = await telegram_app.bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=text,
-            parse_mode=parse_mode
+            parse_mode=parse_mode,
+            reply_markup=reply_markup
         )
+        try:
+            db.log_sent_message(message_type, TELEGRAM_CHAT_ID, text, msg.message_id)
+        except Exception:
+            pass
         return True
     except Exception:
         logger.exception("Error enviando al grupo")
         return False
+
+async def send_and_pin(text, parse_mode=None, reply_markup=None):
+    """Envía un mensaje al grupo y lo fija. Guarda el message_id en app_config."""
+    if not TELEGRAM_CHAT_ID:
+        return False
+    try:
+        msg = await telegram_app.bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup
+        )
+        try:
+            await telegram_app.bot.pin_chat_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                message_id=msg.message_id,
+                disable_notification=True
+            )
+            db.set_config("pinned_message_id", str(msg.message_id))
+        except Exception:
+            logger.warning("No se pudo fijar el mensaje (¿el bot es admin?)")
+        return True
+    except Exception:
+        logger.exception("Error en send_and_pin")
+        return False
+
+async def unpin_group_message():
+    """Desfija el mensaje actual del grupo."""
+    pinned_id = db.get_config("pinned_message_id")
+    if pinned_id and TELEGRAM_CHAT_ID:
+        try:
+            await telegram_app.bot.unpin_chat_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                message_id=int(pinned_id)
+            )
+            db.set_config("pinned_message_id", "")
+        except Exception:
+            logger.warning("No se pudo desfijar el mensaje")
 
 # --------------------------------------------------
 # WINNER ANNOUNCEMENT
@@ -170,37 +297,21 @@ async def announce_winner(book):
 
 async def start(update, context):
     if not _allowed_chat(update): return
-    text = (
-        f"📚 {bold('Club de Lectura')} — Comandos disponibles\n\n"
-        f"📖 {bold('Libros')}\n"
-        f"  /proponer _título_ — Propone un libro\n"
-        f"  /propuestas — Lista con botones para votar\n"
-        f"  /votar _id_ — Vota una propuesta\n"
-        f"  /resultados — Ranking de votos\n"
-        f"  /libro — Libro del ciclo actual\n\n"
-        f"🏷️ {bold('Temáticas')}\n"
-        f"  /tema _nombre_ — Propone una temática\n"
-        f"  /temas — Lista con botones para votar\n"
-        f"  /votar\\_tema _id_ — Vota una temática\n\n"
-        f"📅 {bold('Reunión')}\n"
-        f"  /reunion — Info de la próxima reunión\n"
-        f"  /asistir — Apuntarse a la reunión\n"
-        f"  /noasistir — Quitarse de la reunión\n"
-        f"  /asistencia — Ver asistentes\n"
-        f"  /acta — Resumen de la última reunión\n\n"
-        f"📊 {bold('Tu actividad')}\n"
-        f"  /calificar _N_ _\\[reseña\\]_ — Valora el libro \\(1\\-5\\)\n"
-        f"  /progreso _páginas_ — Registra tu lectura\n"
-        f"  /estadisticas — Tus estadísticas del club\n\n"
-        f"🎲 {bold('Extras')}\n"
-        f"  /trivia — Pregunta para el debate\n"
-        f"  /recomendar — Libros del tema activo"
-    )
-    await update.message.reply_text(text, parse_mode="MarkdownV2")
+    raw = get_text("welcome_message")
+    await update.message.reply_text(raw, parse_mode=None)
+
+
+async def ayuda_cmd(update, context):
+    if not _allowed_chat(update): return
+    raw = get_text("help_message")
+    await update.message.reply_text(raw, parse_mode=None)
 
 
 async def proponer(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "proponer", 30):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     title = " ".join(context.args).strip()
     if not title:
         await update.message.reply_text(
@@ -280,6 +391,9 @@ async def propuestas(update, context):
 
 async def votar(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "votar", 10):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     if not context.args:
         await update.message.reply_text(
             f"🗳️ Usa {code('/votar número')} — el número es la posición en /propuestas\\.", parse_mode="MarkdownV2"
@@ -340,72 +454,167 @@ async def resultados(update, context):
         await update.message.reply_text("⚠️ Error obteniendo resultados\\.", parse_mode="MarkdownV2")
 
 
+def _normalize(text: str) -> str:
+    """Normaliza texto: minúsculas, sin acentos, sin puntuación."""
+    text = text.lower().strip()
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return text
+
+def _find_meeting_by_text(query: str):
+    """Busca la reunión más relevante por nombre o fecha."""
+    meetings = db.get_meetings(limit=20)
+    query_norm = _normalize(query)
+    best = None
+    best_score = 0
+    for m in meetings:
+        if m.get("status") == "closed":
+            continue
+        name_norm = _normalize(m.get("name", ""))
+        if name_norm == query_norm:
+            score = 100
+        elif query_norm in name_norm:
+            score = 80
+        else:
+            words = query_norm.split()
+            matched = sum(1 for w in words if w in name_norm)
+            score = int(matched / max(len(words), 1) * 60)
+        if m.get("final_date"):
+            date_str = _normalize(str(m["final_date"]))
+            month_names = {"enero":"01","febrero":"02","marzo":"03","abril":"04","mayo":"05","junio":"06",
+                           "julio":"07","agosto":"08","septiembre":"09","octubre":"10","noviembre":"11","diciembre":"12"}
+            for month_es, month_num in month_names.items():
+                if month_es in query_norm and f"-{month_num}-" in date_str:
+                    score += 30
+        if score > best_score:
+            best_score = score
+            best = m
+    return best if best_score >= 30 else None
+
+
 async def reunion(update, context):
     if not _allowed_chat(update): return
     try:
-        meeting = db.get_latest_scheduled_meeting()
+        if context.args:
+            query = " ".join(context.args)
+            meeting = _find_meeting_by_text(query)
+            if not meeting:
+                await update.message.reply_text(f"❌ No encontré ninguna reunión con «{query}».\nUsa /reunion sin argumentos para ver la próxima.", parse_mode=None)
+                return
+        else:
+            meeting = db.get_latest_scheduled_meeting()
         if not meeting:
-            await update.message.reply_text("📭 No hay reunión programada todavía\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("📭 No hay reunión programada todavía.", parse_mode=None)
             return
         asistentes = db.get_attendance(meeting["id"])
-        fecha = esc(str(meeting["final_date"])) if meeting.get("final_date") else "_Sin fecha cerrada_"
+        fecha = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
         estado_map = {"draft": "⏳ Borrador", "scheduled": "✅ Confirmada", "closed": "🔒 Cerrada"}
-        estado = esc(estado_map.get(meeting.get("status", ""), meeting.get("status", "")))
+        estado = estado_map.get(meeting.get("status", ""), meeting.get("status", ""))
         lines = [
-            f"📅 {bold(meeting['name'])}\n",
-            f"📆 *Fecha:* {fecha}",
-            f"📊 *Estado:* {estado}",
-            f"👥 *Asistentes:* {bold(str(len(asistentes)))}",
+            f"📅 {meeting['name']}\n",
+            f"📆 Fecha: {fecha}",
+            f"📊 Estado: {estado}",
         ]
+        if meeting.get("location"):
+            lines.append(f"📍 Lugar: {meeting['location']}")
+        if meeting.get("notes"):
+            lines.append(f"📝 {meeting['notes']}")
+        if meeting.get("book_title"):
+            lines.append(f"📗 Libro: {meeting['book_title']}")
+        lines.append(f"👥 Apuntados: {len(asistentes)}")
         if asistentes:
-            lines.append("\n" + "  ".join(f"• {esc(a)}" for a in asistentes))
-        lines.append(f"\n_Usa /asistir o /noasistir para gestionar tu asistencia\\._")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+            lines.append("  " + ",  ".join(f"• {a}" for a in asistentes))
+        lines.append("\nUsa /asistir o /noasistir para gestionar tu asistencia.")
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+            ]
+        ]
+        if meeting.get("book_id"):
+            keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
+        await update.message.reply_text(
+            "\n".join(lines),
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
     except Exception:
         logger.exception("Error en /reunion")
-        await update.message.reply_text("⚠️ Error obteniendo la reunión\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("⚠️ Error obteniendo la reunión.", parse_mode=None)
 
 
 async def asistir(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "asistir", 10):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     try:
-        meeting = db.get_latest_scheduled_meeting()
-        if not meeting:
-            await update.message.reply_text("📭 No hay reunión activa\\.", parse_mode="MarkdownV2")
+        meetings = db.get_upcoming_meetings()
+        if not meetings:
+            await update.message.reply_text("📭 No hay reunión activa.", parse_mode=None)
             return
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.add_attendance(meeting["id"], user)
-        asistentes = db.get_attendance(meeting["id"])
-        names = "\n".join(f"  ✅ {esc(a)}" for a in asistentes)
-        await update.message.reply_text(
-            f"🎉 {bold(esc(user))} se apuntó a {italic(meeting['name'])}\n\n"
-            f"👥 {bold('Asistentes')} \\({bold(str(len(asistentes)))}\\):\n{names}",
-            parse_mode="MarkdownV2"
-        )
+        if len(meetings) == 1:
+            meeting = meetings[0]
+            db.add_attendance(meeting["id"], user)
+            asistentes = db.get_attendance(meeting["id"])
+            names = "\n".join(f"  ✅ {a}" for a in asistentes)
+            await update.message.reply_text(
+                f"🎉 {user} se apuntó a {meeting['name']}\n\n"
+                f"👥 Apuntados ({len(asistentes)}):\n{names}",
+                parse_mode=None
+            )
+        else:
+            keyboard = []
+            for m in meetings[:5]:
+                date_str = str(m["final_date"])[:16] if m.get("final_date") else "Sin fecha"
+                label = f"📅 {m['name']} · {date_str}"
+                keyboard.append([InlineKeyboardButton(label, callback_data=f"attend:{m['id']}")])
+            await update.message.reply_text(
+                "📅 ¿A qué reunión te apuntas? Elige una:",
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     except Exception:
         logger.exception("Error en /asistir")
-        await update.message.reply_text("⚠️ Error al apuntarte\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("⚠️ Error al apuntarte.", parse_mode=None)
 
 
 async def noasistir(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "noasistir", 10):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     try:
-        meeting = db.get_latest_scheduled_meeting()
-        if not meeting:
-            await update.message.reply_text("📭 No hay reunión activa\\.", parse_mode="MarkdownV2")
+        meetings = db.get_upcoming_meetings()
+        if not meetings:
+            await update.message.reply_text("📭 No hay reunión activa.", parse_mode=None)
             return
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.remove_attendance(meeting["id"], user)
-        asistentes = db.get_attendance(meeting["id"])
-        names = ("\n".join(f"  • {esc(a)}" for a in asistentes)) if asistentes else "_Nadie de momento_"
-        await update.message.reply_text(
-            f"👋 {bold(esc(user))} se ha quitado de {italic(meeting['name'])}\n\n"
-            f"👥 {bold('Quedan')} \\({bold(str(len(asistentes)))}\\):\n{names}",
-            parse_mode="MarkdownV2"
-        )
+        if len(meetings) == 1:
+            meeting = meetings[0]
+            db.remove_attendance(meeting["id"], user)
+            asistentes = db.get_attendance(meeting["id"])
+            names = ("\n".join(f"  • {a}" for a in asistentes)) if asistentes else "Nadie de momento"
+            await update.message.reply_text(
+                f"👋 {user} se ha quitado de {meeting['name']}\n\n"
+                f"👥 Quedan ({len(asistentes)}):\n{names}",
+                parse_mode=None
+            )
+        else:
+            keyboard = []
+            for m in meetings[:5]:
+                date_str = str(m["final_date"])[:16] if m.get("final_date") else "Sin fecha"
+                label = f"📅 {m['name']} · {date_str}"
+                keyboard.append([InlineKeyboardButton(label, callback_data=f"noattend:{m['id']}")])
+            await update.message.reply_text(
+                "📅 ¿De qué reunión te quitas? Elige una:",
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     except Exception:
         logger.exception("Error en /noasistir")
-        await update.message.reply_text("⚠️ Error al quitarte\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("⚠️ Error al quitarte.", parse_mode=None)
 
 
 async def asistencia(update, context):
@@ -428,6 +637,9 @@ async def asistencia(update, context):
 
 async def tema(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "tema", 30):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     name = " ".join(context.args).strip()
     if not name:
         await update.message.reply_text(
@@ -438,11 +650,16 @@ async def tema(update, context):
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         row = db.create_theme(name, created_by=user)
         if row:
+            prev = db.get_theme_previous_cycles(name)
+            warning = ""
+            if prev:
+                cycles_str = ", ".join(p["cycle_key"] for p in prev[:3])
+                warning = f"\n\n⚠️ Esta temática ya se usó en: {cycles_str}"
             await update.message.reply_text(
-                f"🏷️ {bold('Temática propuesta')}: _{esc(name)}_\n"
-                f"Propuesta por {italic(user)}\\.\n"
-                f"_Usa /temas y /votar\\_tema para votar\\._",
-                parse_mode="MarkdownV2"
+                f"🏷️ Temática propuesta: {name}\n"
+                f"Propuesta por {user}.{warning}\n"
+                f"Usa /temas para votar.",
+                parse_mode=None
             )
         else:
             await update.message.reply_text(
@@ -483,6 +700,9 @@ async def temas(update, context):
 
 async def votar_tema(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "votar_tema", 10):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     if not context.args:
         await update.message.reply_text(
             f"🗳️ Usa {code('/votar_tema id')} — consulta IDs con /temas\\.", parse_mode="MarkdownV2"
@@ -508,6 +728,9 @@ async def votar_tema(update, context):
 
 async def trivia_cmd(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "trivia", 15):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     try:
         question = trivia.generate()
         await update.message.reply_text(esc(question), parse_mode="MarkdownV2")
@@ -518,6 +741,9 @@ async def trivia_cmd(update, context):
 
 async def recomendar(update, context):
     if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "recomendar", 60):
+        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
+        return
     try:
         top_theme = db.get_top_theme()
         theme_name = top_theme["name"] if top_theme else "novela"
@@ -560,6 +786,7 @@ async def button_handler(update, context):
                 await query.answer(f"✅ Voto registrado para «{book_name}»", show_alert=True)
             else:
                 await query.answer(f"⚠️ Ya habías votado «{book_name}»", show_alert=True)
+
         elif data.startswith("vt:"):
             theme_id = int(data.split(":")[1])
             ok = db.vote_theme(theme_id, user)
@@ -567,9 +794,68 @@ async def button_handler(update, context):
                 await query.answer("✅ Voto de temática registrado", show_alert=True)
             else:
                 await query.answer("⚠️ Ya habías votado esa temática", show_alert=True)
+
+        elif data.startswith("attend:"):
+            meeting_id = int(data.split(":")[1])
+            ok = db.add_attendance(meeting_id, user)
+            meeting = db.get_meeting(meeting_id)
+            meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
+            if ok:
+                asistentes = db.get_attendance(meeting_id)
+                await query.answer(f"✅ Apuntado a «{meeting_name}»")
+                names = ", ".join(asistentes) if asistentes else "nadie"
+                await query.edit_message_text(
+                    f"✅ {user} apuntado a {meeting_name}\n\n"
+                    f"👥 Apuntados ({len(asistentes)}): {names}\n\n"
+                    f"Usa /noasistir para quitarte.",
+                    parse_mode=None
+                )
+            else:
+                await query.answer(f"Ya estás apuntado a «{meeting_name}»", show_alert=True)
+
+        elif data.startswith("noattend:"):
+            meeting_id = int(data.split(":")[1])
+            db.remove_attendance(meeting_id, user)
+            meeting = db.get_meeting(meeting_id)
+            meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
+            asistentes = db.get_attendance(meeting_id)
+            await query.answer(f"Te has quitado de «{meeting_name}»")
+            names = ", ".join(asistentes) if asistentes else "nadie"
+            await query.edit_message_text(
+                f"👋 {user} se ha quitado de {meeting_name}\n\n"
+                f"👥 Quedan ({len(asistentes)}): {names}",
+                parse_mode=None
+            )
+
+        elif data.startswith("bookinfo:"):
+            book_id_str = data.split(":")[1]
+            if book_id_str and book_id_str != "0":
+                book = db.get_book_by_id(int(book_id_str))
+                if book:
+                    lines = [f"📗 {book['title']}"]
+                    if book.get("author"):
+                        lines.append(f"✍️ {book['author']}")
+                    if book.get("pages"):
+                        lines.append(f"📄 {book['pages']} páginas")
+                    if book.get("description"):
+                        desc = book["description"]
+                        if len(desc) > 400:
+                            desc = desc[:397] + "…"
+                        lines.append(f"\n📖 {desc}")
+                    await query.answer()
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text="\n".join(lines),
+                        parse_mode=None
+                    )
+                else:
+                    await query.answer("No se encontró el libro", show_alert=True)
+            else:
+                await query.answer("No hay libro asignado a esta reunión", show_alert=True)
+
     except Exception:
         logger.exception("Error en button_handler")
-        await query.answer("⚠️ Error procesando el voto", show_alert=True)
+        await query.answer("⚠️ Error procesando la acción", show_alert=True)
 
 
 # --------------------------------------------------
@@ -627,41 +913,6 @@ async def acta_cmd(update, context):
         await update.message.reply_text("⚠️ Error obteniendo el acta\\.", parse_mode="MarkdownV2")
 
 
-async def calificar_cmd(update, context):
-    if not _allowed_chat(update): return
-    if not context.args:
-        await update.message.reply_text(
-            f"⭐ Usa {code('/calificar puntuación [reseña]')}\n"
-            f"_Ej: /calificar 4 Muy buen libro_\n"
-            f"_Puntuación del 1 al 5_",
-            parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        score = int(context.args[0])
-        if not 1 <= score <= 5:
-            await update.message.reply_text("❌ La puntuación debe ser entre 1 y 5\\.", parse_mode="MarkdownV2")
-            return
-        review = " ".join(context.args[1:]).strip() or None
-        winner = db.get_winner_book()
-        if not winner:
-            await update.message.reply_text("📭 No hay libro del ciclo para valorar\\.", parse_mode="MarkdownV2")
-            return
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.rate_book(winner["id"], user, score, review)
-        stars = "⭐" * score
-        lines = [f"{stars} {bold('Valoración registrada')}\\!"]
-        lines.append(f"📗 {esc(winner['title'])}")
-        lines.append(f"Puntuación: {bold(str(score))}/5")
-        if review:
-            lines.append(f"💬 _{esc(review)}_")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-    except ValueError:
-        await update.message.reply_text("❌ El primer argumento debe ser un número del 1 al 5\\.", parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /calificar")
-        await update.message.reply_text("⚠️ Error registrando valoración\\.", parse_mode="MarkdownV2")
-
 
 async def progreso_cmd(update, context):
     if not _allowed_chat(update): return
@@ -704,23 +955,18 @@ async def estadisticas_cmd(update, context):
     try:
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         s = db.get_user_stats(user)
-        lines = [f"📊 {bold('Tus estadísticas')} — {italic(user)}\n"]
-        lines.append(f"📚 Propuestas: {bold(str(s['proposals_total']))} en total, {bold(str(s['proposals_cycle']))} este ciclo")
-        lines.append(f"🗳️ Votos emitidos: {bold(str(s['book_votes']))} libros, {bold(str(s['theme_votes']))} temáticas")
-        lines.append(f"📅 Reuniones asistidas: {bold(str(s['meetings']))}")
-        if s['ratings'] > 0:
-            avg_str = str(s['avg_score']) if s['avg_score'] else '?'
-            lines.append(f"⭐ Libros valorados: {bold(str(s['ratings']))} \\(media: {bold(avg_str)}/5\\)")
-        else:
-            lines.append(f"⭐ Aún no has valorado ningún libro")
+        lines = [f"📊 Tus estadísticas — {user}\n"]
+        lines.append(f"📚 Propuestas: {s['proposals_total']} en total, {s['proposals_cycle']} este ciclo")
+        lines.append(f"🗳️ Votos emitidos: {s['book_votes']} libros, {s['theme_votes']} temáticas")
+        lines.append(f"📅 Reuniones asistidas: {s['meetings']}")
         if s.get("last_progress"):
             p = s["last_progress"]
-            total_str = f" de {bold(str(p['total']))}" if p.get("total") else ""
-            lines.append(f"📖 Último progreso: {bold(str(p['pages_read']))} págs{total_str} \\— _{esc(p['title'])}_")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+            total_str = f" de {p['total']}" if p.get("total") else ""
+            lines.append(f"📖 Último progreso: {p['pages_read']} págs{total_str} — {p['title']}")
+        await update.message.reply_text("\n".join(lines), parse_mode=None)
     except Exception:
         logger.exception("Error en /estadisticas")
-        await update.message.reply_text("⚠️ Error obteniendo estadísticas\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("⚠️ Error obteniendo estadísticas.", parse_mode=None)
 
 
 # --------------------------------------------------
@@ -730,19 +976,25 @@ async def estadisticas_cmd(update, context):
 async def admin_ayuda_cmd(update, context):
     if not is_admin_user(update): return
     text = (
-        f"🔐 {bold('Comandos de administrador')}\n\n"
-        f"🔄 {bold('Ciclos')}\n"
-        f"  /ciclo — Ver ciclo activo\n"
-        f"  /nuevo\\_ciclo \\[nombre\\] — Crear nuevo ciclo\n"
-        f"  /cerrar\\_ciclo — Cerrar ciclo actual\n\n"
-        f"📣 {bold('Mensajes')}\n"
-        f"  /anuncio \\<texto\\> — Enviar mensaje al grupo\n"
-        f"  /anunciar\\_ganador — Anunciar libro ganador\n\n"
-        f"🔔 {bold('Recordatorios')}\n"
-        f"  /enviar\\_recordatorio — Recordatorio de reunión\n"
-        f"  /enviar\\_lectura — Recordatorio de lectura"
+        "🔐 Comandos de administrador\n\n"
+        "🔄 Ciclos\n"
+        "  /ciclo — Ver ciclo activo\n"
+        "  /nuevo_ciclo [nombre] — Crear nuevo ciclo\n"
+        "  /cerrar_ciclo — Cerrar ciclo actual\n\n"
+        "📣 Mensajes\n"
+        "  /anuncio <texto> — Enviar mensaje al grupo\n"
+        "  /anunciar_ganador — Anunciar libro ganador\n\n"
+        "🗳️ Encuestas\n"
+        "  /encuesta_libros — Lanzar encuesta de libros\n"
+        "  /encuesta_temas — Lanzar encuesta de temáticas\n\n"
+        "🔔 Recordatorios\n"
+        "  /enviar_recordatorio — Recordatorio de reunión\n"
+        "  /enviar_lectura — Recordatorio de lectura\n\n"
+        "📌 Fijar mensajes\n"
+        "  /fijar — Fija el recordatorio de reunión\n"
+        "  /desfijar — Desfija el mensaje actual"
     )
-    await update.message.reply_text(text, parse_mode="MarkdownV2")
+    await update.message.reply_text(text, parse_mode=None)
 
 
 async def ciclo_cmd(update, context):
@@ -822,6 +1074,65 @@ async def enviar_lectura_cmd(update, context):
     await update.message.reply_text("✅ Recordatorio de lectura enviado\\.", parse_mode="MarkdownV2")
 
 
+async def encuesta_libros_cmd(update, context):
+    """Admin: lanza encuesta de libros desde el chat."""
+    if not is_admin_user(update): return
+    try:
+        books = db.get_book_proposals()
+        if len(books) < 2:
+            await update.message.reply_text("❌ Necesitas al menos 2 propuestas.", parse_mode=None)
+            return
+        if not TELEGRAM_CHAT_ID:
+            await update.message.reply_text("❌ TELEGRAM_CHAT_ID no configurado.", parse_mode=None)
+            return
+        options = []
+        for b in books[:10]:
+            label = b["title"]
+            if b.get("author"):
+                label = f"{b['title']} — {b['author']}"
+            options.append(label[:100])
+        msg = await telegram_app.bot.send_poll(
+            chat_id=TELEGRAM_CHAT_ID,
+            question="📚 ¿Qué libro leemos este mes?",
+            options=options,
+            is_anonymous=False,
+            allows_multiple_answers=False,
+        )
+        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
+                     poll_id=msg.poll.id, poll_type="books")
+        await update.message.reply_text("✅ Encuesta de libros lanzada.", parse_mode=None)
+    except Exception:
+        logger.exception("Error en /encuesta_libros")
+        await update.message.reply_text("⚠️ Error lanzando la encuesta.", parse_mode=None)
+
+
+async def encuesta_temas_cmd(update, context):
+    """Admin: lanza encuesta de temáticas desde el chat."""
+    if not is_admin_user(update): return
+    try:
+        themes = db.get_themes()
+        if len(themes) < 2:
+            await update.message.reply_text("❌ Necesitas al menos 2 temáticas.", parse_mode=None)
+            return
+        if not TELEGRAM_CHAT_ID:
+            await update.message.reply_text("❌ TELEGRAM_CHAT_ID no configurado.", parse_mode=None)
+            return
+        options = [t["name"][:100] for t in themes[:10]]
+        msg = await telegram_app.bot.send_poll(
+            chat_id=TELEGRAM_CHAT_ID,
+            question="🏷️ ¿Qué temática elegimos para el próximo ciclo?",
+            options=options,
+            is_anonymous=False,
+            allows_multiple_answers=False,
+        )
+        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
+                     poll_id=msg.poll.id, poll_type="themes")
+        await update.message.reply_text("✅ Encuesta de temáticas lanzada.", parse_mode=None)
+    except Exception:
+        logger.exception("Error en /encuesta_temas")
+        await update.message.reply_text("⚠️ Error lanzando la encuesta.", parse_mode=None)
+
+
 # --------------------------------------------------
 # SCHEDULED REMINDERS
 # --------------------------------------------------
@@ -845,25 +1156,30 @@ async def send_meeting_reminder():
         except Exception:
             pass
 
-    fecha_str = esc(str(meeting["final_date"])) if meeting.get("final_date") else "_Sin fecha_"
-    names = "\n".join(f"  • {esc(a)}" for a in asistentes) if asistentes else "_Nadie apuntado todavía_"
+    fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+    names = "\n".join(f"  • {a}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
 
-    lines = [f"📅 {bold('Recordatorio semanal del club')}\n"]
-    lines.append(f"Reunión: {bold(meeting['name'])}")
+    lines = [f"📅 Recordatorio semanal del club\n"]
+    lines.append(f"Reunión: {meeting['name']}")
     lines.append(f"📆 Fecha: {fecha_str}")
+
+    if meeting.get("location"):
+        lines.append(f"📍 Lugar: {meeting['location']}")
+    if meeting.get("notes"):
+        lines.append(f"📝 {meeting['notes']}")
 
     if days_left is not None:
         if days_left > 0:
-            lines.append(f"⏳ Faltan {bold(str(days_left))} día{'s' if days_left != 1 else ''} para la reunión")
+            lines.append(f"⏳ Faltan {days_left} día{'s' if days_left != 1 else ''} para la reunión")
         elif days_left == 0:
-            lines.append(f"🔔 {bold('¡La reunión es HOY!')}")
+            lines.append(f"🔔 ¡La reunión es HOY!")
         else:
-            lines.append(f"🔒 La reunión ya pasó hace {bold(str(abs(days_left)))} días")
+            lines.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
 
     if winner and winner.get("title"):
-        lines.append(f"\n📗 Libro: {bold(winner['title'])}")
+        lines.append(f"\n📗 Libro: {winner['title']}")
         if winner.get("author"):
-            lines.append(f"   ✍️ {italic(winner['author'])}")
+            lines.append(f"   ✍️ {winner['author']}")
 
         pages = winner.get("pages")
         if pages and days_left and days_left > 0:
@@ -872,24 +1188,30 @@ async def send_meeting_reminder():
             pages_now  = int(pages * elapsed / total_days)
             daily_pace = max(1, int(pages / total_days))
             lines.append(
-                f"\n📊 {bold('Ritmo de lectura')}\n"
-                f"  Para estar al día deberías llevar unas "
-                f"{bold(str(pages_now))} páginas de {bold(str(pages))} en total ✨\n"
-                f"  _{esc(f'Son unos {daily_pace} páginas al día, ¡tú puedes!')}_"
+                f"\n📊 Ritmo de lectura\n"
+                f"  Para estar al día deberías llevar unas {pages_now} páginas de {pages} en total ✨\n"
+                f"  (Son unos {daily_pace} páginas al día, ¡tú puedes!)"
             )
-        # Progreso del grupo
         progress_list = db.get_reading_progress(winner["id"])
         if progress_list and pages:
-            lines.append(f"\n📖 {bold('Progreso del grupo')}")
+            lines.append(f"\n📖 Progreso del grupo")
             for p in progress_list[:5]:
                 pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
-                bar = "█" * int(pct/10) + "░" * (10 - int(pct/10))
-                lines.append(f"  • {esc(p['user_name'])}: {bold(str(p['pages_read']))} págs \\({pct}%\\)")
+                lines.append(f"  • {p['user_name']}: {p['pages_read']} págs ({pct}%)")
 
-    lines.append(f"\n👥 Apuntados \\({bold(str(len(asistentes)))}\\):\n{names}")
-    lines.append(f"\n_¿Aún no te has apuntado? Usa /asistir 📖_")
+    lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
+    lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📖")
 
-    await send_to_group("\n".join(lines))
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        ]
+    ]
+    if meeting.get("book_id"):
+        keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
+
+    await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def send_reading_reminder():
@@ -898,18 +1220,24 @@ async def send_reading_reminder():
     meeting = db.get_latest_scheduled_meeting()
     if not winner:
         return
-    fecha  = esc(str(meeting["final_date"])) if meeting and meeting.get("final_date") else "_Sin fecha_"
-    reunion_name = italic(meeting["name"]) if meeting else "_Sin reunión_"
-    author = f"\n✍️ _{esc(winner['author'])}_" if winner.get("author") else ""
+    fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
+    reunion_name = meeting["name"] if meeting else "Sin reunión"
+    author_line = f"\n✍️ {winner['author']}" if winner.get("author") else ""
     text = (
-        f"📖 {bold('Recordatorio de lectura')}\n\n"
+        f"📖 Recordatorio de lectura\n\n"
         f"El libro del ciclo es:\n"
-        f"📗 {bold(winner['title'])}{author}\n\n"
+        f"📗 {winner['title']}{author_line}\n\n"
         f"📅 Reunión: {reunion_name}\n"
         f"📆 Fecha: {fecha}\n\n"
-        f"_¡A leer se ha dicho\\! 🚀_"
+        f"¡A leer se ha dicho! 🚀"
     )
-    await send_to_group(text)
+    keyboard = []
+    if meeting:
+        keyboard.append([
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        ])
+    await send_to_group(text, parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None)
 
 
 # --------------------------------------------------
@@ -930,20 +1258,40 @@ async def send_day_before_reminder():
     winner = db.get_winner_book()
     asistentes = db.get_attendance(meeting["id"])
     if days_left == 1:
-        header = f"🔔 {bold('¡La reunión es MAÑANA!')}"
+        header = f"🔔 ¡La reunión es MAÑANA!"
     else:
-        header = f"🚨 {bold('¡La reunión es HOY!')}"
+        header = f"🚨 ¡La reunión es HOY!"
     lines = [
         header + "\n",
-        f"📅 {bold(meeting['name'])}",
-        f"🗓️ {esc(str(final_dt)[:16])}",
+        f"📅 {meeting['name']}",
+        f"🗓️ {str(final_dt)[:16]}",
     ]
+    if meeting.get("location"):
+        lines.append(f"📍 {meeting['location']}")
     if winner:
-        lines.append(f"📗 Libro: {bold(winner['title'])}")
-    names = "\n".join(f"  ✅ {esc(a)}" for a in asistentes) if asistentes else "_Nadie apuntado_"
-    lines.append(f"\n👥 Apuntados \\({bold(str(len(asistentes)))}\\):\n{names}")
-    lines.append(f"\n_¿Aún no te has apuntado? Usa /asistir 📚_")
-    await send_to_group("\n".join(lines))
+        lines.append(f"📗 Libro: {winner['title']}")
+    names = "\n".join(f"  ✅ {a}" for a in asistentes) if asistentes else "Nadie apuntado"
+    lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
+    lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📚")
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        ]
+    ]
+    await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def send_scheduled_messages():
+    """Envía mensajes programados pendientes."""
+    try:
+        pending = db.get_pending_scheduled_messages()
+        for msg in pending:
+            await send_to_group(msg["text"], parse_mode=None, message_type="scheduled")
+            db.mark_scheduled_message_sent(msg["id"])
+            logger.info("Mensaje programado #%s enviado", msg["id"])
+    except Exception:
+        logger.exception("Error en send_scheduled_messages")
 
 
 # --------------------------------------------------
@@ -991,6 +1339,90 @@ async def handle_my_chat_member(update, context):
             logger.exception("Error enviando bienvenida al grupo")
 
 
+async def fijar_cmd(update, context):
+    """Admin: fija el recordatorio de reunión."""
+    if not is_admin_user(update): return
+    meeting = db.get_latest_scheduled_meeting()
+    if not meeting:
+        await update.message.reply_text("📭 No hay reunión activa.", parse_mode=None)
+        return
+    asistentes = db.get_attendance(meeting["id"])
+    fecha = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+    lines = [
+        f"📌 REUNIÓN — {meeting['name']}\n",
+        f"📆 {fecha}",
+    ]
+    if meeting.get("location"):
+        lines.append(f"📍 {meeting['location']}")
+    winner = db.get_winner_book()
+    if winner:
+        lines.append(f"📗 {winner['title']}")
+    lines.append(f"👥 Apuntados: {len(asistentes)}")
+    lines.append("\nUsa /asistir para apuntarte · /noasistir para quitarte")
+    keyboard = [[
+        InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+        InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+    ]]
+    ok = await send_and_pin("\n".join(lines), reply_markup=InlineKeyboardMarkup(keyboard))
+    if ok:
+        await update.message.reply_text("📌 Mensaje fijado en el grupo.", parse_mode=None)
+    else:
+        await update.message.reply_text("❌ Error enviando el mensaje.", parse_mode=None)
+
+
+async def desfijar_cmd(update, context):
+    """Admin: desfija el mensaje actual."""
+    if not is_admin_user(update): return
+    await unpin_group_message()
+    await update.message.reply_text("📌 Mensaje desfijado.", parse_mode=None)
+
+
+async def preguntas_cmd(update, context):
+    """Genera preguntas de debate para el libro actual."""
+    if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "preguntas", 60):
+        await update.message.reply_text("⏳ Espera un momento antes de generar más preguntas.", parse_mode=None)
+        return
+    try:
+        winner = db.get_winner_book()
+        if not winner:
+            await update.message.reply_text("📭 No hay libro del ciclo activo.", parse_mode=None)
+            return
+        wait = await update.message.reply_text("🤔 Generando preguntas de debate...", parse_mode=None)
+        questions = ai_features.generate_discussion_questions(winner["title"], winner.get("author", ""))
+        await wait.delete()
+        await update.message.reply_text(
+            f"💬 Preguntas de debate — {winner['title']}\n\n{questions}",
+            parse_mode=None
+        )
+    except Exception:
+        logger.exception("Error en /preguntas")
+        await update.message.reply_text("⚠️ Error generando preguntas.", parse_mode=None)
+
+
+async def cita_cmd(update, context):
+    """Genera una cita literaria relacionada con el libro actual."""
+    if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "cita", 30):
+        await update.message.reply_text("⏳ Espera un momento.", parse_mode=None)
+        return
+    try:
+        winner = db.get_winner_book()
+        if not winner:
+            await update.message.reply_text("📭 No hay libro del ciclo activo.", parse_mode=None)
+            return
+        wait = await update.message.reply_text("✨ Buscando cita...", parse_mode=None)
+        quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
+        await wait.delete()
+        await update.message.reply_text(
+            f"✨ {quote}\n\n— Sobre «{winner['title']}»",
+            parse_mode=None
+        )
+    except Exception:
+        logger.exception("Error en /cita")
+        await update.message.reply_text("⚠️ Error generando cita.", parse_mode=None)
+
+
 # --------------------------------------------------
 # REGISTER HANDLERS
 # --------------------------------------------------
@@ -1011,7 +1443,6 @@ telegram_app.add_handler(CommandHandler("trivia",     trivia_cmd))
 telegram_app.add_handler(CommandHandler("recomendar", recomendar))
 telegram_app.add_handler(CommandHandler("libro",            libro_cmd))
 telegram_app.add_handler(CommandHandler("acta",             acta_cmd))
-telegram_app.add_handler(CommandHandler("calificar",        calificar_cmd))
 telegram_app.add_handler(CommandHandler("progreso",         progreso_cmd))
 telegram_app.add_handler(CommandHandler("estadisticas",     estadisticas_cmd))
 telegram_app.add_handler(CommandHandler("admin_ayuda",      admin_ayuda_cmd))
@@ -1022,6 +1453,13 @@ telegram_app.add_handler(CommandHandler("anuncio",          anuncio_cmd))
 telegram_app.add_handler(CommandHandler("anunciar_ganador", anunciar_ganador_cmd))
 telegram_app.add_handler(CommandHandler("enviar_recordatorio", enviar_recordatorio_cmd))
 telegram_app.add_handler(CommandHandler("enviar_lectura",   enviar_lectura_cmd))
+telegram_app.add_handler(CommandHandler("ayuda",            ayuda_cmd))
+telegram_app.add_handler(CommandHandler("encuesta_libros",  encuesta_libros_cmd))
+telegram_app.add_handler(CommandHandler("encuesta_temas",   encuesta_temas_cmd))
+telegram_app.add_handler(CommandHandler("fijar",            fijar_cmd))
+telegram_app.add_handler(CommandHandler("desfijar",         desfijar_cmd))
+telegram_app.add_handler(CommandHandler("preguntas",        preguntas_cmd))
+telegram_app.add_handler(CommandHandler("cita",             cita_cmd))
 telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
@@ -1320,7 +1758,10 @@ def meeting_edit_admin(meeting_id):
     final_date = request.form.get("final_date", "").strip() or None
     summary    = request.form.get("summary", "").strip() or None
     status     = request.form.get("status", "").strip() or None
-    db.update_meeting(meeting_id=meeting_id, name=name or None, final_date=final_date, summary=summary, status=status)
+    location   = request.form.get("location", "").strip() or None
+    notes      = request.form.get("notes", "").strip() or None
+    db.update_meeting(meeting_id=meeting_id, name=name or None, final_date=final_date,
+                      summary=summary, status=status, location=location, notes=notes)
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
 @flask_app.post("/meeting/<int:meeting_id>/delete")
@@ -1356,10 +1797,13 @@ def create_meeting():
     if auth: return auth
     name         = request.form.get("meeting_name", "").strip()
     meeting_date = request.form.get("meeting_date", "").strip() or None
+    location     = request.form.get("location", "").strip() or None
     if not name:
         return "Falta el nombre", 400
     try:
-        db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
+        m = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
+        if location:
+            db.update_meeting(meeting_id=m["id"], location=location)
         return redirect(url_for("admin_dashboard"))
     except Exception:
         logger.exception("Error creando reunión")
@@ -1450,6 +1894,18 @@ async def admin_send_reading_reminder():
         await send_reading_reminder()
     except Exception:
         logger.exception("Error enviando recordatorio de lectura manual")
+    return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/send/meeting-info")
+async def admin_send_meeting_info():
+    auth = require_admin()
+    if auth: return auth
+    try:
+        await send_meeting_reminder()
+        flash("Información de reunión enviada al grupo", "success")
+    except Exception:
+        logger.exception("Error enviando info de reunión")
+        flash("Error enviando la información", "danger")
     return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
@@ -1556,6 +2012,179 @@ async def admin_send_custom():
     return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
+# FLASK — MESSAGE TEMPLATES (admin)
+# --------------------------------------------------
+
+@flask_app.get("/admin/messages")
+def admin_messages():
+    auth = require_admin()
+    if auth: return auth
+    templates_db = db.get_all_message_templates()
+    # Merge defaults with DB overrides
+    templates_db_dict = {t["key"]: t for t in templates_db}
+    templates = []
+    for key, default_value in DEFAULT_MESSAGES.items():
+        if key in templates_db_dict:
+            templates.append({
+                "key": key,
+                "value": templates_db_dict[key]["value"],
+                "updated_at": templates_db_dict[key]["updated_at"],
+                "is_custom": True,
+                "default_value": default_value,
+            })
+        else:
+            templates.append({
+                "key": key,
+                "value": default_value,
+                "updated_at": None,
+                "is_custom": False,
+                "default_value": default_value,
+            })
+    return render_template("admin_messages.html", templates=templates)
+
+@flask_app.post("/admin/messages/<key>/edit")
+def admin_message_edit(key):
+    auth = require_admin()
+    if auth: return auth
+    if key not in DEFAULT_MESSAGES:
+        return "Clave no válida", 400
+    value = request.form.get("value", "").strip()
+    if value:
+        db.set_message_template(key, value)
+        flash("Mensaje actualizado", "success")
+    return redirect(url_for("admin_messages"))
+
+@flask_app.post("/admin/messages/<key>/reset")
+def admin_message_reset(key):
+    auth = require_admin()
+    if auth: return auth
+    db.delete_message_template(key)
+    flash("Mensaje restablecido al valor por defecto", "success")
+    return redirect(url_for("admin_messages"))
+
+@flask_app.post("/admin/messages/preview")
+def admin_message_preview():
+    auth = require_admin()
+    if auth: return auth
+    from flask import jsonify
+    template = request.form.get("template", "")
+    example_vars = {
+        "user_name": "María García",
+        "book_title": "El nombre del viento",
+        "author": "Patrick Rothfuss",
+        "meeting_name": "Reunión de Abril",
+        "meeting_date": "2026-04-15 19:00",
+        "location": "Casa de Ana",
+        "attendee_count": "7",
+        "count": "7",
+        "names": "María, Carlos, Ana",
+        "location_line": "📍 Casa de Ana\n",
+        "author_line": "✍️ Patrick Rothfuss\n",
+    }
+    try:
+        rendered = template.format(**example_vars)
+    except (KeyError, ValueError):
+        rendered = template
+    return jsonify({"rendered": rendered})
+
+# --------------------------------------------------
+# FLASK — SENT MESSAGES HISTORY
+# --------------------------------------------------
+
+@flask_app.get("/admin/sent-messages")
+def admin_sent_messages():
+    auth = require_admin()
+    if auth: return auth
+    messages = db.get_sent_messages(limit=50)
+    return render_template("admin_sent_messages.html", messages=messages)
+
+# --------------------------------------------------
+# FLASK — MESSAGE SCHEDULER
+# --------------------------------------------------
+
+@flask_app.get("/admin/scheduler")
+def admin_scheduler():
+    auth = require_admin()
+    if auth: return auth
+    scheduled = db.get_all_scheduled_messages()
+    return render_template("admin_scheduler.html", scheduled=scheduled)
+
+@flask_app.post("/admin/scheduler/add")
+def admin_scheduler_add():
+    auth = require_admin()
+    if auth: return auth
+    text = request.form.get("text", "").strip()
+    send_at = request.form.get("send_at", "").strip()
+    if not text or not send_at:
+        flash("Texto y fecha son obligatorios", "danger")
+        return redirect(url_for("admin_scheduler"))
+    try:
+        db.schedule_message(text, send_at)
+        flash("Mensaje programado correctamente", "success")
+    except Exception:
+        logger.exception("Error programando mensaje")
+        flash("Error programando el mensaje", "danger")
+    return redirect(url_for("admin_scheduler"))
+
+@flask_app.post("/admin/scheduler/<int:msg_id>/delete")
+def admin_scheduler_delete(msg_id):
+    auth = require_admin()
+    if auth: return auth
+    db.delete_scheduled_message(msg_id)
+    flash("Mensaje eliminado", "success")
+    return redirect(url_for("admin_scheduler"))
+
+# --------------------------------------------------
+# FLASK — AI FEATURES
+# --------------------------------------------------
+
+@flask_app.post("/admin/ai/questions")
+async def admin_ai_questions():
+    auth = require_admin()
+    if auth: return auth
+    winner = db.get_winner_book()
+    if not winner:
+        flash("No hay libro del ciclo activo", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        questions = ai_features.generate_discussion_questions(winner["title"], winner.get("author", ""))
+        text = f"💬 Preguntas de debate — {winner['title']}\n\n{questions}"
+        await send_to_group(text, parse_mode=None, message_type="ai_questions")
+        flash("Preguntas de debate enviadas al grupo", "success")
+    except Exception:
+        logger.exception("Error generando preguntas AI")
+        flash("Error generando preguntas", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/ai/quote")
+async def admin_ai_quote():
+    auth = require_admin()
+    if auth: return auth
+    winner = db.get_winner_book()
+    if not winner:
+        flash("No hay libro del ciclo activo", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
+        text = f"✨ {quote}\n\n— Sobre «{winner['title']}»"
+        await send_to_group(text, parse_mode=None, message_type="ai_quote")
+        flash("Cita enviada al grupo", "success")
+    except Exception:
+        logger.exception("Error generando cita AI")
+        flash("Error generando cita", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — ADMIN HELP
+# --------------------------------------------------
+
+@flask_app.get("/admin/help")
+def admin_help():
+    auth = require_admin()
+    if auth: return auth
+    return render_template("admin_help.html")
+
+# --------------------------------------------------
 # FLASK — CYCLE MANAGEMENT (admin)
 # --------------------------------------------------
 
@@ -1649,6 +2278,11 @@ async def startup():
         send_day_before_reminder, "cron",
         hour=10, minute=0,
         id="day_before_reminder", replace_existing=True
+    )
+    # Mensajes programados — cada 5 minutos
+    scheduler.add_job(
+        send_scheduled_messages, "interval",
+        minutes=5, id="scheduled_messages", replace_existing=True
     )
     scheduler.start()
 

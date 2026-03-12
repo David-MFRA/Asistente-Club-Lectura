@@ -8,6 +8,8 @@ import trivia
 import recommendations
 import db
 
+db.init_db()
+
 TOKEN = os.getenv("BOT_TOKEN")
 
 telegram_app = ApplicationBuilder().token(TOKEN).build()
@@ -27,8 +29,11 @@ BOT CLUB LECTURA
 """)
 
 async def proponer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     title = " ".join(context.args)
+
+    if not title:
+        await update.message.reply_text("Usa /proponer titulo")
+        return
 
     book = books_api.google_books(title)
 
@@ -36,7 +41,8 @@ async def proponer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Libro no encontrado")
         return
 
-    db.insert_book(book)
+    user = update.effective_user.first_name or "telegram"
+    db.insert_book(book, user)
 
     await update.message.reply_text(f"Libro añadido: {book['title']}")
 

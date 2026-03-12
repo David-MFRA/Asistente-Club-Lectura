@@ -35,8 +35,10 @@
         .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
         .btn-soft:hover{background:var(--panel-2)}
         .btn-danger{background:rgba(239,68,68,.14);color:#fecaca;border:1px solid rgba(239,68,68,.28)}
+        .btn-warning{background:rgba(245,158,11,.14);color:#fde68a;border:1px solid rgba(245,158,11,.28)}
         .btn-success{background:rgba(16,185,129,.14);color:#d1fae5;border:1px solid rgba(16,185,129,.28)}
         .btn-sm{padding:7px 11px;font-size:.82rem;border-radius:10px}
+        .btn:hover{transform:translateY(-1px)}
         .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
         .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--shadow);padding:18px}
         .card-sub{color:var(--muted);margin:0 0 14px;font-size:.88rem}
@@ -45,6 +47,7 @@
         input,textarea,select{width:100%;padding:12px 13px;border-radius:13px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text);outline:none;font-size:.92rem;transition:.2s ease}
         input:focus,textarea:focus,select:focus{border-color:rgba(99,102,241,.65);box-shadow:0 0 0 4px rgba(99,102,241,.18)}
         input::placeholder{color:rgba(255,255,255,.35)}
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.7;cursor:pointer}
         .table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.08)}
         table{width:100%;border-collapse:collapse;min-width:640px}
         th,td{padding:13px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
@@ -73,12 +76,23 @@
         .poll-box-title{font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
         .poll-box p{color:var(--muted);font-size:.87rem;margin:0 0 12px}
         .divider{height:1px;background:rgba(255,255,255,.08);margin:14px 0}
+        .theme-item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+        .theme-name-text{font-weight:700;font-size:.95rem}
+        .theme-votes{color:var(--muted);font-size:.85rem;margin-top:2px}
+        .theme-actions-row{display:flex;gap:6px;align-items:center;flex-shrink:0}
+        .inline-edit{display:none;gap:8px;align-items:center;flex:1}
+        .inline-edit input{margin:0;padding:8px 10px;font-size:.88rem}
+        .reminder-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .reminder-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;text-align:center}
+        .reminder-icon{font-size:2rem;margin-bottom:8px}
+        .reminder-title{font-weight:800;margin-bottom:4px}
+        .reminder-desc{color:var(--muted);font-size:.84rem;margin-bottom:12px}
         .mobile-nav{position:sticky;bottom:12px;margin-top:18px;display:flex;gap:10px;overflow:auto;padding-bottom:4px}
         .chip{white-space:nowrap;padding:9px 13px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);color:var(--text);text-decoration:none;font-size:.86rem}
         @media(min-width:860px){
             .stats-card{grid-column:span 4}.quick-card{grid-column:span 4}.meeting-card{grid-column:span 4}.books-card{grid-column:span 12}.polls-card{grid-column:span 6}.themes-poll-card{grid-column:span 6}
         }
-        @media(max-width:859px){.stats{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}}
+        @media(max-width:859px){.stats{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}.reminder-grid{grid-template-columns:1fr}}
         @media(max-width:520px){body{padding:12px}h1{font-size:1.25rem}.stats{grid-template-columns:1fr}.top-actions{width:100%}.top-actions a{flex:1}}
     </style>
 </head>
@@ -89,13 +103,15 @@
             <div class="brand-badge">📚</div>
             <div>
                 <h1>Panel de administración</h1>
-                <div class="subtitle">Gestiona libros, encuestas y reuniones del club</div>
+                <div class="subtitle">Gestiona libros, encuestas, temáticas y reuniones</div>
             </div>
         </div>
         <div class="top-actions">
-            <a class="btn btn-soft" href="/export">Exportar CSV</a>
+            <a class="btn btn-soft" href="/export">CSV</a>
             <a class="btn btn-soft" href="/meetings">Reuniones</a>
             <a class="btn btn-soft" href="/themes">Temáticas</a>
+            <a class="btn btn-soft" href="/admin/db">Base de datos</a>
+            <a class="btn btn-soft" href="/admin/historico">Histórico</a>
             <a class="btn btn-primary" href="/admin/logout">Salir</a>
         </div>
     </div>
@@ -125,20 +141,20 @@
             <h2>Acciones rápidas</h2>
             <p class="card-sub">Accesos frecuentes</p>
             <div class="actions">
-                <a class="action-card" href="/export">
-                    <div class="action-icon">📤</div>
-                    <div class="action-title">Exportar CSV</div>
-                    <div class="action-text">Descarga propuestas y votos</div>
+                <a class="action-card" href="/admin/db">
+                    <div class="action-icon">🗄️</div>
+                    <div class="action-title">Base de datos</div>
+                    <div class="action-text">Ver, borrar y vaciar tablas</div>
+                </a>
+                <a class="action-card" href="/admin/historico">
+                    <div class="action-icon">📜</div>
+                    <div class="action-title">Histórico</div>
+                    <div class="action-text">Ciclos y encuestas anteriores</div>
                 </a>
                 <a class="action-card" href="/ranking">
                     <div class="action-icon">🏆</div>
                     <div class="action-title">Ranking</div>
                     <div class="action-text">Valoraciones históricas</div>
-                </a>
-                <a class="action-card" href="/attendance">
-                    <div class="action-icon">👥</div>
-                    <div class="action-title">Asistencia</div>
-                    <div class="action-text">Asistentes de la última reunión</div>
                 </a>
                 <a class="action-card" href="/meetings">
                     <div class="action-icon">📅</div>
@@ -159,10 +175,34 @@
                 </div>
                 <div class="field">
                     <label for="meeting_date">Fecha y hora (opcional)</label>
-                    <input id="meeting_date" name="meeting_date" type="text" placeholder="2026-04-25 19:00">
+                    <input id="meeting_date" name="meeting_date" type="datetime-local">
                 </div>
                 <button class="btn btn-primary" type="submit">Crear reunión</button>
             </form>
+        </section>
+
+        <!-- RECORDATORIOS MANUALES -->
+        <section class="card" style="grid-column:span 12">
+            <h2>📣 Enviar recordatorios ahora</h2>
+            <p class="card-sub">Manda los recordatorios al grupo de Telegram en este momento, sin esperar al scheduler automático.</p>
+            <div class="reminder-grid">
+                <div class="reminder-card">
+                    <div class="reminder-icon">📅</div>
+                    <div class="reminder-title">Recordatorio de reunión</div>
+                    <div class="reminder-desc">Envía al grupo: días restantes, libro del ciclo, ritmo de páginas y lista de asistentes.</div>
+                    <form action="/admin/send/meeting-reminder" method="post">
+                        <button class="btn btn-primary" type="submit">📨 Enviar ahora</button>
+                    </form>
+                </div>
+                <div class="reminder-card">
+                    <div class="reminder-icon">📖</div>
+                    <div class="reminder-title">Recordatorio de lectura</div>
+                    <div class="reminder-desc">Envía al grupo un recordatorio con el libro del ciclo y la fecha de reunión.</div>
+                    <form action="/admin/send/reading-reminder" method="post">
+                        <button class="btn btn-warning" type="submit">📨 Enviar ahora</button>
+                    </form>
+                </div>
+            </div>
         </section>
 
         <!-- ENCUESTA LIBROS -->
@@ -181,7 +221,7 @@
             {% else %}
                 {% if books|length >= 2 %}
                     <p style="color:var(--muted);font-size:.88rem;margin:0 0 12px">
-                        Se enviarán {{ books|length }} opciones al grupo de Telegram. Solo se puede tener una encuesta abierta a la vez.
+                        Se enviarán {{ books|length }} opciones al grupo de Telegram.
                     </p>
                     <form action="/admin/encuesta/libros/crear" method="post">
                         <button class="btn btn-primary" type="submit">📨 Lanzar encuesta en Telegram</button>
@@ -214,8 +254,49 @@
                         <button class="btn btn-primary" type="submit">📨 Lanzar encuesta de temáticas</button>
                     </form>
                 {% else %}
-                    <div class="empty">Necesitas al menos 2 temáticas. Los miembros las añaden con /tema en el bot.</div>
+                    <div class="empty">Necesitas al menos 2 temáticas. Añádelas desde el gestor de temáticas abajo o con /tema en el bot.</div>
                 {% endif %}
+            {% endif %}
+        </section>
+
+        <!-- GESTIÓN DE TEMÁTICAS -->
+        <section class="card" style="grid-column:span 12">
+            <h2>🏷️ Gestionar temáticas del ciclo</h2>
+            <p class="card-sub">Añade, edita o elimina temáticas del ciclo actual directamente desde aquí.</p>
+
+            <form action="/admin/theme/add" method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+                <div class="field" style="flex:1;min-width:200px;margin:0">
+                    <label>Nueva temática</label>
+                    <input name="name" type="text" placeholder="Ej. Ciencia ficción, Clásicos, Terror…" required>
+                </div>
+                <button class="btn btn-success" type="submit">➕ Añadir temática</button>
+            </form>
+
+            {% if themes %}
+                {% for t in themes %}
+                <div class="theme-item" id="theme-row-{{ t.id }}">
+                    <div style="flex:1">
+                        <div class="theme-name-text" id="theme-name-display-{{ t.id }}">{{ t.name }}</div>
+                        <div class="theme-votes">🗳️ {{ t.votes }} voto{{ 's' if t.votes != 1 else '' }}</div>
+                    </div>
+                    <div class="inline-edit" id="theme-edit-form-{{ t.id }}">
+                        <form action="/admin/theme/{{ t.id }}/edit" method="post" style="display:flex;gap:8px;align-items:center;flex:1">
+                            <input name="name" type="text" value="{{ t.name }}" style="margin:0;padding:8px 10px;font-size:.88rem" required>
+                            <button class="btn btn-success btn-sm" type="submit">✓</button>
+                            <button class="btn btn-soft btn-sm" type="button" onclick="toggleEdit({{ t.id }})">✕</button>
+                        </form>
+                    </div>
+                    <div class="theme-actions-row" id="theme-btns-{{ t.id }}">
+                        <button class="btn btn-soft btn-sm" type="button" onclick="toggleEdit({{ t.id }})">✏️ Editar</button>
+                        <form action="/admin/theme/{{ t.id }}/delete" method="post"
+                              onsubmit="return confirm('¿Borrar la temática «{{ t.name }}»?')">
+                            <button class="btn btn-danger btn-sm" type="submit">🗑</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty">No hay temáticas en el ciclo actual. Añade una arriba o usa /tema en Telegram.</div>
             {% endif %}
         </section>
 
@@ -298,10 +379,31 @@
         <a class="chip" href="/meetings">Reuniones</a>
         <a class="chip" href="/themes">Temáticas</a>
         <a class="chip" href="/ranking">Ranking</a>
+        <a class="chip" href="/admin/db">Base de datos</a>
+        <a class="chip" href="/admin/historico">Histórico</a>
         <a class="chip" href="/export">Exportar</a>
         <a class="chip" href="/attendance">Asistencia</a>
         <a class="chip" href="/admin/logout">Salir</a>
     </div>
 </div>
+
+<script>
+function toggleEdit(id) {
+    const display = document.getElementById('theme-name-display-' + id);
+    const form    = document.getElementById('theme-edit-form-' + id);
+    const btns    = document.getElementById('theme-btns-' + id);
+    const isEditing = form.style.display === 'flex';
+    if (isEditing) {
+        form.style.display = 'none';
+        display.style.display = '';
+        btns.style.display = 'flex';
+    } else {
+        form.style.display = 'flex';
+        display.style.display = 'none';
+        btns.style.display = 'none';
+        form.querySelector('input').focus();
+    }
+}
+</script>
 </body>
 </html>

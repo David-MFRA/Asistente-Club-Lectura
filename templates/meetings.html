@@ -234,6 +234,10 @@
             box-shadow:0 0 0 4px rgba(99,102,241,.16);
         }
 
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator{
+            filter:invert(1);opacity:.7;cursor:pointer;
+        }
+
         .empty{
             text-align:center;
             padding:18px;
@@ -285,7 +289,7 @@
 
                 <div class="field">
                     <label for="meeting_date">Fecha y hora</label>
-                    <input id="meeting_date" name="meeting_date" type="text" placeholder="2026-03-28 19:00" required>
+                    <input id="meeting_date" name="meeting_date" type="datetime-local">
                 </div>
 
                 <button class="btn btn-primary" type="submit">Crear reunión</button>

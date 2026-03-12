@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"import main\" 2>&1 | head -40)"
+    ]
+  }
+}

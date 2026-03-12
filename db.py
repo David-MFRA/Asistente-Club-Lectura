@@ -583,3 +583,113 @@ def get_poll_by_id(poll_db_id):
 def close_poll(poll_db_id):
     with get_cursor(commit=True) as cur:
         cur.execute("UPDATE telegram_polls SET is_closed=TRUE WHERE id=%s", (poll_db_id,))
+
+
+# =========================================================
+# THEMES MANAGEMENT (admin)
+# =========================================================
+
+def delete_theme(theme_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM themes WHERE id = %s", (theme_id,))
+
+
+def update_theme(theme_id, name):
+    with get_cursor(commit=True) as cur:
+        cur.execute("UPDATE themes SET name = %s WHERE id = %s", (name.strip(), theme_id))
+
+
+# =========================================================
+# HISTORICAL DATA (all cycles)
+# =========================================================
+
+def get_all_books_history():
+    """All book proposals across all cycles, newest first."""
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT bp.id AS proposal_id, bp.cycle_key, b.id AS book_id,
+               b.title, b.author, b.cover, b.pages, bp.proposed_by,
+               COUNT(bv.id)::int AS votes
+        FROM book_proposals bp
+        JOIN books b ON b.id = bp.book_id
+        LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
+        GROUP BY bp.id, bp.cycle_key, b.id, b.title, b.author, b.cover, b.pages, bp.proposed_by
+        ORDER BY bp.cycle_key DESC, votes DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_themes_history():
+    """All themes across all cycles."""
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT t.id, t.name, t.cycle_key, t.created_by, t.is_active,
+               COUNT(tv.id)::int AS votes
+        FROM themes t
+        LEFT JOIN theme_votes tv ON tv.theme_id = t.id
+        GROUP BY t.id, t.name, t.cycle_key, t.created_by, t.is_active
+        ORDER BY t.cycle_key DESC, votes DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_polls_history():
+    """All Telegram polls across all cycles."""
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM telegram_polls ORDER BY created_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_meetings_history():
+    """All meetings with attendee count."""
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT m.*, b.title AS book_title,
+               (SELECT COUNT(*)::int FROM meeting_attendance ma WHERE ma.meeting_id = m.id) AS attendee_count
+        FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        ORDER BY COALESCE(m.final_date, m.created_at) DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# DB VIEWER (admin — whitelisted tables only)
+# =========================================================
+
+ALLOWED_TABLES = [
+    "books", "book_proposals", "book_votes",
+    "themes", "theme_votes",
+    "meetings", "meeting_date_options", "meeting_date_votes",
+    "meeting_attendance", "book_ratings", "telegram_polls",
+]
+
+
+def get_table_names():
+    return list(ALLOWED_TABLES)
+
+
+def get_table_rows(table_name, limit=200):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    with get_cursor() as cur:
+        cur.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT %s", (limit,))
+        rows = cur.fetchall()
+        if not rows:
+            return [], []
+        cols = list(rows[0].keys())
+        return cols, [list(r.values()) for r in rows]
+
+
+def delete_table_row(table_name, row_id):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    with get_cursor(commit=True) as cur:
+        cur.execute(f"DELETE FROM {table_name} WHERE id = %s", (row_id,))
+
+
+def truncate_table(table_name):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    with get_cursor(commit=True) as cur:
+        cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")

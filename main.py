@@ -9,7 +9,7 @@ from asgiref.wsgi import WsgiToAsgi
 import uvicorn
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -67,6 +67,17 @@ def esc(text):
 def bold(text):   return f"*{esc(text)}*"
 def italic(text): return f"_{esc(text)}_"
 def code(text):   return f"`{esc(text)}`"
+
+# --------------------------------------------------
+# JINJA FILTER — datetime-local format
+# --------------------------------------------------
+
+@flask_app.template_filter('dt_local')
+def dt_local_filter(value):
+    """Convierte datetime a formato YYYY-MM-DDTHH:MM para input datetime-local."""
+    if not value:
+        return ''
+    return str(value).replace(' ', 'T')[:16]
 
 # --------------------------------------------------
 # AUTH HELPERS
@@ -572,6 +583,51 @@ async def send_reading_reminder():
 
 
 # --------------------------------------------------
+# BOT ADDED TO NEW CHAT
+# --------------------------------------------------
+
+async def handle_my_chat_member(update, context):
+    """Se activa cuando el bot entra o sale de un grupo."""
+    result = update.my_chat_member
+    if not result:
+        return
+    new_status = result.new_chat_member.status
+    chat = result.chat
+    if new_status not in ("member", "administrator"):
+        return
+
+    if ALLOWED_CHAT_ID and str(chat.id) != str(ALLOWED_CHAT_ID):
+        # Chat no autorizado — avisar y no hacer nada más
+        try:
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=(
+                    "👋 Hola! Soy el bot del *Club de Lectura*\\.\n\n"
+                    "⚠️ Estoy configurado para operar en un grupo específico\\. "
+                    "Mis comandos de gestión solo funcionarán allí\\.\n\n"
+                    "_Para activarme aquí, configura la variable `ALLOWED_CHAT_ID` "
+                    f"con el ID de este chat: `{chat.id}`_"
+                ),
+                parse_mode="MarkdownV2"
+            )
+        except Exception:
+            logger.exception("Error enviando aviso a chat no autorizado")
+    else:
+        # Chat autorizado o sin restricción — bienvenida
+        try:
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=(
+                    f"📚 {bold('¡Hola!')} Soy el bot del Club de Lectura\\.\n\n"
+                    f"Usa /start para ver todos los comandos disponibles\\. 🚀"
+                ),
+                parse_mode="MarkdownV2"
+            )
+        except Exception:
+            logger.exception("Error enviando bienvenida al grupo")
+
+
+# --------------------------------------------------
 # REGISTER HANDLERS
 # --------------------------------------------------
 
@@ -589,6 +645,7 @@ telegram_app.add_handler(CommandHandler("temas",      temas))
 telegram_app.add_handler(CommandHandler("votar_tema", votar_tema))
 telegram_app.add_handler(CommandHandler("trivia",     trivia_cmd))
 telegram_app.add_handler(CommandHandler("recomendar", recomendar))
+telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 
 # --------------------------------------------------
 # FLASK — AUTH
@@ -957,6 +1014,118 @@ def attendance():
         return render_template("attendance.html", meeting=None, attendees=[])
     attendees = db.get_attendance(latest_meeting["id"])
     return render_template("attendance.html", meeting=latest_meeting, attendees=attendees)
+
+# --------------------------------------------------
+# FLASK — TEMÁTICAS (admin CRUD)
+# --------------------------------------------------
+
+@flask_app.post("/admin/theme/add")
+def admin_theme_add():
+    auth = require_admin()
+    if auth: return auth
+    name = request.form.get("name", "").strip()
+    if name:
+        db.create_theme(name, created_by="admin")
+    return redirect(url_for("themes_admin"))
+
+@flask_app.post("/admin/theme/<int:theme_id>/edit")
+def admin_theme_edit(theme_id):
+    auth = require_admin()
+    if auth: return auth
+    name = request.form.get("name", "").strip()
+    if name:
+        db.update_theme(theme_id, name)
+    return redirect(url_for("themes_admin"))
+
+@flask_app.post("/admin/theme/<int:theme_id>/delete")
+def admin_theme_delete(theme_id):
+    auth = require_admin()
+    if auth: return auth
+    db.delete_theme(theme_id)
+    return redirect(url_for("themes_admin"))
+
+# --------------------------------------------------
+# FLASK — RECORDATORIOS MANUALES
+# --------------------------------------------------
+
+@flask_app.post("/admin/send/meeting-reminder")
+async def admin_send_meeting_reminder():
+    auth = require_admin()
+    if auth: return auth
+    try:
+        await send_meeting_reminder()
+    except Exception:
+        logger.exception("Error enviando recordatorio de reunión manual")
+    return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/send/reading-reminder")
+async def admin_send_reading_reminder():
+    auth = require_admin()
+    if auth: return auth
+    try:
+        await send_reading_reminder()
+    except Exception:
+        logger.exception("Error enviando recordatorio de lectura manual")
+    return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — HISTÓRICO DE CICLOS
+# --------------------------------------------------
+
+@flask_app.get("/admin/historico")
+def admin_historico():
+    auth = require_admin()
+    if auth: return auth
+    books_history  = db.get_all_books_history()
+    themes_history = db.get_all_themes_history()
+    polls_history  = db.get_all_polls_history()
+    meetings_history = db.get_all_meetings_history()
+    return render_template(
+        "admin_historico.html",
+        books_history=books_history,
+        themes_history=themes_history,
+        polls_history=polls_history,
+        meetings_history=meetings_history,
+    )
+
+# --------------------------------------------------
+# FLASK — VISOR DE BASE DE DATOS
+# --------------------------------------------------
+
+@flask_app.get("/admin/db")
+def admin_db():
+    auth = require_admin()
+    if auth: return auth
+    tables = db.get_table_names()
+    table  = request.args.get("table", "books")
+    if table not in tables:
+        table = tables[0]
+    try:
+        cols, rows = db.get_table_rows(table)
+    except Exception:
+        logger.exception("Error cargando tabla")
+        cols, rows = [], []
+    return render_template("admin_db.html", tables=tables, table=table, cols=cols, rows=rows)
+
+@flask_app.post("/admin/db/<table>/delete/<int:row_id>")
+def admin_db_delete_row(table, row_id):
+    auth = require_admin()
+    if auth: return auth
+    try:
+        db.delete_table_row(table, row_id)
+    except Exception:
+        logger.exception("Error borrando fila en tabla %s", table)
+    return redirect(url_for("admin_db", table=table))
+
+@flask_app.post("/admin/db/<table>/truncate")
+def admin_db_truncate(table):
+    auth = require_admin()
+    if auth: return auth
+    try:
+        db.truncate_table(table)
+    except Exception:
+        logger.exception("Error vaciando tabla %s", table)
+    return redirect(url_for("admin_db", table=table))
 
 # --------------------------------------------------
 # WEBHOOK

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico · Admin</title>
+    <style>
+        :root{
+            --bg:#0b1120; --panel:rgba(255,255,255,0.08); --panel-2:rgba(255,255,255,0.12);
+            --border:rgba(255,255,255,0.12); --text:#f8fafc; --muted:#94a3b8;
+            --primary:#6366f1; --primary-2:#8b5cf6;
+            --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
+            --shadow:0 15px 35px rgba(0,0,0,.28); --radius:20px;
+        }
+        *{box-sizing:border-box}
+        html,body{margin:0;padding:0;min-height:100%;font-family:Inter,Arial,sans-serif;
+            background:radial-gradient(circle at top left,rgba(99,102,241,.25),transparent 35%),
+                radial-gradient(circle at bottom right,rgba(139,92,246,.18),transparent 35%),
+                linear-gradient(135deg,#0b1120,#111827 55%,#0f172a);
+            color:var(--text)}
+        body{padding:16px}
+        .container{width:100%;max-width:1200px;margin:0 auto}
+        .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+        .brand{display:flex;align-items:center;gap:12px}
+        .badge{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary-2));display:flex;align-items:center;justify-content:center;font-size:24px}
+        h1{margin:0;font-size:1.5rem}
+        h2{margin:0 0 6px;font-size:1.05rem}
+        .subtitle{margin-top:4px;color:var(--muted);font-size:.95rem}
+        .nav-actions{display:flex;gap:10px;flex-wrap:wrap}
+        .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border:none;border-radius:12px;cursor:pointer;font-size:.88rem;font-weight:700;text-decoration:none;transition:.18s ease}
+        .btn:hover{transform:translateY(-1px)}
+        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary-2));color:#fff}
+        .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+        .btn-soft:hover{background:var(--panel-2)}
+        .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(16px);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+        .card-sub{color:var(--muted);margin:0 0 14px;font-size:.88rem}
+        .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+        .tab{padding:10px 16px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);color:var(--text);font-size:.88rem;font-weight:700;cursor:pointer;transition:.15s ease}
+        .tab.active{background:linear-gradient(135deg,var(--primary),var(--primary-2));border-color:transparent}
+        .tab:hover:not(.active){background:rgba(255,255,255,.1)}
+        .tab-content{display:none}
+        .tab-content.active{display:block}
+        .table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.08)}
+        table{width:100%;border-collapse:collapse}
+        th{position:sticky;top:0;background:rgba(15,23,42,.97);backdrop-filter:blur(10px);padding:11px 12px;text-align:left;font-size:.8rem;color:#cbd5e1;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid rgba(255,255,255,.08)}
+        td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle;font-size:.9rem}
+        tbody tr:hover{background:rgba(255,255,255,.04)}
+        .cycle-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,.15);color:#c7d2fe;font-size:.8rem;font-weight:700}
+        .vote-badge{display:inline-flex;align-items:center;min-width:34px;padding:5px 9px;border-radius:999px;background:rgba(16,185,129,.16);color:#d1fae5;font-weight:800;font-size:.88rem}
+        .book-cell{display:flex;gap:10px;align-items:center}
+        .book-cover{width:38px;min-width:38px;height:54px;object-fit:cover;border-radius:7px;border:1px solid rgba(255,255,255,.08)}
+        .book-cover-fallback{width:38px;min-width:38px;height:54px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,.2);border:1px solid rgba(255,255,255,.08)}
+        .status-pill{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:.8rem;font-weight:700}
+        .status-draft{background:rgba(245,158,11,.15);color:#fde68a}
+        .status-scheduled{background:rgba(16,185,129,.15);color:#d1fae5}
+        .status-closed{background:rgba(99,102,241,.15);color:#c7d2fe}
+        .pill-open{background:rgba(99,102,241,.15);color:#c7d2fe}
+        .pill-closed{background:rgba(255,255,255,.08);color:var(--muted)}
+        .empty{padding:20px;text-align:center;color:var(--muted)}
+        .count-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;background:rgba(99,102,241,.15);color:#c7d2fe;font-size:.8rem;font-weight:700;margin-left:8px}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand">
+            <div class="badge">📜</div>
+            <div>
+                <h1>Histórico de ciclos</h1>
+                <div class="subtitle">Consulta propuestas, temáticas, encuestas y reuniones de todos los ciclos</div>
+            </div>
+        </div>
+        <div class="nav-actions">
+            <a class="btn btn-soft" href="/admin">Dashboard</a>
+            <a class="btn btn-soft" href="/admin/db">Base de datos</a>
+            <a class="btn btn-primary" href="/admin/logout">Salir</a>
+        </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+        <button class="tab active" onclick="showTab('libros', this)">📚 Libros <span class="count-badge">{{ books_history|length }}</span></button>
+        <button class="tab" onclick="showTab('tematicas', this)">🏷️ Temáticas <span class="count-badge">{{ themes_history|length }}</span></button>
+        <button class="tab" onclick="showTab('reuniones', this)">📅 Reuniones <span class="count-badge">{{ meetings_history|length }}</span></button>
+        <button class="tab" onclick="showTab('encuestas', this)">🗳️ Encuestas <span class="count-badge">{{ polls_history|length }}</span></button>
+    </div>
+
+    <!-- LIBROS -->
+    <div id="tab-libros" class="tab-content active">
+        <div class="card">
+            <h2>Propuestas de libros — todos los ciclos</h2>
+            <p class="card-sub">Historial completo de libros propuestos por ciclo.</p>
+            {% if books_history %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ciclo</th>
+                                <th>Libro</th>
+                                <th>Propuesto por</th>
+                                <th>Votos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for b in books_history %}
+                            <tr>
+                                <td><span class="cycle-badge">{{ b.cycle_key }}</span></td>
+                                <td>
+                                    <div class="book-cell">
+                                        {% if b.cover %}
+                                            <img class="book-cover" src="{{ b.cover }}" alt="">
+                                        {% else %}
+                                            <div class="book-cover-fallback">📘</div>
+                                        {% endif %}
+                                        <div>
+                                            <div style="font-weight:700">{{ b.title }}</div>
+                                            <div style="color:var(--muted);font-size:.85rem">{{ b.author or 'Autor desconocido' }}</div>
+                                            {% if b.pages %}<div style="color:var(--muted);font-size:.8rem">{{ b.pages }} págs.</div>{% endif %}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="color:var(--muted)">{{ b.proposed_by }}</td>
+                                <td><span class="vote-badge">{{ b.votes }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty">No hay historial de propuestas.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- TEMÁTICAS -->
+    <div id="tab-tematicas" class="tab-content">
+        <div class="card">
+            <h2>Temáticas — todos los ciclos</h2>
+            <p class="card-sub">Historial de temáticas propuestas y votadas.</p>
+            {% if themes_history %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ciclo</th>
+                                <th>Temática</th>
+                                <th>Creado por</th>
+                                <th>Votos</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in themes_history %}
+                            <tr>
+                                <td><span class="cycle-badge">{{ t.cycle_key }}</span></td>
+                                <td style="font-weight:700">{{ t.name }}</td>
+                                <td style="color:var(--muted)">{{ t.created_by or '—' }}</td>
+                                <td><span class="vote-badge">{{ t.votes }}</span></td>
+                                <td>{% if t.is_active %}<span style="color:#6ee7b7">Activa</span>{% else %}<span style="color:var(--muted)">Inactiva</span>{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty">No hay historial de temáticas.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- REUNIONES -->
+    <div id="tab-reuniones" class="tab-content">
+        <div class="card">
+            <h2>Reuniones — historial completo</h2>
+            <p class="card-sub">Todas las reuniones con su estado y asistentes.</p>
+            {% if meetings_history %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Ciclo</th>
+                                <th>Nombre</th>
+                                <th>Libro</th>
+                                <th>Fecha</th>
+                                <th>Estado</th>
+                                <th>Asistentes</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in meetings_history %}
+                            <tr>
+                                <td><span class="cycle-badge">{{ m.cycle_key }}</span></td>
+                                <td style="font-weight:700">{{ m.name }}</td>
+                                <td style="color:var(--muted)">{{ m.book_title or '—' }}</td>
+                                <td style="color:var(--muted);font-size:.85rem">{{ m.final_date or '—' }}</td>
+                                <td>
+                                    <span class="status-pill
+                                        {% if m.status == 'draft' %}status-draft
+                                        {% elif m.status == 'scheduled' %}status-scheduled
+                                        {% else %}status-closed{% endif %}">
+                                        {{ m.status }}
+                                    </span>
+                                </td>
+                                <td style="color:var(--muted)">{{ m.attendee_count }}</td>
+                                <td><a class="btn btn-soft" href="/meeting/{{ m.id }}" style="padding:6px 10px;font-size:.8rem">Ver</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty">No hay reuniones registradas.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ENCUESTAS -->
+    <div id="tab-encuestas" class="tab-content">
+        <div class="card">
+            <h2>Encuestas de Telegram — historial</h2>
+            <p class="card-sub">Todas las encuestas lanzadas al grupo, con su estado.</p>
+            {% if polls_history %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Ciclo</th>
+                                <th>Tipo</th>
+                                <th>Chat ID</th>
+                                <th>Reunión</th>
+                                <th>Estado</th>
+                                <th>Creada</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in polls_history %}
+                            <tr>
+                                <td style="color:var(--muted)">{{ p.id }}</td>
+                                <td><span class="cycle-badge">{{ p.cycle_key }}</span></td>
+                                <td style="font-weight:700">{{ p.poll_type }}</td>
+                                <td style="color:var(--muted);font-size:.85rem">{{ p.chat_id }}</td>
+                                <td style="color:var(--muted)">{{ p.meeting_id or '—' }}</td>
+                                <td>
+                                    {% if p.is_closed %}
+                                        <span class="status-pill pill-closed">Cerrada</span>
+                                    {% else %}
+                                        <span class="status-pill pill-open">Abierta</span>
+                                    {% endif %}
+                                </td>
+                                <td style="color:var(--muted);font-size:.83rem">{{ str(p.created_at)[:16] if p.created_at else '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty">No hay encuestas registradas.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function showTab(name, el) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    el.classList.add('active');
+}
+</script>
+</body>
+</html>

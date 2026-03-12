@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Panel Club de Lectura</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f5f5f5;
+margin:20px;
+}
+
+h1{
+color:#333;
+}
+
+.card{
+background:white;
+padding:20px;
+margin-bottom:20px;
+border-radius:8px;
+box-shadow:0 2px 8px rgba(0,0,0,0.1);
+}
+
+button{
+padding:8px 14px;
+background:#007BFF;
+border:none;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+button:hover{
+background:#0056b3;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+th,td{
+padding:10px;
+border-bottom:1px solid #ddd;
+}
+
+th{
+background:#eee;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>📚 Panel Club de Lectura</h1>
+
+<div class="card">
+
+<h2>Propuestas de libros</h2>
+
+<table>
+
+<tr>
+<th>ID</th>
+<th>Título</th>
+<th>Votos</th>
+</tr>
+
+{% for b in books %}
+
+<tr>
+<td>{{b[0]}}</td>
+<td>{{b[1]}}</td>
+<td>{{b[2]}}</td>
+</tr>
+
+{% endfor %}
+
+</table>
+
+<br>
+
+<a href="/close_voting">
+<button>Cerrar votación</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Crear reunión</h2>
+
+<form action="/create_meeting" method="post">
+
+<input name="date" placeholder="2026-04-20 19:00">
+
+<button>Crear</button>
+
+</form>
+
+</div>
+
+
+<div class="card">
+
+<h2>Asistencia reunión</h2>
+
+<a href="/attendance">
+<button>Ver asistentes</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Temáticas</h2>
+
+<a href="/themes">
+<button>Ver votación de temáticas</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Ranking de libros</h2>
+
+<a href="/ranking">
+<button>Ver ranking</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Estadísticas</h2>
+
+<a href="/stats">
+<button>Ver estadísticas</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Recomendaciones</h2>
+
+<a href="/recommendations">
+<button>Generar recomendaciones</button>
+</a>
+
+</div>
+
+
+<div class="card">
+
+<h2>Exportar histórico</h2>
+
+<a href="/export">
+<button>Exportar CSV</button>
+</a>
+
+</div>
+
+</body>
+</html>

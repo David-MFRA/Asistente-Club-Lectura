@@ -261,22 +261,27 @@ async def announce_winner(book):
     """Envía ficha completa del libro ganador al grupo."""
     if not TELEGRAM_CHAT_ID:
         return
-    lines = [f"🏆 {bold('¡Tenemos libro del mes!')}\\!\n"]
-    lines.append(f"📗 {bold(book['title'])}")
+    votes = book.get("votes", 0)
+    lines = ["🏆 ¡Tenemos libro del mes!\n"]
+    lines.append(f"📗 {book['title']}")
     if book.get("author"):
-        lines.append(f"✍️ {italic(book['author'])}")
+        lines.append(f"✍️ {book['author']}")
     if book.get("pages"):
-        lines.append(f"📄 {esc(str(book['pages']))} páginas")
+        lines.append(f"📄 {book['pages']} páginas")
     if book.get("language_code"):
-        lines.append(f"🌐 Idioma original: {esc(str(book['language_code']).upper())}")
-    lines.append(f"\n🗳️ Ganó con {bold(str(book.get('votes', 0)))} voto{'s' if book.get('votes', 0) != 1 else ''}")
+        lines.append(f"🌐 Idioma: {str(book['language_code']).upper()}")
+    lines.append(f"\n🗳️ Ganó con {votes} voto{'s' if votes != 1 else ''}")
     if book.get("description"):
         desc = book["description"]
-        if len(desc) > 500:
-            desc = desc[:497] + "…"
-        lines.append(f"\n📖 {bold('Sinopsis')}\n_{esc(desc)}_")
-    lines.append(f"\n_¡A leer se ha dicho\\! 🚀 Usa /asistir para apuntarte a la reunión\\._")
+        if len(desc) > 600:
+            desc = desc[:597] + "…"
+        lines.append(f"\n📖 Sinopsis\n{desc}")
+    lines.append("\n¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión.")
     text = "\n".join(lines)
+
+    keyboard = [[InlineKeyboardButton("✅ Asistir", callback_data="attend:next"),
+                 InlineKeyboardButton("❌ No asistir", callback_data="noattend:next")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
         if book.get("cover"):
@@ -284,12 +289,13 @@ async def announce_winner(book):
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=book["cover"],
                 caption=text,
-                parse_mode="MarkdownV2"
+                parse_mode=None,
+                reply_markup=reply_markup
             )
             return
     except Exception:
         pass
-    await send_to_group(text)
+    await send_to_group(text, reply_markup=reply_markup)
 
 # --------------------------------------------------
 # TELEGRAM COMMANDS

@@ -171,6 +171,19 @@ def init_db():
         )
         """)
 
+        # ---------------- TELEGRAM POLLS ----------------
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS telegram_polls(
+            id SERIAL PRIMARY KEY,
+            cycle_key TEXT NOT NULL,
+            chat_id BIGINT NOT NULL,
+            message_id BIGINT NOT NULL,
+            poll_id TEXT NOT NULL,
+            is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """)
+
 
 # =========================================================
 # HELPERS GENERALES
@@ -202,7 +215,7 @@ def _get_book_by_title_author(title, author):
 
 
 def create_or_get_book(book):
-    title = (book.get("title") or "").strip()
+    title  = (book.get("title") or "").strip()
     author = (book.get("author") or "").strip() or None
 
     existing = _get_book_by_title_author(title, author)
@@ -229,7 +242,7 @@ def create_or_get_book(book):
 
 def insert_book(book, proposed_by="telegram", cycle_key=None):
     cycle_key = cycle_key or current_cycle_key()
-    book_row = create_or_get_book(book)
+    book_row  = create_or_get_book(book)
 
     with get_cursor(commit=True) as cur:
         cur.execute("""
@@ -332,6 +345,12 @@ def get_book_by_id(book_id):
         cur.execute("SELECT * FROM books WHERE id = %s", (book_id,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def get_votes():
+    """Alias para stats.py."""
+    books = get_books()
+    return [{"title": b["title"], "votes": b["votes"]} for b in books]
 
 
 # =========================================================
@@ -643,3 +662,50 @@ def get_book_ratings_for_book(book_id):
         ORDER BY created_at DESC
         """, (book_id,))
         return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# TELEGRAM POLLS
+# =========================================================
+
+def save_poll(chat_id: int, message_id: int, poll_id: str, cycle_key: str = None):
+    cycle_key = cycle_key or current_cycle_key()
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO telegram_polls(cycle_key, chat_id, message_id, poll_id)
+        VALUES(%s, %s, %s, %s)
+        RETURNING *
+        """, (cycle_key, chat_id, message_id, poll_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_open_poll(cycle_key: str = None):
+    cycle_key = cycle_key or current_cycle_key()
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT *
+        FROM telegram_polls
+        WHERE cycle_key = %s
+          AND is_closed = FALSE
+        ORDER BY created_at DESC
+        LIMIT 1
+        """, (cycle_key,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_poll_by_id(poll_db_id: int):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM telegram_polls WHERE id = %s", (poll_db_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def close_poll(poll_db_id: int):
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        UPDATE telegram_polls
+        SET is_closed = TRUE
+        WHERE id = %s
+        """, (poll_db_id,))

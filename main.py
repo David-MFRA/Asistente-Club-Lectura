@@ -73,18 +73,21 @@ def health():
 # ---------------- WEBHOOK ----------------
 
 @flask_app.route("/webhook", methods=["POST"])
-async def webhook():
-
+def webhook():
     update = Update.de_json(
         request.get_json(force=True),
         telegram_app.bot
     )
-
-    await telegram_app.process_update(update)
-
+    import asyncio
+    asyncio.run(telegram_app.process_update(update))
     return "ok"
 
 # ---------------- ADMIN ----------------
+
+@flask_app.route("/admin")
+def admin():
+    books = db.get_books()
+    return render_template("admin.html", books=books)
 
 @flask_app.route("/export")
 def export():

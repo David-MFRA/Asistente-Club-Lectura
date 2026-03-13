@@ -24,18 +24,18 @@
     <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="/admin">Dashboard</a>
     <div class="nav-drop">
       <button class="nav-link">Gestión <span class="caret">▾</span></button>
-      <div class="drop-menu">
+      <div class="drop-menu"><div class="drop-menu-inner">
         <a class="drop-item" href="/meetings">📅 Reuniones</a>
         <a class="drop-item" href="/themes">🏷️ Temáticas</a>
         <a class="drop-item" href="/admin/ciclo">🔄 Ciclo activo</a>
         <div class="drop-sep"></div>
         <a class="drop-item" href="/attendance">👥 Asistencia</a>
         <a class="drop-item" href="/ranking">🏆 Ranking</a>
-      </div>
+      </div></div>
     </div>
     <div class="nav-drop">
       <button class="nav-link">Datos <span class="caret">▾</span></button>
-      <div class="drop-menu">
+      <div class="drop-menu"><div class="drop-menu-inner">
         <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
         <a class="drop-item" href="/admin/historico">📜 Histórico</a>
         <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
@@ -43,18 +43,21 @@
         <a class="drop-item" href="/export">📤 Exportar CSV</a>
         <div class="drop-sep"></div>
         <a class="drop-item" href="/admin/demo">🎯 Demo / Tour</a>
-      </div>
+      </div></div>
     </div>
-    <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages"><span>✉️ Mensajes</span></a>
-    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler"><span>⏰ Programador</span></a>
-    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist"><span>📚 Espera</span></a>
-    <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster"><span>🖼️ Cartel</span></a>
-    <a class="nav-link" href="/publico" target="_blank"><span>🌐 Pública</span></a>
-    <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs"><span>📋 Logs</span></a>
-    <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs"><span>🐛 Bugs</span></a>
-    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help"><span>❓ Ayuda</span></a>
+    <div class="nav-sep"></div>
+    <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages">✉️ Mensajes</a>
+    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler">⏰ Programador</a>
+    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist">📚 Espera</a>
+    <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster">🖼️ Cartel</a>
+    <div class="nav-sep"></div>
+    <a class="nav-link" href="/publico" target="_blank">🌐 Pública</a>
+    <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">📋 Logs</a>
+    <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs">🐛 Bugs</a>
+    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓</a>
+    <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta página">🎯</button>
     {% block nav_extra %}{% endblock %}
-    <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
+    <a class="nav-link" href="/admin/logout" style="color:#fca5a5;margin-left:2px">Salir</a>
   </nav>
   <!-- Hamburger visible solo en móvil -->
   <button class="mob-menu-btn" onclick="openDrawer()" aria-label="Abrir menú">☰</button>
@@ -131,6 +134,22 @@
 </div>
 
 {% block extra_modals %}{% endblock %}
+
+<!-- ── SHARED TOUR OVERLAY ── -->
+<div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:9997;pointer-events:auto" aria-modal="true"></div>
+<div id="tour-highlight" style="display:none"></div>
+<div id="tour-tooltip" style="display:none;width:330px;background:rgba(11,17,44,.98);border:2px solid #6366f1;border-radius:16px;padding:20px 20px 16px;box-shadow:0 20px 50px rgba(0,0,0,.6);backdrop-filter:blur(20px)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span id="tour-counter" style="font-size:.73rem;color:#a5b4fc;font-weight:800;letter-spacing:.04em"></span>
+    <button id="tour-close" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#94a3b8;cursor:pointer;font-size:.8rem;padding:3px 9px;border-radius:7px;font-family:inherit">✕ Cerrar</button>
+  </div>
+  <div id="tour-title" style="font-size:1.02rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
+  <div id="tour-desc" style="font-size:.88rem;color:#cbd5e1;line-height:1.6;margin-bottom:16px"></div>
+  <div style="display:flex;gap:8px">
+    <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
+    <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
+  </div>
+</div>
 
 <script src="/static/js/admin.js"></script>
 {% block extra_js %}{% endblock %}

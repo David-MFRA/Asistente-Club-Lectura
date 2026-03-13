@@ -126,3 +126,14 @@
   </section>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',     title: '🔄 Gestión de ciclos',    desc: 'Desde aquí controlas el ciclo de lectura: actívalo, ciérralo y consulta el historial.' },
+  { selector: '.stat-row',      title: '📊 Estadísticas del ciclo', desc: 'Propuestas activas, votos, reuniones y asistentes del ciclo en curso de un vistazo.' },
+  { selector: '.danger-zone',   title: '⚠️ Cerrar ciclo',          desc: 'Cierra el ciclo cuando ya tenéis ganador. Desactiva propuestas y temáticas del ciclo actual.' },
+  { selector: '.cycle-history', title: '📜 Historial de ciclos',   desc: 'Todos los ciclos anteriores. Haz clic en "Ver →" para ver el detalle de cada uno.' },
+];
+</script>
+{% endblock %}

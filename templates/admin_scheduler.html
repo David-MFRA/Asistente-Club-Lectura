@@ -67,3 +67,13 @@
   {% endif %}
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',  title: '⏰ Programador de mensajes', desc: 'Programa mensajes para que se envíen automáticamente al grupo en una fecha y hora específica.' },
+  { selector: '.card:first-of-type', title: '➕ Programar mensaje', desc: 'Escribe el mensaje, elige la fecha/hora y pulsa Programar. El bot lo enviará automáticamente.' },
+  { selector: '.msg-row',    title: '📋 Mensajes pendientes',    desc: 'Lista de mensajes en cola. Cada uno muestra cuándo se enviará y puedes cancelarlo si es necesario.' },
+];
+</script>
+{% endblock %}

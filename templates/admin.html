@@ -55,9 +55,7 @@
 </style>
 {% endblock %}
 
-{% block nav_extra %}
-<button class="nav-link" onclick="startTour()">🎯 Tour</button>
-{% endblock %}
+{% block nav_extra %}{% endblock %}
 
 {% block ai_suggestions %}
 <button onclick="askAI('¿Qué libro deberíamos elegir según los votos actuales?')">📊 ¿Qué libro elegir?</button>
@@ -417,21 +415,6 @@
 {% endblock %}
 
 {% block extra_modals %}
-<!-- Tour overlay -->
-<div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:9997;pointer-events:auto" aria-modal="true"></div>
-<div id="tour-highlight" style="display:none"></div>
-<div id="tour-tooltip" style="display:none;width:320px;background:rgba(15,23,42,.97);border:2px solid #6366f1;border-radius:16px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.5)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-    <span id="tour-counter" style="font-size:.75rem;color:#a5b4fc;font-weight:700"></span>
-    <button id="tour-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Cerrar</button>
-  </div>
-  <div id="tour-title" style="font-size:1rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
-  <div id="tour-desc" style="font-size:.88rem;color:#94a3b8;line-height:1.55;margin-bottom:16px"></div>
-  <div style="display:flex;gap:8px">
-    <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
-    <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
-  </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -461,66 +444,15 @@ document.querySelectorAll('.flash').forEach(f => {
     document.querySelector('details:first-of-type')?.setAttribute('open', '');
 });
 
-// ── TOUR ─────────────────────────────────────────────
-const TOUR_STEPS = [
-  { selector: '.stats-bar',           title: '📊 Estadísticas del ciclo', desc: 'Aquí ves de un vistazo: propuestas, votos, reuniones y asistentes del ciclo actual.' },
-  { selector: 'details:nth-of-type(1)',title: '📚 Gestión de libros',     desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
-  { selector: 'details:nth-of-type(2)',title: '🏷️ Temáticas',            desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
-  { selector: 'details:nth-of-type(3)',title: '📅 Reuniones',             desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
-  { selector: '.header-nav',           title: '🧭 Navegación',            desc: 'Accede al historial, base de datos, mensajes del bot, programador, cartel y lista de espera.' },
-  { selector: '.reminder-grid',        title: '🔔 Recordatorios',         desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
-  { selector: '.ai-fab',               title: '🤖 Asistente IA',          desc: 'El botón morado lanza el asistente de IA contextual. Tiene acceso a todos los datos del club y puede ayudarte a redactar mensajes, analizar votaciones y planificar reuniones.' },
-  { selector: 'details:nth-of-type(5)',title: '🤖 Herramientas de IA',    desc: 'Desde esta sección puedes generar preguntas de debate, citas literarias y diseñar carteles del club con inteligencia artificial.' },
+window.PAGE_TOUR = [
+  { selector: '.stats-bar',            title: '📊 Estadísticas del ciclo', desc: 'Aquí ves de un vistazo: propuestas, votos, reuniones y asistentes del ciclo actual.' },
+  { selector: 'details:nth-of-type(1)',title: '📚 Gestión de libros',      desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
+  { selector: 'details:nth-of-type(2)',title: '🏷️ Temáticas',             desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
+  { selector: 'details:nth-of-type(3)',title: '📅 Reuniones',              desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
+  { selector: '.reminder-grid',        title: '🔔 Recordatorios',          desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
+  { selector: 'details:nth-of-type(4)',title: '🔄 Ciclo activo',           desc: 'Gestiona el ciclo actual: ciérralo cuando haya ganador o inicia uno nuevo.' },
+  { selector: '.header-nav',           title: '🧭 Navegación',             desc: 'Accede al historial, BD, mensajes, programador, cartel y lista de espera desde aquí.' },
+  { selector: '.ai-fab',               title: '🤖 Asistente IA',           desc: 'El botón morado lanza el asistente IA contextual. Tiene acceso a todos los datos del club.' },
 ];
-let tourStep = 0;
-
-function startTour() {
-  tourStep = 0;
-  document.getElementById('tour-overlay').style.display = 'block';
-  showTourStep();
-}
-function endTour() {
-  document.getElementById('tour-overlay').style.display = 'none';
-  document.getElementById('tour-highlight').style.display = 'none';
-  document.getElementById('tour-tooltip').style.display = 'none';
-}
-function showTourStep() {
-  const step = TOUR_STEPS[tourStep];
-  if (!step) { endTour(); return; }
-  const el = document.querySelector(step.selector);
-  const tooltip = document.getElementById('tour-tooltip');
-  const hl = document.getElementById('tour-highlight');
-  document.getElementById('tour-title').textContent = step.title;
-  document.getElementById('tour-desc').textContent = step.desc;
-  document.getElementById('tour-counter').textContent = `${tourStep+1} / ${TOUR_STEPS.length}`;
-  document.getElementById('tour-prev').disabled = tourStep === 0;
-  document.getElementById('tour-next').textContent = tourStep === TOUR_STEPS.length-1 ? 'Finalizar' : 'Siguiente →';
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => {
-      const rect = el.getBoundingClientRect();
-      const scrollY = window.scrollY;
-      hl.style.cssText = `display:block;position:absolute;top:${rect.top+scrollY-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
-      const ttTop = rect.top + scrollY + rect.height + 16;
-      tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${Math.max(8, Math.min(rect.left, window.innerWidth-330))}px;z-index:9999`;
-    }, 300);
-  } else {
-    hl.style.display = 'none';
-    tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
-  }
-}
-document.getElementById('tour-next').addEventListener('click', () => {
-  if (tourStep >= TOUR_STEPS.length-1) { endTour(); return; }
-  tourStep++;
-  showTourStep();
-});
-document.getElementById('tour-prev').addEventListener('click', () => {
-  if (tourStep > 0) { tourStep--; showTourStep(); }
-});
-document.getElementById('tour-close').addEventListener('click', endTour);
-document.getElementById('tour-overlay').addEventListener('click', function(e) {
-  if (e.target === this) endTour();
-});
-if (new URLSearchParams(location.search).has('tour')) startTour();
 </script>
 {% endblock %}

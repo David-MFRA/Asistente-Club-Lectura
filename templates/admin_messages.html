@@ -77,5 +77,11 @@ async function previewMsg(key) {
     box.style.display = 'block';
   }
 }
+window.PAGE_TOUR = [
+  { selector: '.page-head',    title: '✉️ Mensajes del bot',     desc: 'Aquí editas los textos que el bot envía al grupo: bienvenida, ayuda, recordatorios, etc.' },
+  { selector: '.card:first-of-type', title: '📝 Editar mensaje', desc: 'Cada tarjeta es un mensaje editable. Modifica el texto en el campo y guarda. Se usan variables como {nombre}, {libro}, {fecha}.' },
+  { selector: '.actions',      title: '💾 Guardar y previsualizar', desc: 'Guarda los cambios, previsualiza cómo quedará el mensaje, o resetea al texto por defecto.' },
+  { selector: '.placeholders', title: '🔧 Variables disponibles', desc: 'Lista de variables que puedes usar en el mensaje. Se sustituyen automáticamente con datos reales del ciclo.' },
+];
 </script>
 {% endblock %}

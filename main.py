@@ -5,7 +5,7 @@ import logging
 import unicodedata
 import time as _time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from http import HTTPStatus
 
 from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages, jsonify
@@ -2856,6 +2856,7 @@ def admin_ciclo_cerrar():
     cycle = db.get_current_cycle_key()
     cycle_theme = db.get_config("active_theme") or None
     db.close_cycle(cycle)
+    db.set_config("proposals_locked_for", "")
     try:
         db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
     except Exception:
@@ -3106,6 +3107,85 @@ def admin_demo_clear():
         logger.exception("Error limpiando datos demo")
         flash("Error al limpiar datos", "danger")
     return redirect(url_for("admin_dashboard"))
+
+
+# ── LIVE DEMO STEP RUNNER ──────────────────────────
+_DEMO_CYCLE = "__DEMO__"
+_DEMO_BOOKS = [
+    {"title": "El nombre del viento",   "author": "Patrick Rothfuss",  "pages": 662, "description": "La historia de Kvothe, un mago legendario.", "language_code": "es"},
+    {"title": "Sapiens",                "author": "Yuval Noah Harari",  "pages": 496, "description": "Una breve historia de la humanidad.", "language_code": "es"},
+    {"title": "La sombra del viento",   "author": "Carlos Ruiz Zafón", "pages": 544, "description": "Un laberinto de libros perdidos en Barcelona.", "language_code": "es"},
+    {"title": "El Hobbit",              "author": "J.R.R. Tolkien",    "pages": 310, "description": "La aventura de Bilbo Bolsón.", "language_code": "es"},
+]
+_DEMO_VOTE_DIST = [5, 3, 2, 1]   # votos por libro
+
+def _demo_cleanup():
+    with db.get_cursor(commit=True) as cur:
+        cur.execute("""DELETE FROM book_votes WHERE proposal_id IN
+                       (SELECT id FROM book_proposals WHERE cycle_key = %s)""", (_DEMO_CYCLE,))
+        cur.execute("DELETE FROM book_proposals WHERE cycle_key = %s", (_DEMO_CYCLE,))
+        cur.execute("DELETE FROM themes WHERE cycle_key = %s", (_DEMO_CYCLE,))
+        cur.execute("DELETE FROM meetings WHERE cycle_key = %s", (_DEMO_CYCLE,))
+
+@flask_app.get("/admin/demo/step/<int:n>")
+def admin_demo_step(n):
+    auth = require_admin()
+    if auth:
+        return jsonify({"ok": False, "message": "No autorizado"}), 401
+    try:
+        msg = _run_demo_step(n)
+        total = 10
+        return jsonify({"ok": True, "step": n, "total": total,
+                        "message": msg, "done": n >= total - 1})
+    except Exception as e:
+        logger.exception("Demo step %d error", n)
+        return jsonify({"ok": False, "step": n, "message": f"❌ Error: {e}", "done": True})
+
+def _run_demo_step(n: int) -> str:
+    if n == 0:
+        _demo_cleanup()
+        return "🚀 Entorno limpio — ciclo __DEMO__ preparado"
+    elif n == 1:
+        db.insert_book(_DEMO_BOOKS[0], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
+        return f"📚 Propuesta: {_DEMO_BOOKS[0]['title']} ({_DEMO_BOOKS[0]['author']})"
+    elif n == 2:
+        db.insert_book(_DEMO_BOOKS[1], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
+        return f"📚 Propuesta: {_DEMO_BOOKS[1]['title']} ({_DEMO_BOOKS[1]['author']})"
+    elif n == 3:
+        db.insert_book(_DEMO_BOOKS[2], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
+        return f"📚 Propuesta: {_DEMO_BOOKS[2]['title']} ({_DEMO_BOOKS[2]['author']})"
+    elif n == 4:
+        db.insert_book(_DEMO_BOOKS[3], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
+        return f"📚 Propuesta: {_DEMO_BOOKS[3]['title']} ({_DEMO_BOOKS[3]['author']})"
+    elif n == 5:
+        books = db.get_books(_DEMO_CYCLE)
+        lines = []
+        for i, book in enumerate(books[:4]):
+            votes = _DEMO_VOTE_DIST[i] if i < len(_DEMO_VOTE_DIST) else 0
+            for u_idx in range(votes):
+                db.vote_book(book["proposal_id"], f"__demo_user_{i}_{u_idx}__")
+            lines.append(f"{book['title'][:22]}: {'⭐'*votes} ({votes})")
+        return "🗳️ Votaciones simuladas:\n" + " | ".join(lines)
+    elif n == 6:
+        db.create_theme("Fantasía épica", created_by="__demo__", cycle_key=_DEMO_CYCLE)
+        db.create_theme("Ciencia ficción", created_by="__demo__", cycle_key=_DEMO_CYCLE)
+        return "🏷️ Temáticas creadas: Fantasía épica, Ciencia ficción"
+    elif n == 7:
+        demo_date = (_utcnow() + timedelta(days=12)).replace(hour=19, minute=0, second=0, microsecond=0)
+        db.create_meeting(name="Reunión demo — Club de Lectura", final_date=str(demo_date),
+                          cycle_key=_DEMO_CYCLE, created_by="__demo__")
+        return f"📅 Reunión demo creada para {str(demo_date)[:16]}"
+    elif n == 8:
+        books = db.get_books(_DEMO_CYCLE)
+        winner = books[0] if books else None
+        if winner:
+            return (f"🏆 Ganador del ciclo demo: «{winner['title']}» "
+                    f"con {winner['votes']} votos. ¡Felicidades!")
+        return "🏆 Ciclo demo completado"
+    elif n == 9:
+        _demo_cleanup()
+        return "🧹 Datos de demo eliminados — entorno limpio"
+    return "✅ Demo completada"
 
 # --------------------------------------------------
 # FLASK — EVENT LOG

@@ -124,7 +124,16 @@
 
       <!-- TAB: CONTENIDO -->
       <div class="tab-pane active" id="tab-contenido">
-        <div class="panel-title">🎨 Tema</div>
+        <div class="panel-title">📏 Formato</div>
+        <div class="chips">
+          <span class="chip chip-layout active" data-fmt="horizontal" onclick="setFormat('horizontal',this)">Horizontal</span>
+          <span class="chip chip-layout"        data-fmt="a4"         onclick="setFormat('a4',this)">A4</span>
+          <span class="chip chip-layout"        data-fmt="a5"         onclick="setFormat('a5',this)">A5</span>
+          <span class="chip chip-layout"        data-fmt="square"     onclick="setFormat('square',this)">Cuadrado</span>
+          <span class="chip chip-layout"        data-fmt="story"      onclick="setFormat('story',this)">Story</span>
+        </div>
+
+        <div class="panel-title" style="margin-top:4px">🎨 Tema</div>
         <div class="chips">
           <span class="chip chip-indigo active"  data-theme="indigo"   onclick="setTheme('indigo',this)">Índigo</span>
           <span class="chip chip-purple"          data-theme="purple"  onclick="setTheme('purple',this)">Morado</span>
@@ -295,8 +304,23 @@
 {% block extra_js %}
 <script src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
 <script>
-const W = 600, H = 400;
+window.PAGE_TOUR = [
+  { selector: '.chips[style*="margin-top:4px"]:first-of-type', title: '🎨 Tema de color', desc: 'Elige la paleta de colores del cartel: Índigo, Morado, Esmeralda o Ámbar. Cambia fondo, textos y acentos.' },
+  { selector: '.canvas-wrap',   title: '🖼️ Vista previa',         desc: 'El cartel se renderiza aquí en tiempo real. Arrastra cualquier elemento para reposicionarlo. Usa las asas para redimensionar.' },
+  { selector: '.editor-grid',   title: '⚙️ Panel de edición',     desc: 'El panel izquierdo controla el contenido (textos, QR, imágenes). El panel derecho gestiona capas y propiedades del elemento seleccionado.' },
+  { selector: '#layer-list',    title: '🗂️ Capas',                desc: 'Lista todos los elementos del cartel. Haz clic en uno para seleccionarlo y editar sus propiedades (color, fuente, posición, opacidad).' },
+  { selector: '.canvas-actions', title: '⬇️ Descargar',           desc: 'Descarga el cartel como PNG de alta calidad, copia la imagen al portapapeles, o descarga solo el código QR.' },
+];
+let W = 600, H = 400;
 const HANDLE_SIZE = 8;
+
+const FORMATS = {
+  horizontal: { w:600, h:400,  label:'Horizontal' },
+  a4:         { w:480, h:678,  label:'A4 Vertical' },
+  a5:         { w:480, h:340,  label:'A5 Apaisado' },
+  square:     { w:500, h:500,  label:'Cuadrado' },
+  story:      { w:360, h:640,  label:'Story 9:16' },
+};
 
 const THEMES = {
   indigo:  { bg1:'#0f172a', bg2:'#1e1b4b', accent1:'#6366f1', accent2:'#818cf8', text:'#f8fafc', sub:'#c7d2fe', muted:'#94a3b8', bar:'#6366f1' },
@@ -307,6 +331,7 @@ const THEMES = {
 
 let currentTheme = 'indigo';
 let currentLayout = 'minimal';
+let currentFormat = 'horizontal';
 let nextId = 100;
 
 function makeEl(overrides) {
@@ -320,11 +345,41 @@ function makeEl(overrides) {
   }, overrides);
 }
 
-const LAYOUT_POSITIONS = {
-  minimal:  { club:{x:44,y:44}, title:{x:44,y:108}, author:{x:44,y:172}, date:{x:44,y:338}, subtitle:{x:44,y:220}, qr:{x:490,y:300}, logo:{x:490,y:30} },
-  colorful: { club:{x:20,y:200,align:'center'}, title:{x:272,y:100}, author:{x:272,y:148}, date:{x:272,y:310}, subtitle:{x:272,y:188}, qr:{x:490,y:300}, logo:{x:30,y:160} },
-  classic:  { club:{x:300,y:54,align:'center'}, title:{x:300,y:180,align:'center'}, author:{x:300,y:228,align:'center'}, date:{x:300,y:352,align:'center'}, subtitle:{x:300,y:268,align:'center'}, qr:{x:490,y:300}, logo:{x:490,y:20} }
-};
+// Layout positions are relative fractions of (W, H) so they work with any format
+function getLayoutPositions(layout, w, h) {
+  const px = v => Math.round(v * w);
+  const py = v => Math.round(v * h);
+  const layouts = {
+    minimal: {
+      club:    {x:px(0.073), y:py(0.11)},
+      title:   {x:px(0.073), y:py(0.27)},
+      author:  {x:px(0.073), y:py(0.43)},
+      subtitle:{x:px(0.073), y:py(0.55)},
+      date:    {x:px(0.073), y:py(0.845)},
+      qr:      {x:px(0.817), y:py(0.75)},
+      logo:    {x:px(0.817), y:py(0.075)},
+    },
+    colorful: {
+      club:    {x:px(0.033), y:py(0.5),   align:'center'},
+      title:   {x:px(0.453), y:py(0.25)},
+      author:  {x:px(0.453), y:py(0.37)},
+      subtitle:{x:px(0.453), y:py(0.47)},
+      date:    {x:px(0.453), y:py(0.775)},
+      qr:      {x:px(0.817), y:py(0.75)},
+      logo:    {x:px(0.05),  y:py(0.4)},
+    },
+    classic: {
+      club:    {x:px(0.5), y:py(0.135), align:'center'},
+      title:   {x:px(0.5), y:py(0.45),  align:'center'},
+      author:  {x:px(0.5), y:py(0.57),  align:'center'},
+      subtitle:{x:px(0.5), y:py(0.67),  align:'center'},
+      date:    {x:px(0.5), y:py(0.88),  align:'center'},
+      qr:      {x:px(0.817), y:py(0.75)},
+      logo:    {x:px(0.817), y:py(0.05)},
+    },
+  };
+  return layouts[layout] || layouts.minimal;
+}
 
 let elements = [];
 
@@ -335,13 +390,16 @@ function buildDefaultElements() {
   const dateVal   = document.getElementById('f-date').value    || '';
   const subVal    = document.getElementById('f-subtitle').value|| '';
   const t   = THEMES[currentTheme];
-  const pos = LAYOUT_POSITIONS[currentLayout];
+  const pos = getLayoutPositions(currentLayout, W, H);
+  // Scale font sizes proportionally based on canvas size vs baseline 600×400
+  const fScale = Math.sqrt((W * H) / (600 * 400));
+  const fs = s => Math.round(s * fScale);
   elements = [
-    makeEl({id:'club',    text:clubVal,   fontSize:12, fontWeight:'bold',   color:t.sub,  ...pos.club,    deletable:false}),
-    makeEl({id:'title',   text:titleVal,  fontSize:32, fontWeight:'bold',   color:t.text, ...pos.title,   deletable:false}),
-    makeEl({id:'author',  text:authorVal, fontSize:17, fontWeight:'normal', color:t.sub,  ...pos.author,  deletable:false}),
-    makeEl({id:'date',    text:dateVal,   fontSize:14, fontWeight:'bold',   color:t.sub,  ...pos.date,    deletable:false}),
-    makeEl({id:'subtitle',text:subVal,    fontSize:13, fontWeight:'normal', fontStyle:'italic', color:t.muted, ...pos.subtitle, deletable:false}),
+    makeEl({id:'club',    text:clubVal,   fontSize:fs(12), fontWeight:'bold',   color:t.sub,  ...pos.club,    deletable:false}),
+    makeEl({id:'title',   text:titleVal,  fontSize:fs(32), fontWeight:'bold',   color:t.text, ...pos.title,   deletable:false}),
+    makeEl({id:'author',  text:authorVal, fontSize:fs(17), fontWeight:'normal', color:t.sub,  ...pos.author,  deletable:false}),
+    makeEl({id:'date',    text:dateVal,   fontSize:fs(14), fontWeight:'bold',   color:t.sub,  ...pos.date,    deletable:false}),
+    makeEl({id:'subtitle',text:subVal,    fontSize:fs(13), fontWeight:'normal', fontStyle:'italic', color:t.muted, ...pos.subtitle, deletable:false}),
     makeEl({id:'qr',   type:'qr',    x:pos.qr.x,   y:pos.qr.y,   text:'QR',   fontSize:14, color:'#ffffff', visible:false, deletable:false}),
     makeEl({id:'logo', type:'image', x:pos.logo.x, y:pos.logo.y, w:80, h:80, text:'Logo', visible:false, deletable:false})
   ];
@@ -580,8 +638,26 @@ function setLayout(name, el) {
 }
 
 function applyLayoutPositions() {
-  const pos = LAYOUT_POSITIONS[currentLayout];
+  const pos = getLayoutPositions(currentLayout, W, H);
   for (const [id, p] of Object.entries(pos)) { const el = getEl(id); if (el) { el.x = p.x; el.y = p.y; if (p.align) el.align = p.align; } }
+}
+
+function setFormat(name, chipEl) {
+  const fmt = FORMATS[name];
+  if (!fmt) return;
+  currentFormat = name;
+  document.querySelectorAll('.chip[data-fmt]').forEach(c => c.classList.remove('active'));
+  chipEl.classList.add('active');
+  W = fmt.w; H = fmt.h;
+  canvas.width  = W;
+  canvas.height = H;
+  // Rebuild elements with new dimensions
+  buildDefaultElements();
+  // Restore bg/logo images if any
+  if (bgImage)   { const lo = getEl('logo'); if (lo) lo.imgObj = bgImage; }
+  if (logoImage) { const lo = getEl('logo'); if (lo) { lo.imgObj = logoImage; lo.visible = true; } }
+  selectElement(null);
+  drawPoster(); renderLayerList();
 }
 
 function resetPositions() { applyLayoutPositions(); drawPoster(); }
@@ -641,10 +717,24 @@ function renderPropsPanel() {
     </div>
     <div class="poster-field"><label>Fuente</label>
       <select id="prop-font" onchange="setPropFont(this.value)" style="font-size:.8rem">
-        <option value="Inter" ${(el.fontFamily||'Inter')==='Inter'?'selected':''}>Inter (sans-serif)</option>
-        <option value="Georgia" ${el.fontFamily==='Georgia'?'selected':''}>Georgia (serif)</option>
-        <option value="'Courier New'" ${el.fontFamily==="'Courier New'"?'selected':''}>Courier (monospace)</option>
-        <option value="Arial Black" ${el.fontFamily==='Arial Black'?'selected':''}>Arial Black</option>
+        <optgroup label="Sans-serif">
+          <option value="Inter"       ${(el.fontFamily||'Inter')==='Inter'?'selected':''}>Inter</option>
+          <option value="Arial"       ${el.fontFamily==='Arial'?'selected':''}>Arial</option>
+          <option value="Arial Black" ${el.fontFamily==='Arial Black'?'selected':''}>Arial Black</option>
+          <option value="Trebuchet MS" ${el.fontFamily==='Trebuchet MS'?'selected':''}>Trebuchet MS</option>
+          <option value="Verdana"     ${el.fontFamily==='Verdana'?'selected':''}>Verdana</option>
+        </optgroup>
+        <optgroup label="Serif">
+          <option value="Georgia"     ${el.fontFamily==='Georgia'?'selected':''}>Georgia</option>
+          <option value="'Times New Roman'" ${el.fontFamily==="'Times New Roman'"?'selected':''}>Times New Roman</option>
+          <option value="'Book Antiqua'" ${el.fontFamily==="'Book Antiqua'"?'selected':''}>Book Antiqua</option>
+          <option value="Palatino Linotype" ${el.fontFamily==='Palatino Linotype'?'selected':''}>Palatino</option>
+        </optgroup>
+        <optgroup label="Display / otros">
+          <option value="Impact"           ${el.fontFamily==='Impact'?'selected':''}>Impact</option>
+          <option value="'Courier New'"    ${el.fontFamily==="'Courier New'"?'selected':''}>Courier New</option>
+          <option value="'Lucida Console'" ${el.fontFamily==="'Lucida Console'"?'selected':''}>Lucida Console</option>
+        </optgroup>
       </select>
     </div>
     <div class="poster-field"><label>Opacidad: <span id="prop-op-val">${Math.round((el.opacity||1)*100)}%</span></label><input type="range" id="prop-opacity" min="0" max="100" value="${Math.round((el.opacity||1)*100)}" oninput="setPropOpacity(this.value)"></div>

@@ -211,5 +211,11 @@ function setView(v) {
     document.getElementById('btn-cal').className  = 'btn btn-soft';
   }
 }
+window.PAGE_TOUR = [
+  { selector: '.page-header',   title: '📅 Reuniones del club',   desc: 'Gestiona todas las reuniones: crea nuevas, edita fechas, lugar y asistencia. Puedes verlas en lista o en calendario.' },
+  { selector: '.view-actions',  title: '🔀 Vista lista / calendario', desc: 'Cambia entre ver las reuniones en lista o en vista de calendario mensual.' },
+  { selector: '.meeting-list',  title: '📋 Lista de reuniones',   desc: 'Todas las reuniones ordenadas por fecha. Haz clic en una para ver el detalle, editar o gestionar asistencia.' },
+  { selector: 'form',           title: '➕ Crear reunión',         desc: 'Añade una nueva reunión al club. El nombre es obligatorio; la fecha y el lugar son opcionales.' },
+];
 </script>
 {% endblock %}

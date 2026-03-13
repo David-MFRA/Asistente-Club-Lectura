@@ -44,27 +44,39 @@ body {
 .header-sub   { font-size: .74rem; color: var(--muted); margin-top: 1px; }
 
 .header-nav {
-  display: flex; align-items: center; gap: 2px; margin-left: auto;
+  display: flex; align-items: center; gap: 1px; margin-left: auto;
 }
 .nav-link {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 7px 11px; border-radius: 9px;
+  padding: 6px 10px; border-radius: 9px;
   color: var(--muted); text-decoration: none;
-  font-size: .84rem; font-weight: 600;
-  transition: .15s ease; white-space: nowrap;
-  border: none; background: none; cursor: pointer;
+  font-size: .82rem; font-weight: 600;
+  transition: background .13s ease, color .13s ease; white-space: nowrap;
+  border: none; background: none; cursor: pointer; position: relative;
 }
-.nav-link:hover, .nav-link.active { color: var(--text); background: var(--panel); }
-.nav-link.active { color: #a5b4fc; }
+.nav-link:hover { color: var(--text); background: rgba(255,255,255,.07); }
+.nav-link.active {
+  color: #a5b4fc;
+  background: rgba(99,102,241,.14);
+  border: 1px solid rgba(99,102,241,.25);
+}
+/* Visual separator before utility links */
+.nav-sep {
+  width: 1px; height: 18px; background: var(--border);
+  margin: 0 4px; flex-shrink: 0;
+}
 
 /* Dropdown */
 .nav-drop { position: relative; }
 .nav-drop .drop-menu {
-  display: none; position: absolute; top: calc(100% + 6px); right: 0;
-  background: rgba(15,23,42,.97); border: 1px solid var(--border);
-  border-radius: 12px; padding: 6px; min-width: 170px;
-  box-shadow: 0 12px 32px rgba(0,0,0,.4); backdrop-filter: blur(20px);
+  display: none; position: absolute; top: 100%; right: 0;
+  padding-top: 8px; /* bridge gap so hover doesn't break */
   z-index: 200;
+}
+.nav-drop .drop-menu-inner {
+  background: rgba(15,23,42,.97); border: 1px solid var(--border);
+  border-radius: 12px; padding: 6px; min-width: 180px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.4); backdrop-filter: blur(20px);
 }
 .nav-drop:hover .drop-menu,
 .nav-drop:focus-within .drop-menu { display: block; }
@@ -74,9 +86,10 @@ body {
   color: var(--text); text-decoration: none;
   font-size: .85rem; font-weight: 600; transition: .12s ease;
 }
-.drop-item:hover { background: var(--panel-h); }
+.drop-item:hover { background: var(--panel-h); color: #a5b4fc; }
 .drop-sep { height: 1px; background: var(--border); margin: 4px 0; }
-.caret { font-size: .68rem; opacity: .6; margin-left: 2px; }
+.caret { font-size: .68rem; opacity: .6; margin-left: 2px; transition: .15s ease; }
+.nav-drop:hover .caret { opacity: 1; transform: rotate(180deg); }
 
 /* Mobile hamburger — hidden on desktop */
 .mob-menu-btn {
@@ -167,6 +180,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert
 textarea { resize: vertical; min-height: 72px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
 .row .field { flex: 1; min-width: 160px; margin: 0; }
+/* Buttons/links that directly follow a .row need breathing room */
+.row + button, .row + .btn, .row + a.btn, .row + a[class*="btn"] { margin-top: 12px; }
 
 /* ── TABLES ────────────────────────────────────────── */
 .table-wrap { overflow: auto; border-radius: 10px; border: 1px solid rgba(255,255,255,.07); }

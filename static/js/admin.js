@@ -136,3 +136,98 @@ setTimeout(function() {
     setTimeout(function() { el.remove(); }, 500);
   });
 }, 4000);
+
+// ── PAGE TOUR ENGINE ─────────────────────────────────
+// Each page sets window.PAGE_TOUR = [{selector, title, desc}, ...]
+let _pgTourStep = 0;
+let _pgTourTimer = null;
+
+function startPageTour() {
+  const steps = window.PAGE_TOUR;
+  const ov = document.getElementById('tour-overlay');
+  if (!ov) return;
+  if (!steps || !steps.length) {
+    document.getElementById('tour-title').textContent = '🎯 Tour no disponible';
+    document.getElementById('tour-desc').textContent = 'No hay tour guiado configurado para esta página.';
+    document.getElementById('tour-counter').textContent = '—';
+    const prevBtn = document.getElementById('tour-prev');
+    if (prevBtn) prevBtn.style.display = 'none';
+    const nextBtn = document.getElementById('tour-next');
+    if (nextBtn) nextBtn.textContent = 'Cerrar';
+    const tt = document.getElementById('tour-tooltip');
+    if (tt) tt.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+    ov.style.display = 'block';
+    return;
+  }
+  _pgTourStep = 0;
+  const prevBtn = document.getElementById('tour-prev');
+  if (prevBtn) prevBtn.style.display = '';
+  ov.style.display = 'block';
+  _showPgTourStep();
+}
+
+function _endPageTour() {
+  clearTimeout(_pgTourTimer);
+  ['tour-overlay','tour-highlight','tour-tooltip'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+function _showPgTourStep() {
+  const steps = window.PAGE_TOUR || [];
+  const step = steps[_pgTourStep];
+  if (!step) { _endPageTour(); return; }
+  const targetEl = step.selector ? document.querySelector(step.selector) : null;
+  const tooltip = document.getElementById('tour-tooltip');
+  const hl = document.getElementById('tour-highlight');
+  const titleEl = document.getElementById('tour-title');
+  const descEl  = document.getElementById('tour-desc');
+  const ctrEl   = document.getElementById('tour-counter');
+  const prevBtn = document.getElementById('tour-prev');
+  const nextBtn = document.getElementById('tour-next');
+  if (titleEl) titleEl.textContent = step.title;
+  if (descEl)  descEl.textContent  = step.desc;
+  if (ctrEl)   ctrEl.textContent   = `${_pgTourStep+1} / ${steps.length}`;
+  if (prevBtn) prevBtn.disabled = (_pgTourStep === 0);
+  if (nextBtn) nextBtn.textContent = (_pgTourStep === steps.length-1) ? 'Finalizar' : 'Siguiente →';
+  if (hl) hl.style.display = 'none';
+  if (tooltip) tooltip.style.display = 'none';
+  if (targetEl) {
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    clearTimeout(_pgTourTimer);
+    _pgTourTimer = setTimeout(() => {
+      const rect = targetEl.getBoundingClientRect();
+      const sy = window.scrollY;
+      if (hl) hl.style.cssText = `display:block;position:absolute;top:${rect.top+sy-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
+      const ttTop = rect.bottom + sy + 14;
+      const ttLeft = Math.max(8, Math.min(rect.left, window.innerWidth - 336));
+      if (tooltip) tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${ttLeft}px;z-index:9999`;
+    }, 250);
+  } else {
+    if (hl) hl.style.display = 'none';
+    if (tooltip) tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Show tour button only when this page has a tour defined
+  const tourBtn = document.getElementById('page-tour-btn');
+  if (tourBtn && window.PAGE_TOUR && window.PAGE_TOUR.length) tourBtn.style.display = '';
+
+  const nextBtn  = document.getElementById('tour-next');
+  const prevBtn  = document.getElementById('tour-prev');
+  const closeBtn = document.getElementById('tour-close');
+  const overlay  = document.getElementById('tour-overlay');
+  if (!nextBtn) return;
+
+  nextBtn.addEventListener('click', () => {
+    if (_pgTourStep >= (window.PAGE_TOUR||[]).length - 1) { _endPageTour(); return; }
+    _pgTourStep++;
+    _showPgTourStep();
+  });
+  if (prevBtn)  prevBtn.addEventListener('click',  () => { if (_pgTourStep > 0) { _pgTourStep--; _showPgTourStep(); } });
+  if (closeBtn) closeBtn.addEventListener('click', _endPageTour);
+  if (overlay)  overlay.addEventListener('click',  function(e) { if (e.target === this) _endPageTour(); });
+  if (new URLSearchParams(location.search).has('tour')) startPageTour();
+});

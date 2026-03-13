@@ -109,3 +109,14 @@
   </div>
 {% endif %}
 {% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',    title: '🐛 Bug Reports',          desc: 'Reportes de errores enviados por los usuarios del bot con el comando /bug.' },
+  { selector: '.counts-bar',   title: '📊 Filtros de estado',    desc: 'Filtra por abiertos (pendientes), resueltos o won\'t fix. Los números muestran cuántos hay en cada estado.' },
+  { selector: '.report-card',  title: '📋 Reporte de bug',       desc: 'Cada tarjeta muestra quién lo reportó, cuándo y la descripción. Puedes añadir una nota y cambiar el estado.' },
+  { selector: '.update-form',  title: '✏️ Actualizar estado',    desc: 'Añade una nota interna (solo visible en el panel) y cambia el estado del bug. Haz clic en Guardar para aplicar.' },
+];
+</script>
+{% endblock %}

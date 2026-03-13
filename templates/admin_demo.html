@@ -4,22 +4,46 @@
 
 {% block head_extra %}
 <style>
-  .hero { text-align:center; padding:40px 20px 30px; margin-bottom:30px; }
-  .hero-icon { font-size:4rem; margin-bottom:16px; }
-  .hero h1 { font-size:2rem; font-weight:900; margin-bottom:10px; background:linear-gradient(135deg,#a5b4fc,#c4b5fd); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-  .hero p { color:var(--muted); font-size:1.05rem; max-width:500px; margin:0 auto; line-height:1.6; }
+  .hero { text-align:center; padding:36px 20px 26px; margin-bottom:24px; }
+  .hero-icon { font-size:3.5rem; margin-bottom:14px; }
+  .hero h1 { font-size:1.9rem; font-weight:900; margin-bottom:8px; background:linear-gradient(135deg,#a5b4fc,#c4b5fd); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .hero p  { color:var(--muted); font-size:1rem; max-width:480px; margin:0 auto; line-height:1.6; }
 
-  .status-badge { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px; font-size:.82rem; font-weight:700; }
-  .status-active   { background:rgba(16,185,129,.15); color:#6ee7b7; border:1px solid rgba(16,185,129,.3); }
-  .status-inactive { background:rgba(255,255,255,.06); color:var(--muted); border:1px solid var(--border); }
+  /* Terminal-style demo log */
+  .demo-terminal {
+    background:#070d1a; border:1px solid rgba(99,102,241,.3); border-radius:14px;
+    padding:16px; font-family:'Courier New',monospace; font-size:.83rem; line-height:1.7;
+    min-height:220px; max-height:360px; overflow-y:auto; margin:14px 0;
+    box-shadow:inset 0 2px 12px rgba(0,0,0,.4);
+  }
+  .demo-terminal .line { display:flex; align-items:flex-start; gap:8px; margin-bottom:2px; }
+  .demo-terminal .prompt { color:#6366f1; flex-shrink:0; }
+  .demo-terminal .log-ok    { color:#6ee7b7; }
+  .demo-terminal .log-err   { color:#fca5a5; }
+  .demo-terminal .log-info  { color:#94a3b8; }
+  .demo-terminal .log-done  { color:#fde68a; font-weight:700; }
+  .demo-terminal .cursor { display:inline-block; width:8px; height:14px; background:#6366f1; animation:blink .8s step-end infinite; vertical-align:text-bottom; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-  .btn-group { display:flex; gap:10px; flex-wrap:wrap; }
+  .demo-progress { height:5px; background:rgba(255,255,255,.08); border-radius:999px; margin:10px 0; overflow:hidden; }
+  .demo-progress-bar { height:100%; background:linear-gradient(90deg,#6366f1,#8b5cf6); border-radius:999px; transition:width .4s ease; width:0; }
 
-  .tour-steps { display:grid; gap:12px; }
-  .step { display:flex; gap:14px; align-items:flex-start; padding:14px; background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:12px; }
-  .step-num  { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--primary),var(--primary2)); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:.9rem; flex-shrink:0; }
-  .step-info h4 { font-size:.9rem; font-weight:700; margin-bottom:3px; }
-  .step-info p  { font-size:.82rem; color:var(--muted); }
+  .demo-status { text-align:center; font-size:.88rem; color:var(--muted); margin-bottom:12px; }
+
+  .section-title { font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:10px; }
+
+  .tour-grid { display:grid; gap:10px; }
+  .tour-page-item {
+    display:flex; align-items:center; gap:12px; padding:11px 14px;
+    background:rgba(255,255,255,.04); border:1px solid var(--border);
+    border-radius:11px; text-decoration:none; color:var(--text);
+    transition:.14s ease;
+  }
+  .tour-page-item:hover { background:rgba(99,102,241,.12); border-color:rgba(99,102,241,.3); }
+  .tour-page-item .t-icon { font-size:1.3rem; flex-shrink:0; }
+  .tour-page-item .t-name { font-weight:700; font-size:.9rem; }
+  .tour-page-item .t-desc { color:var(--muted); font-size:.8rem; }
+  .tour-page-item .t-badge { margin-left:auto; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(99,102,241,.15); color:#a5b4fc; flex-shrink:0; }
 </style>
 {% endblock %}
 
@@ -27,73 +51,186 @@
 
 <div class="hero">
   <div class="hero-icon">🎯</div>
-  <h1>Demo interactivo del panel</h1>
-  <p>Explora todas las funciones del panel de administración con un tour guiado o siembra datos de demostración para verlo en acción.</p>
+  <h1>Demo y Tours del panel</h1>
+  <p>Prueba todas las funciones con una demo animada paso a paso, o inicia el tour guiado de cualquier pantalla.</p>
 </div>
 
+<!-- ── LIVE DEMO ── -->
 <div class="card">
-  <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:8px">📊 Estado de datos de demo</h2>
-  <p class="card-sub">Siembra libros, temáticas y una reunión de demostración en el ciclo actual para probar el panel sin datos reales.</p>
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-    <span>Estado:</span>
-    {% if demo_active %}
-      <span class="status-badge status-active">🟢 Demo activa</span>
-    {% else %}
-      <span class="status-badge status-inactive">⚪ Sin datos demo</span>
-    {% endif %}
+  <div class="section-title">▶ Demo en vivo</div>
+  <p class="card-sub">Simula un ciclo completo: propuestas, votaciones, temáticas, reunión y ganador. Los datos de test se eliminan automáticamente al finalizar.</p>
+
+  <div id="demo-status" class="demo-status">Listo para iniciar</div>
+  <div class="demo-progress"><div class="demo-progress-bar" id="demo-bar"></div></div>
+
+  <div class="demo-terminal" id="demo-log">
+    <div class="line"><span class="prompt">$</span><span class="log-info">Panel Club de Lectura — Demo interactivo v2</span></div>
+    <div class="line"><span class="prompt">$</span><span class="log-info">Pulsa "Iniciar demo" para comenzar la simulación...</span></div>
+    <span class="cursor" id="demo-cursor"></span>
   </div>
-  <div class="btn-group">
-    <form method="post" action="/admin/demo/seed">
-      <button class="btn btn-primary" type="submit">🌱 Sembrar datos de demo</button>
-    </form>
-    {% if demo_active %}
-    <form method="post" action="/admin/demo/clear" onsubmit="return confirm('¿Eliminar todos los datos de demo?')">
-      <button class="btn btn-danger" type="submit">🧹 Limpiar datos demo</button>
-    </form>
-    {% endif %}
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-primary" id="demo-start-btn" onclick="runDemo()">▶ Iniciar demo</button>
+    <button class="btn btn-soft" id="demo-reset-btn" onclick="resetDemoLog()" style="display:none">↺ Reiniciar</button>
   </div>
-  <p style="margin-top:12px;font-size:.82rem;color:var(--muted)">La siembra de datos redirige al dashboard con el tour activado automáticamente.</p>
+  <p style="margin-top:10px;font-size:.8rem;color:var(--muted)">⚠️ El último paso limpia todos los datos de test. No afecta a datos reales.</p>
 </div>
 
+<!-- ── TOURS POR PANTALLA ── -->
 <div class="card">
-  <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:8px">🎯 Tour guiado del panel</h2>
-  <p class="card-sub">El tour te muestra cada sección del dashboard con explicaciones detalladas. Puedes iniciarlo en cualquier momento desde el botón de la cabecera.</p>
-  <a class="btn btn-success" href="/admin?tour=1">▶ Iniciar tour guiado</a>
-</div>
-
-<div class="card">
-  <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:8px">📋 Pasos del tour</h2>
-  <p class="card-sub" style="margin-bottom:16px">El tour cubre las siguientes secciones:</p>
-  <div class="tour-steps">
-    <div class="step">
-      <div class="step-num">1</div>
-      <div class="step-info"><h4>📊 Estadísticas del ciclo</h4><p>Resumen rápido: propuestas, votos, reuniones y asistentes del ciclo actual.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">2</div>
-      <div class="step-info"><h4>📚 Gestión de libros</h4><p>Añadir libros, lanzar encuestas de votación y anunciar al ganador.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div class="step-info"><h4>🏷️ Temáticas</h4><p>Gestionar temáticas del club y lanzar encuestas para elegir la siguiente.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">4</div>
-      <div class="step-info"><h4>📅 Reuniones</h4><p>Crear reuniones, gestionar fechas y enviar recordatorios al grupo.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">5</div>
-      <div class="step-info"><h4>🧭 Navegación superior</h4><p>Acceso rápido al historial, BD, mensajes del bot, programador y cartel.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">6</div>
-      <div class="step-info"><h4>🔔 Recordatorios</h4><p>Enviar recordatorios de reunión o lectura al grupo con un clic.</p></div>
-    </div>
+  <div class="section-title">🎯 Tour guiado por pantalla</div>
+  <p class="card-sub" style="margin-bottom:14px">Cada pantalla del panel tiene su propio tour interactivo. Haz clic para ir a ella con el tour activado.</p>
+  <div class="tour-grid">
+    <a class="tour-page-item" href="/admin?tour=1">
+      <span class="t-icon">🏠</span>
+      <div><div class="t-name">Dashboard principal</div><div class="t-desc">Estadísticas, libros, temáticas, reuniones, recordatorios e IA</div></div>
+      <span class="t-badge">8 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/ciclo?tour=1">
+      <span class="t-icon">🔄</span>
+      <div><div class="t-name">Ciclo activo</div><div class="t-desc">Activar, cerrar ciclos y consultar historial</div></div>
+      <span class="t-badge">4 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/meetings?tour=1">
+      <span class="t-icon">📅</span>
+      <div><div class="t-name">Reuniones</div><div class="t-desc">Crear, editar reuniones y vista de calendario</div></div>
+      <span class="t-badge">4 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/messages?tour=1">
+      <span class="t-icon">✉️</span>
+      <div><div class="t-name">Mensajes del bot</div><div class="t-desc">Editar textos que el bot envía al grupo</div></div>
+      <span class="t-badge">4 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/scheduler?tour=1">
+      <span class="t-icon">⏰</span>
+      <div><div class="t-name">Programador</div><div class="t-desc">Mensajes automáticos en fecha y hora específica</div></div>
+      <span class="t-badge">3 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/waitlist?tour=1">
+      <span class="t-icon">📚</span>
+      <div><div class="t-name">Lista de espera</div><div class="t-desc">Libros que no ganaron, guardados para futuras propuestas</div></div>
+      <span class="t-badge">4 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/poster?tour=1">
+      <span class="t-icon">🖼️</span>
+      <div><div class="t-name">Diseñador de cartel</div><div class="t-desc">Crea carteles del club con el editor interactivo</div></div>
+      <span class="t-badge">5 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/historico?tour=1">
+      <span class="t-icon">📜</span>
+      <div><div class="t-name">Histórico de ciclos</div><div class="t-desc">Datos de todos los ciclos pasados</div></div>
+      <span class="t-badge">3 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/bugs?tour=1">
+      <span class="t-icon">🐛</span>
+      <div><div class="t-name">Bug Reports</div><div class="t-desc">Reportes de errores enviados por usuarios</div></div>
+      <span class="t-badge">4 pasos</span>
+    </a>
+    <a class="tour-page-item" href="/admin/logs?tour=1">
+      <span class="t-icon">📋</span>
+      <div><div class="t-name">Registro de eventos</div><div class="t-desc">Log completo de actividad del sistema</div></div>
+      <span class="t-badge">3 pasos</span>
+    </a>
   </div>
 </div>
 
-<div style="text-align:center;padding:10px 0 20px">
+<div style="text-align:center;padding:8px 0 20px">
   <a class="btn btn-soft" href="/admin">← Volver al dashboard</a>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const DEMO_TOTAL = 10;
+const DEMO_STEP_LABELS = [
+  'Preparando entorno…',
+  'Añadiendo propuesta 1…',
+  'Añadiendo propuesta 2…',
+  'Añadiendo propuesta 3…',
+  'Añadiendo propuesta 4…',
+  'Simulando votaciones…',
+  'Creando temáticas…',
+  'Creando reunión…',
+  'Calculando ganador…',
+  'Limpiando datos de test…',
+];
+let _demoRunning = false;
+
+function appendLog(text, cls='log-ok') {
+  const log = document.getElementById('demo-log');
+  const cursor = document.getElementById('demo-cursor');
+  if (cursor) cursor.remove();
+  // Handle multi-line messages
+  text.split('\n').forEach((line, i) => {
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.innerHTML = `<span class="prompt">${i===0?'►':' '}</span><span class="${cls}">${escHtml(line)}</span>`;
+    log.appendChild(div);
+  });
+  const newCursor = document.createElement('span');
+  newCursor.className = 'cursor'; newCursor.id = 'demo-cursor';
+  log.appendChild(newCursor);
+  log.scrollTop = log.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setProgress(step) {
+  const bar = document.getElementById('demo-bar');
+  if (bar) bar.style.width = `${Math.round((step / DEMO_TOTAL) * 100)}%`;
+  const status = document.getElementById('demo-status');
+  if (status) status.textContent = DEMO_STEP_LABELS[step] || '';
+}
+
+async function runDemo() {
+  if (_demoRunning) return;
+  _demoRunning = true;
+  const startBtn = document.getElementById('demo-start-btn');
+  if (startBtn) startBtn.disabled = true;
+
+  appendLog('Iniciando demo — ' + new Date().toLocaleTimeString(), 'log-info');
+
+  for (let step = 0; step < DEMO_TOTAL; step++) {
+    setProgress(step);
+    try {
+      const res = await fetch(`/admin/demo/step/${step}`);
+      const data = await res.json();
+      appendLog(data.message, data.ok ? 'log-ok' : 'log-err');
+      if (!data.ok) { appendLog('Demo interrumpida por error.', 'log-err'); break; }
+    } catch(e) {
+      appendLog(`Error de red: ${e}`, 'log-err'); break;
+    }
+    // Small delay between steps for the visual effect
+    await new Promise(r => setTimeout(r, step < 5 ? 700 : 900));
+  }
+
+  setProgress(DEMO_TOTAL);
+  const status = document.getElementById('demo-status');
+  if (status) status.textContent = '✅ Demo completada — entorno limpio';
+  appendLog('✅ Demo completada. Todos los datos de test han sido eliminados.', 'log-done');
+  _demoRunning = false;
+  const resetBtn = document.getElementById('demo-reset-btn');
+  if (resetBtn) resetBtn.style.display = '';
+  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '▶ Ejecutar de nuevo'; }
+}
+
+function resetDemoLog() {
+  const log = document.getElementById('demo-log');
+  log.innerHTML = `
+    <div class="line"><span class="prompt">$</span><span class="log-info">Panel Club de Lectura — Demo interactivo v2</span></div>
+    <div class="line"><span class="prompt">$</span><span class="log-info">Pulsa "Iniciar demo" para comenzar la simulación...</span></div>
+    <span class="cursor" id="demo-cursor"></span>`;
+  const bar = document.getElementById('demo-bar');
+  if (bar) bar.style.width = '0';
+  const status = document.getElementById('demo-status');
+  if (status) status.textContent = 'Listo para iniciar';
+  const resetBtn = document.getElementById('demo-reset-btn');
+  if (resetBtn) resetBtn.style.display = 'none';
+  const startBtn = document.getElementById('demo-start-btn');
+  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '▶ Iniciar demo'; }
+}
+</script>
 {% endblock %}

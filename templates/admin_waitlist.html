@@ -44,9 +44,12 @@
 
 {% block content %}
 
-<div style="margin-bottom:20px">
-  <h1 style="font-size:1.5rem;font-weight:800;margin-bottom:4px">📚 Lista de espera</h1>
-  <div style="color:var(--muted);font-size:.9rem">Libros que no ganaron, guardados por temática para futuras propuestas</div>
+<div class="page-head">
+  <div class="page-badge">📚</div>
+  <div>
+    <h1 style="margin:0;font-size:1.5rem;font-weight:800">Lista de espera</h1>
+    <div style="color:var(--muted);font-size:.88rem;margin-top:3px">Libros que no ganaron, guardados por temática para futuras propuestas</div>
+  </div>
 </div>
 
 <div class="filter-bar">
@@ -168,5 +171,15 @@
     </div>
   </aside>
 </div>
+{% endblock %}
 
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',      title: '📚 Lista de espera',       desc: 'Libros que no ganaron en ciclos anteriores, guardados aquí para ser propuestos de nuevo en ciclos futuros.' },
+  { selector: '.filter-bar',     title: '🔍 Filtros por temática',   desc: 'Filtra los libros en espera por la temática del ciclo en que fueron propuestos.' },
+  { selector: '.book-card',      title: '📖 Libro en espera',        desc: 'Cada tarjeta muestra el libro, los votos que obtuvo, el ciclo de origen y opciones para promoverlo o descartarlo.' },
+  { selector: '.sidebar-card',   title: '📊 Estadísticas',           desc: 'Resumen de cuántos libros hay en espera y cuántos recomendarías proponer en el próximo ciclo.' },
+];
+</script>
 {% endblock %}

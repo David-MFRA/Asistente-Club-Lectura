@@ -103,3 +103,13 @@
   {% endif %}
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',  title: '📋 Registro de eventos',  desc: 'Log de actividad: acciones de admin, comandos del bot, errores y llamadas a la IA. Últimos 300 eventos.' },
+  { selector: '.filter-bar', title: '🔍 Filtros',              desc: 'Filtra por tipo (admin, bot, error, IA) o por categoría (auth, ciclo, libro, reunión...). Puedes combinarlos.' },
+  { selector: 'table',       title: '📊 Tabla de eventos',     desc: 'Cada fila es un evento: tipo, categoría, descripción, actor que lo generó y timestamp.' },
+];
+</script>
+{% endblock %}

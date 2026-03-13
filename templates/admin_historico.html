@@ -152,3 +152,13 @@
   </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head',   title: '📜 Histórico de ciclos',  desc: 'Consulta todos los ciclos pasados: libros propuestos, votos, ganadores y encuestas de cada ciclo.' },
+  { selector: '.tab-bar',     title: '📑 Tabs de navegación',   desc: 'Cambia entre ciclos usando estas pestañas. Cada pestaña muestra los datos de un ciclo diferente.' },
+  { selector: 'table',        title: '📚 Libros propuestos',    desc: 'Tabla con todos los libros propuestos en ese ciclo, sus votos y si ganaron o no.' },
+];
+</script>
+{% endblock %}

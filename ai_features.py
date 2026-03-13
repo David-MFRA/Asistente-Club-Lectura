@@ -11,32 +11,46 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
-def _groq_chat(prompt: str, max_tokens: int = 2000, model: str = "openai/gpt-oss-120b") -> str | None:
-    """Llama a la API de Groq. Devuelve None si no está configurada o hay error."""
+GROQ_MODELS = [
+    "openai/gpt-oss-120b",
+    "moonshotai/kimi-k2-instruct",
+    "llama-3.3-70b-versatile",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "qwen/qwen3-32b",
+]
+
+
+def _groq_chat(prompt: str, max_tokens: int = 2000, model: str | None = None) -> str | None:
+    """Llama a la API de Groq probando modelos en orden hasta obtener respuesta."""
     if not GROQ_API_KEY:
         return None
-    try:
-        body = json.dumps({
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": 0.8,
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=body,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        logger.warning("Groq API error: %s", e)
-        return None
+    models = [model] if model else GROQ_MODELS
+    for m in models:
+        try:
+            body = json.dumps({
+                "model": m,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": 0.8,
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+                result = data["choices"][0]["message"]["content"].strip()
+                if result:
+                    logger.debug("Groq respondió con modelo: %s", m)
+                    return result
+        except Exception as e:
+            logger.warning("Groq error con modelo %s: %s — probando siguiente", m, e)
+    return None
 
 
 def _scrape_goodreads_quotes(book_title: str, author: str = "") -> list[str]:
@@ -180,7 +194,7 @@ def generate_book_quote(book_title: str, author: str = "") -> str:
         f"Si no conoces el libro exactamente, da una frase del autor {author or 'desconocido'} de otra obra suya, en español. "
         f"Formato exacto: «[cita textual en español]» — {author or 'Autor'}. Solo la cita, nada más."
     )
-    result = _groq_chat(prompt, max_tokens=2000, model="openai/gpt-oss-120b")
+    result = _groq_chat(prompt, max_tokens=2000)
     if result:
         return result
 

@@ -1,114 +1,53 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asistencia · Club de Lectura</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
-    <style>
-        :root{
-            --bg1:#0f172a; --bg2:#111827;
-            --card:rgba(255,255,255,0.08); --border:rgba(255,255,255,0.12);
-            --text:#f8fafc; --muted:#94a3b8;
-            --primary:#6366f1; --primary2:#8b5cf6;
-            --shadow:0 18px 38px rgba(0,0,0,.28); --radius:20px;
-        }
-        *{box-sizing:border-box}
-        html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;
-            background:radial-gradient(circle at top left,rgba(99,102,241,.22),transparent 35%),
-                radial-gradient(circle at bottom right,rgba(139,92,246,.18),transparent 35%),
-                linear-gradient(135deg,var(--bg1),var(--bg2));
-            color:var(--text)}
-        body{padding:12px 12px 80px}
-        .container{max-width:700px;margin:0 auto}
-        .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px}
-        .brand{display:flex;align-items:center;gap:12px}
-        .badge{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:24px}
-        h1{margin:0;font-size:1.5rem}
-        .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
-        .btn{display:inline-flex;align-items:center;padding:11px 16px;border-radius:13px;text-decoration:none;font-weight:700;border:1px solid var(--border);color:var(--text);background:var(--card);font-size:.9rem}
-        .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(16px);padding:20px;margin-bottom:16px}
-        .meta{color:var(--muted);font-size:.9rem;margin-bottom:16px;line-height:1.6}
-        .list{display:grid;gap:10px}
-        .item{display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-        .avatar{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
-        .name{font-weight:700}
-        .empty{text-align:center;padding:22px;color:var(--muted)}
-        .count-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;background:rgba(99,102,241,.15);color:#c7d2fe;font-size:.88rem;font-weight:700;margin-bottom:14px}
-        input,select,textarea{font-size:16px}
-        .btn{min-height:44px;min-width:44px}
-        html{scroll-behavior:smooth}
-        .fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;cursor:pointer;font-size:22px;color:#fff;box-shadow:0 4px 20px rgba(99,102,241,.5);z-index:200;display:flex;align-items:center;justify-content:center;transition:.2s ease}
-        .fab:hover{transform:scale(1.08)}
-        .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300}
-        .drawer-backdrop.open{display:block}
-        .drawer{position:fixed;bottom:0;left:0;right:0;background:#111827;border-top:1px solid rgba(255,255,255,.12);border-radius:20px 20px 0 0;padding:16px;z-index:400;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1)}
-        .drawer.open{transform:translateY(0)}
-        .drawer-handle{width:40px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 16px}
-        .drawer-links{display:flex;flex-direction:column;gap:4px}
-        .drawer-link{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:12px;color:#f1f5f9;text-decoration:none;font-size:.95rem;font-weight:600;transition:.15s ease}
-        .drawer-link:hover{background:rgba(255,255,255,.08)}
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="topbar">
-        <div class="brand">
-            <div class="badge">👥</div>
-            <div>
-                <h1>Asistencia</h1>
-                <div class="subtitle">Participantes apuntados a la última reunión</div>
-            </div>
-        </div>
-        <a class="btn" href="/admin">← Dashboard</a>
+{% extends '_base.html' %}
+{% block title %}Asistencia{% endblock %}
+{% block main_class %}main--sm{% endblock %}
+
+{% block head_extra %}
+<style>
+  .page-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  h1  { margin: 0; font-size: 1.5rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+  .meta { color: var(--muted); font-size: .9rem; margin-bottom: 16px; line-height: 1.6; }
+  .list { display: grid; gap: 10px; }
+  .item { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+  .avatar { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,var(--primary),var(--primary2)); display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+  .item-name { font-weight: 700; }
+  .count-pill { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; background: rgba(99,102,241,.15); color: #c7d2fe; font-size: .88rem; font-weight: 700; margin-bottom: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">👥</div>
+  <div>
+    <h1>Asistencia</h1>
+    <div class="sub">Participantes apuntados a la última reunión</div>
+  </div>
+</div>
+
+{% if meeting %}
+  <div class="card card--blur">
+    <div class="meta">
+      <strong>Reunión:</strong> {{ meeting.name }}<br>
+      <strong>Fecha:</strong> {{ meeting.final_date if meeting.final_date else "Sin fecha cerrada" }}<br>
+      <strong>Estado:</strong> {{ meeting.status }}
     </div>
 
-    {% if meeting %}
-        <div class="card">
-            <div class="meta">
-                <strong>Reunión:</strong> {{ meeting.name }}<br>
-                <strong>Fecha:</strong> {{ meeting.final_date if meeting.final_date else "Sin fecha cerrada" }}<br>
-                <strong>Estado:</strong> {{ meeting.status }}
-            </div>
-
-            {% if attendees %}
-                <div class="count-pill">✅ {{ attendees|length }} asistente{{ 's' if attendees|length != 1 else '' }}</div>
-                <div class="list">
-                    {% for a in attendees %}
-                    <div class="item">
-                        <div class="avatar">👤</div>
-                        <div class="name">{{ a }}</div>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="empty">Nadie se ha apuntado todavía.<br><span style="font-size:.87rem">Los miembros usan /asistir en el bot de Telegram.</span></div>
-            {% endif %}
+    {% if attendees %}
+      <div class="count-pill">✅ {{ attendees|length }} asistente{{ 's' if attendees|length != 1 else '' }}</div>
+      <div class="list">
+        {% for a in attendees %}
+        <div class="item">
+          <div class="avatar">👤</div>
+          <div class="item-name">{{ a }}</div>
         </div>
+        {% endfor %}
+      </div>
     {% else %}
-        <div class="card">
-            <div class="empty">No hay reuniones creadas todavía.</div>
-        </div>
+      <div class="empty">Nadie se ha apuntado todavía.<br><span style="font-size:.87rem">Los miembros usan /asistir en el bot de Telegram.</span></div>
     {% endif %}
-</div>
-
-<button class="fab" onclick="openDrawer()" aria-label="Menú">☰</button>
-<div class="drawer-backdrop" id="drawer-backdrop"></div>
-<div class="drawer" id="drawer">
-    <div class="drawer-handle"></div>
-    <nav class="drawer-links">
-        <a class="drawer-link" href="/admin">🏠 Dashboard</a>
-        <a class="drawer-link" href="/meetings">📅 Reuniones</a>
-        <a class="drawer-link" href="/themes">🏷️ Temáticas</a>
-        <a class="drawer-link" href="/ranking">🏆 Ranking</a>
-        <a class="drawer-link" href="/admin/historico">📚 Histórico</a>
-        <a class="drawer-link" href="/admin/logout">🚪 Salir</a>
-    </nav>
-</div>
-<script>
-function openDrawer(){document.getElementById('drawer').classList.add('open');document.getElementById('drawer-backdrop').classList.add('open')}
-function closeDrawer(){document.getElementById('drawer').classList.remove('open');document.getElementById('drawer-backdrop').classList.remove('open')}
-document.getElementById('drawer-backdrop').addEventListener('click',closeDrawer);
-</script>
-</body>
-</html>
+  </div>
+{% else %}
+  <div class="card"><div class="empty">No hay reuniones creadas todavía.</div></div>
+{% endif %}
+{% endblock %}

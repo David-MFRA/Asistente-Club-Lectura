@@ -1,245 +1,164 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detalle reunión · Club de Lectura</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
-    <style>
-        :root{
-            --bg1:#0f172a; --bg2:#111827;
-            --card:rgba(255,255,255,0.08); --border:rgba(255,255,255,0.12);
-            --text:#f8fafc; --muted:#94a3b8;
-            --primary:#6366f1; --primary2:#8b5cf6;
-            --danger:#ef4444; --success:#10b981;
-            --shadow:0 18px 38px rgba(0,0,0,.28); --radius:20px;
-        }
-        *{box-sizing:border-box}
-        html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;
-            background:radial-gradient(circle at top left,rgba(99,102,241,.22),transparent 35%),
-                radial-gradient(circle at bottom right,rgba(139,92,246,.18),transparent 35%),
-                linear-gradient(135deg,var(--bg1),var(--bg2));
-            color:var(--text)}
-        body{padding:12px 12px 80px}
-        .container{max-width:1200px;margin:0 auto}
-        .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px}
-        .brand{display:flex;align-items:center;gap:12px}
-        .badge{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:24px}
-        h1{margin:0;font-size:1.5rem}
-        h2{margin:0 0 8px;font-size:1.02rem}
-        .subtitle{margin-top:4px;color:var(--muted);font-size:.94rem}
-        .actions{display:flex;gap:10px;flex-wrap:wrap}
-        .btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:none;cursor:pointer;border-radius:13px;padding:11px 15px;font-weight:700;font-size:.9rem;transition:.18s ease}
-        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff}
-        .btn-soft{background:var(--card);color:var(--text);border:1px solid var(--border)}
-        .btn-danger{background:rgba(239,68,68,.14);color:#fecaca;border:1px solid rgba(239,68,68,.28)}
-        .btn:hover{transform:translateY(-1px)}
-        .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(16px);padding:18px;margin-bottom:16px}
-        .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
-        .span-6{grid-column:span 6}.span-12{grid-column:span 12}
-        .field{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
-        label{color:var(--muted);font-size:.88rem}
-        input,select,textarea{width:100%;padding:12px 13px;border-radius:13px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text);outline:none;font-size:.92rem}
-        input:focus,select:focus,textarea:focus{border-color:rgba(99,102,241,.65);box-shadow:0 0 0 4px rgba(99,102,241,.16)}
-        input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.7;cursor:pointer}
-        textarea{min-height:110px;resize:vertical}
-        .muted{color:var(--muted);font-size:.88rem}
-        .list{display:grid;gap:9px}
-        .item{padding:12px 14px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-        .empty{text-align:center;color:var(--muted);padding:16px}
-        .poll-box{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);border-radius:15px;padding:14px;margin-bottom:14px}
-        .poll-box-title{font-weight:700;margin-bottom:6px}
-        .poll-box p{color:var(--muted);font-size:.86rem;margin:0 0 10px}
-        input,select,textarea{font-size:16px}
-        .btn{min-height:44px}
-        html{scroll-behavior:smooth}
-        .fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;cursor:pointer;font-size:22px;color:#fff;box-shadow:0 4px 20px rgba(99,102,241,.5);z-index:200;display:flex;align-items:center;justify-content:center;transition:.2s ease}
-        .fab:hover{transform:scale(1.08)}
-        .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300}
-        .drawer-backdrop.open{display:block}
-        .drawer{position:fixed;bottom:0;left:0;right:0;background:#111827;border-top:1px solid rgba(255,255,255,.12);border-radius:20px 20px 0 0;padding:16px;z-index:400;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1)}
-        .drawer.open{transform:translateY(0)}
-        .drawer-handle{width:40px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 16px}
-        .drawer-links{display:flex;flex-direction:column;gap:4px}
-        .drawer-link{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:12px;color:#f1f5f9;text-decoration:none;font-size:.95rem;font-weight:600;transition:.15s ease}
-        .drawer-link:hover{background:rgba(255,255,255,.08)}
-        @media(max-width:900px){.span-6,.span-12{grid-column:span 12}}
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="topbar">
-        <div class="brand">
-            <div class="badge">🗓️</div>
-            <div>
-                <h1>{{ meeting.name }}</h1>
-                <div class="subtitle">Detalle, asistentes y gestión de fechas</div>
-            </div>
-        </div>
-        <div class="actions">
-            <a class="btn btn-soft" href="/meetings">Reuniones</a>
-            <a class="btn btn-soft" href="/admin">Dashboard</a>
-            <form action="/admin/send/dm-reminders/{{ meeting.id }}" method="post" style="display:inline">
-                <button type="submit" class="btn btn-soft"
-                        style="background:rgba(245,158,11,.14);color:#fde68a;border-color:rgba(245,158,11,.3)"
-                        onclick="return confirm('¿Enviar recordatorio privado a los miembros que aún no han confirmado?')"
-                        title="Solo llega a miembros que hayan hablado con el bot en privado">
-                    💬 DM a no confirmados
-                </button>
-            </form>
-        </div>
-    </div>
+{% extends '_base.html' %}
+{% block title %}{{ meeting.name }}{% endblock %}
+{% block main_class %}main--lg{% endblock %}
 
-    <div class="grid">
-        <!-- EDITAR -->
-        <section class="card span-6">
-            <h2>Editar reunión</h2>
-            <p class="muted">Actualiza nombre, fecha, estado y acta.</p>
-            <form method="post" action="/meeting/{{ meeting.id }}/edit">
-                <div class="field">
-                    <label>Nombre</label>
-                    <input name="name" type="text" value="{{ meeting.name }}">
-                </div>
-                <div class="field">
-                    <label>Fecha final</label>
-                    <input name="final_date" type="datetime-local" value="{{ meeting.final_date | dt_local }}">
-                </div>
-                <div class="field">
-                    <label>Estado</label>
-                    <select name="status">
-                        <option value="draft" {% if meeting.status == "draft" %}selected{% endif %}>draft</option>
-                        <option value="scheduled" {% if meeting.status == "scheduled" %}selected{% endif %}>scheduled</option>
-                        <option value="closed" {% if meeting.status == "closed" %}selected{% endif %}>closed</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label>Lugar</label>
-                    <input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..." value="{{ meeting.location if meeting.location else '' }}">
-                </div>
-                <div class="field">
-                    <label>Notas</label>
-                    <textarea name="notes" placeholder="Notas adicionales para el grupo">{{ meeting.notes if meeting.notes else '' }}</textarea>
-                </div>
-                <div class="field">
-                    <label>Resumen / Acta</label>
-                    <textarea name="summary" placeholder="Resumen de la reunión">{{ meeting.summary if meeting.summary else '' }}</textarea>
-                </div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap">
-                    <button class="btn btn-primary" type="submit">Guardar cambios</button>
-                </div>
-            </form>
-            <form method="post" action="/meeting/{{ meeting.id }}/delete" style="margin-top:12px">
-                <button class="btn btn-danger" type="submit" onclick="return confirm('¿Seguro que quieres borrar esta reunión?')">Borrar reunión</button>
-            </form>
-        </section>
+{% block head_extra %}
+<style>
+  .page-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  h1  { margin: 0; font-size: 1.4rem; }
+  h2  { margin: 0 0 8px; font-size: 1.02rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+  .page-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .muted  { color: var(--muted); font-size: .88rem; }
+  .list   { display: grid; gap: 9px; }
+  .item   { padding: 12px 14px; border-radius: 13px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+  .poll-box       { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.3); border-radius: 15px; padding: 14px; margin-bottom: 14px; }
+  .poll-box-title { font-weight: 700; margin-bottom: 6px; }
+  .poll-box p     { color: var(--muted); font-size: .86rem; margin: 0 0 10px; }
+</style>
+{% endblock %}
 
-        <!-- FECHAS + ENCUESTA -->
-        <section class="card span-6">
-            <h2>Opciones de fecha</h2>
-            <p class="muted">Añade fechas candidatas y lanza una encuesta nativa de Telegram para que el grupo vote.</p>
-
-            <form method="post" action="/meeting/{{ meeting.id }}/date-option" style="margin-bottom:12px">
-                <div class="field">
-                    <label>Nueva opción de fecha</label>
-                    <input name="option_date" type="datetime-local" required>
-                </div>
-                <button class="btn btn-primary" type="submit">Añadir opción</button>
-            </form>
-
-            {% if date_options %}
-                <div class="list" style="margin-bottom:14px">
-                    {% for d in date_options %}
-                    <div class="item">
-                        📆 {{ d.option_date }} &nbsp;—&nbsp; <strong>{{ d.votes }} voto{{ 's' if d.votes != 1 else '' }}</strong>
-                    </div>
-                    {% endfor %}
-                </div>
-
-                <!-- Encuesta de fechas -->
-                {% if open_poll %}
-                    <div class="poll-box">
-                        <div class="poll-box-title">📊 Encuesta de fechas activa</div>
-                        <p>La votación está en marcha en Telegram. Al cerrarla, la fecha ganadora se asignará automáticamente a esta reunión.</p>
-                        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/cerrar/{{ open_poll.id }}">
-                            <button class="btn btn-danger" type="submit">🔒 Cerrar encuesta y asignar fecha ganadora</button>
-                        </form>
-                    </div>
-                {% else %}
-                    {% if date_options|length >= 2 %}
-                        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/crear">
-                            <button class="btn btn-primary" type="submit">📨 Lanzar encuesta de fechas en Telegram</button>
-                        </form>
-                    {% endif %}
-                {% endif %}
-            {% else %}
-                <div class="empty">No hay opciones de fecha. Añade al menos dos para poder lanzar una encuesta.</div>
-            {% endif %}
-
-            <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
-                <p class="muted" style="margin:0 0 10px">O cierra la fecha manualmente:</p>
-                <form method="post" action="/meeting/{{ meeting.id }}/close-date">
-                    <div class="field">
-                        <label>Fecha definitiva</label>
-                        <input name="final_date" type="datetime-local" required>
-                    </div>
-                    <button class="btn btn-soft" type="submit">Establecer fecha definitiva</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- ASISTENTES -->
-        <section class="card span-12">
-            <h2>Asistentes</h2>
-            <p class="muted">Participantes apuntados a esta reunión.</p>
-            {% if attendees %}
-                <div class="list">
-                    {% for a in attendees %}
-                    <div class="item">👤 {{ a }}</div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="empty">No hay asistentes todavía.</div>
-            {% endif %}
-        </section>
-
-        <!-- ASIGNAR LIBRO -->
-        <section class="card span-12">
-            <h2>📗 Libro de la reunión</h2>
-            <p class="muted">Asigna el libro que se debatirá en esta reunión.</p>
-            {% if meeting.book_title %}
-                <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:13px;padding:13px;margin-bottom:14px">
-                    <div style="color:#6ee7b7;font-weight:700;font-size:.88rem">📗 Libro actual</div>
-                    <div style="font-weight:800;margin-top:4px">{{ meeting.book_title }}</div>
-                </div>
-            {% endif %}
-            <form method="post" action="/meeting/{{ meeting.id }}/set-book" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-                <div class="field" style="flex:1;min-width:200px;margin:0">
-                    <label>ID del libro (ver en Base de datos → books)</label>
-                    <input name="book_id" type="number" placeholder="ID del libro" value="{{ meeting.book_id if meeting.book_id else '' }}">
-                </div>
-                <button class="btn btn-primary" type="submit">Asignar libro</button>
-            </form>
-        </section>
-    </div>
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">🗓️</div>
+  <div>
+    <h1>{{ meeting.name }}</h1>
+    <div class="sub">Detalle, asistentes y gestión de fechas</div>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-soft" href="/meetings">Reuniones</a>
+    <form action="/admin/send/dm-reminders/{{ meeting.id }}" method="post" style="display:inline">
+      <button type="submit" class="btn btn-warning btn-sm"
+              onclick="return confirm('¿Enviar recordatorio privado a los miembros que aún no han confirmado?')"
+              title="Solo llega a miembros que hayan hablado con el bot en privado">
+        💬 DM a no confirmados
+      </button>
+    </form>
+  </div>
 </div>
 
-<button class="fab" onclick="openDrawer()" aria-label="Menú">☰</button>
-<div class="drawer-backdrop" id="drawer-backdrop"></div>
-<div class="drawer" id="drawer">
-    <div class="drawer-handle"></div>
-    <nav class="drawer-links">
-        <a class="drawer-link" href="/admin">🏠 Dashboard</a>
-        <a class="drawer-link" href="/meetings">📅 Reuniones</a>
-        <a class="drawer-link" href="/themes">🏷️ Temáticas</a>
-        <a class="drawer-link" href="/ranking">🏆 Ranking</a>
-        <a class="drawer-link" href="/admin/historico">📚 Histórico</a>
-        <a class="drawer-link" href="/admin/logout">🚪 Salir</a>
-    </nav>
+<div class="grid">
+  <!-- EDITAR -->
+  <section class="card card--blur span-6">
+    <h2>Editar reunión</h2>
+    <p class="muted" style="margin-bottom:14px">Actualiza nombre, fecha, estado y notas.</p>
+    <form method="post" action="/meeting/{{ meeting.id }}/edit">
+      <div class="field">
+        <label>Nombre</label>
+        <input name="name" type="text" value="{{ meeting.name }}">
+      </div>
+      <div class="field">
+        <label>Fecha final</label>
+        <input name="final_date" type="datetime-local" value="{{ meeting.final_date | dt_local }}">
+      </div>
+      <div class="field">
+        <label>Estado</label>
+        <select name="status">
+          <option value="draft"     {% if meeting.status == "draft" %}selected{% endif %}>draft</option>
+          <option value="scheduled" {% if meeting.status == "scheduled" %}selected{% endif %}>scheduled</option>
+          <option value="closed"    {% if meeting.status == "closed" %}selected{% endif %}>closed</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Lugar</label>
+        <input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..." value="{{ meeting.location or '' }}">
+      </div>
+      <div class="field">
+        <label>Notas</label>
+        <textarea name="notes" placeholder="Notas adicionales para el grupo">{{ meeting.notes or '' }}</textarea>
+      </div>
+      <div class="field">
+        <label>Resumen / Acta</label>
+        <textarea name="summary" placeholder="Resumen de la reunión">{{ meeting.summary or '' }}</textarea>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit">Guardar cambios</button>
+      </div>
+    </form>
+    <form method="post" action="/meeting/{{ meeting.id }}/delete" style="margin-top:12px">
+      <button class="btn btn-danger btn-sm" type="submit" onclick="return confirm('¿Seguro que quieres borrar esta reunión?')">Borrar reunión</button>
+    </form>
+  </section>
+
+  <!-- FECHAS -->
+  <section class="card card--blur span-6">
+    <h2>Opciones de fecha</h2>
+    <p class="muted" style="margin-bottom:14px">Añade fechas candidatas y lanza una encuesta de Telegram para que el grupo vote.</p>
+
+    <form method="post" action="/meeting/{{ meeting.id }}/date-option" style="margin-bottom:12px">
+      <div class="field">
+        <label>Nueva opción de fecha</label>
+        <input name="option_date" type="datetime-local" required>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Añadir opción</button>
+    </form>
+
+    {% if date_options %}
+    <div class="list" style="margin-bottom:14px">
+      {% for d in date_options %}
+      <div class="item">📆 {{ d.option_date }} &nbsp;—&nbsp; <strong>{{ d.votes }} voto{{ 's' if d.votes != 1 else '' }}</strong></div>
+      {% endfor %}
+    </div>
+
+    {% if open_poll %}
+      <div class="poll-box">
+        <div class="poll-box-title">📊 Encuesta de fechas activa</div>
+        <p>La votación está en marcha en Telegram. Al cerrarla, la fecha ganadora se asignará automáticamente.</p>
+        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/cerrar/{{ open_poll.id }}">
+          <button class="btn btn-danger btn-sm" type="submit">🔒 Cerrar encuesta y asignar fecha</button>
+        </form>
+      </div>
+    {% elif date_options|length >= 2 %}
+      <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/crear">
+        <button class="btn btn-primary btn-sm" type="submit">📨 Lanzar encuesta de fechas en Telegram</button>
+      </form>
+    {% endif %}
+    {% else %}
+      <div class="empty">No hay opciones de fecha. Añade al menos dos para poder lanzar una encuesta.</div>
+    {% endif %}
+
+    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px">
+      <p class="muted" style="margin:0 0 10px">O cierra la fecha manualmente:</p>
+      <form method="post" action="/meeting/{{ meeting.id }}/close-date">
+        <div class="field">
+          <label>Fecha definitiva</label>
+          <input name="final_date" type="datetime-local" required>
+        </div>
+        <button class="btn btn-soft btn-sm" type="submit">Establecer fecha definitiva</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ASISTENTES -->
+  <section class="card card--blur span-6">
+    <h2>Asistentes</h2>
+    <p class="muted" style="margin-bottom:10px">Participantes apuntados a esta reunión.</p>
+    {% if attendees %}
+      <div class="list">
+        {% for a in attendees %}<div class="item">👤 {{ a }}</div>{% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No hay asistentes todavía.</div>
+    {% endif %}
+  </section>
+
+  <!-- LIBRO -->
+  <section class="card card--blur span-6">
+    <h2>📗 Libro de la reunión</h2>
+    <p class="muted" style="margin-bottom:14px">Asigna el libro que se debatirá.</p>
+    {% if meeting.book_title %}
+    <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:13px;padding:13px;margin-bottom:14px">
+      <div style="color:#6ee7b7;font-weight:700;font-size:.88rem">📗 Libro actual</div>
+      <div style="font-weight:800;margin-top:4px">{{ meeting.book_title }}</div>
+    </div>
+    {% endif %}
+    <form method="post" action="/meeting/{{ meeting.id }}/set-book" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:200px;margin:0">
+        <label>ID del libro (ver en Base de datos → books)</label>
+        <input name="book_id" type="number" placeholder="ID del libro" value="{{ meeting.book_id or '' }}">
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Asignar libro</button>
+    </form>
+  </section>
 </div>
-<script>
-function openDrawer(){document.getElementById('drawer').classList.add('open');document.getElementById('drawer-backdrop').classList.add('open')}
-function closeDrawer(){document.getElementById('drawer').classList.remove('open');document.getElementById('drawer-backdrop').classList.remove('open')}
-document.getElementById('drawer-backdrop').addEventListener('click',closeDrawer);
-</script>
-</body>
-</html>
+{% endblock %}

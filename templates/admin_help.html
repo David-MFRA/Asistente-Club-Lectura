@@ -1,173 +1,130 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ayuda · Club de Lectura</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
-  <style>
-    :root{--bg:#0b1120;--bg2:#111827;--panel:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.10);--text:#f1f5f9;--muted:#94a3b8;--primary:#6366f1;--success:#10b981;--warning:#f59e0b;--radius:14px}
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding-bottom:60px}
-    .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
-    .header a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:600}
-    .header a:hover{color:var(--text)}
-    .brand{color:var(--text)!important;font-weight:800!important}
-    .main{max-width:800px;margin:0 auto;padding:28px 16px}
-    h1{font-size:24px;font-weight:800;margin-bottom:6px}
-    .sub{color:var(--muted);font-size:14px;margin-bottom:28px}
-    .section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
-    .section h2{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-    .section p,.section li{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:6px}
-    .section li{margin-left:20px}
-    .badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;margin-right:4px}
-    .badge-draft{background:rgba(245,158,11,.15);color:var(--warning);border:1px solid rgba(245,158,11,.3)}
-    .badge-scheduled{background:rgba(16,185,129,.15);color:var(--success);border:1px solid rgba(16,185,129,.3)}
-    .badge-closed{background:rgba(148,163,184,.15);color:var(--muted);border:1px solid rgba(148,163,184,.3)}
-    code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:13px}
-    .tip{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);border-radius:8px;padding:10px 14px;font-size:13px;color:#a5b4fc;margin-top:10px}
-    a{color:#a5b4fc}
-  </style>
-</head>
-<body>
-<header class="header">
-  <a href="/admin" class="brand">📚 Club de Lectura</a>
-  <a href="/admin">Dashboard</a>
-  <a href="/admin/help" style="color:var(--text)">Ayuda</a>
-  <a href="/admin/logout" style="margin-left:auto">Salir</a>
-</header>
-<div class="main">
-  <h1>❓ Centro de Ayuda</h1>
-  <p class="sub">Guía completa para gestionar el club de lectura desde el panel de administración.</p>
+{% extends '_base.html' %}
+{% block title %}Ayuda{% endblock %}
+{% block main_class %}main--md{% endblock %}
 
-  <div class="section">
-    <h2>🔄 Flujo de un ciclo completo</h2>
-    <p>El <strong>dashboard</strong> te guía paso a paso a través del ciclo. El banner superior siempre indica en qué paso estás y qué acción tomar.</p>
-    <ul>
-      <li><strong>1. Iniciar ciclo</strong> — Pulsa "Iniciar ciclo y pedir propuestas". Se crea el ciclo y se envía un mensaje al grupo invitando a sugerir libros con <code>/proponer</code>.</li>
-      <li><strong>2. Recoger propuestas</strong> — Los miembros proponen libros en Telegram. Puedes añadirlos también desde el panel. Las propuestas se bloquean automáticamente al lanzar la encuesta.</li>
-      <li><strong>3. Encuesta de libros</strong> — Pulsa "Cerrar propuestas y lanzar encuesta". Se bloquean nuevas propuestas y se envía una encuesta nativa de Telegram.</li>
-      <li><strong>4. Cerrar encuesta</strong> — Cuando tengas suficientes votos, cierra la encuesta. El ganador se anuncia automáticamente.</li>
-      <li><strong>5. Fijar fecha</strong> — Ve al detalle de la reunión y añade la fecha directamente, o lanza una encuesta de fechas. Una vez decidida, pulsa "Anunciar fecha al grupo".</li>
-      <li><strong>6. Reunión</strong> — Los recordatorios automáticos gestionan el resto. Cuando pase la reunión, cierra la reunión desde su detalle.</li>
-    </ul>
-    <div class="tip">💡 También puedes crear ciclos con nombre personalizado desde <a href="/admin/ciclo">Gestión de Ciclo</a>.</div>
-  </div>
+{% block head_extra %}
+<style>
+  h1  { font-size: 1.5rem; font-weight: 800; margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 24px; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
+  .section h2 { font-size: 1rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .section p, .section li { font-size: .88rem; color: var(--muted); line-height: 1.7; margin-bottom: 6px; }
+  .section li { margin-left: 20px; }
+  .help-badge { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; margin-right: 4px; }
+  .badge-draft     { background: rgba(245,158,11,.15); color: var(--warning); border: 1px solid rgba(245,158,11,.3); }
+  .badge-scheduled { background: rgba(16,185,129,.15); color: var(--success); border: 1px solid rgba(16,185,129,.3); }
+  .badge-closed    { background: rgba(148,163,184,.15); color: var(--muted);   border: 1px solid rgba(148,163,184,.3); }
+  code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; color: var(--text); }
+  .tip { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.25); border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #a5b4fc; margin-top: 10px; }
+  a { color: #a5b4fc; }
+</style>
+{% endblock %}
 
-  <div class="section">
-    <h2>📅 Estados de reunión</h2>
-    <p>Cada reunión puede estar en uno de estos estados:</p>
-    <ul>
-      <li><span class="badge badge-draft">⏳ Borrador</span> — Reunión creada pero sin fecha confirmada. Puedes añadir opciones de fecha y lanzar una encuesta.</li>
-      <li><span class="badge badge-scheduled">✅ Confirmada</span> — Fecha acordada. El bot incluirá esta reunión en los recordatorios automáticos.</li>
-      <li><span class="badge badge-closed">🔒 Cerrada</span> — La reunión ya ha pasado. Puedes añadir el acta/resumen.</li>
-    </ul>
-    <div class="tip">💡 Cuando cierras una encuesta de fechas, la reunión pasa automáticamente a "Confirmada".</div>
-  </div>
+{% block content %}
+<h1>❓ Centro de Ayuda</h1>
+<p class="sub">Guía completa para gestionar el club de lectura desde el panel de administración.</p>
 
-  <div class="section">
-    <h2>🗳️ Encuestas</h2>
-    <ul>
-      <li><strong>Encuesta de libros</strong> — Se lanza desde el dashboard. Los miembros votan el libro del mes directamente en Telegram.</li>
-      <li><strong>Encuesta de temáticas</strong> — Similar, para elegir la temática del próximo ciclo.</li>
-      <li><strong>Encuesta de fechas</strong> — Desde el detalle de una reunión, para elegir la fecha de reunión.</li>
-    </ul>
-    <div class="tip">💡 Cierra siempre las encuestas desde el panel admin para que el sistema procese el ganador automáticamente.</div>
-  </div>
-
-  <div class="section">
-    <h2>✉️ Mensajes del bot</h2>
-    <p>Todos los textos que usa el bot son editables desde <a href="/admin/messages">Mensajes</a>.</p>
-    <ul>
-      <li>Si no personalizas un mensaje, se usa el texto por defecto.</li>
-      <li>Los mensajes admiten placeholders como <code>{user_name}</code>, <code>{book_title}</code>, <code>{meeting_date}</code>.</li>
-      <li>Puedes usar el botón "Vista previa" para ver cómo quedará el mensaje con datos de ejemplo.</li>
-    </ul>
-  </div>
-
-  <div class="section">
-    <h2>📌 Fijar mensajes</h2>
-    <p>El bot puede fijar mensajes importantes en el grupo (recordatorios de reunión, encuestas activas).</p>
-    <ul>
-      <li>Para fijar, el bot necesita ser <strong>administrador del grupo</strong> con permiso de "Fijar mensajes".</li>
-      <li>Usa el comando <code>/fijar</code> desde el chat para fijar el recordatorio actual.</li>
-      <li>Usa <code>/desfijar</code> para quitarlo.</li>
-    </ul>
-  </div>
-
-  <div class="section">
-    <h2>🤖 Funciones de IA</h2>
-    <p>El bot puede generar preguntas de debate y citas literarias usando inteligencia artificial.</p>
-    <ul>
-      <li>Requiere configurar la variable de entorno <code>GROQ_API_KEY</code> (gratis en <strong>console.groq.com</strong>).</li>
-      <li>Sin la clave, se usan textos de fallback predefinidos.</li>
-      <li>Comandos del bot: <code>/preguntas</code> y <code>/cita</code></li>
-      <li>También disponible desde el dashboard en la sección "IA".</li>
-    </ul>
-  </div>
-
-  <div class="section">
-    <h2>⏰ Recordatorios automáticos</h2>
-    <ul>
-      <li><strong>Lunes a las 10:00</strong> — Recordatorio semanal con info de la reunión, libro y ritmo de lectura.</li>
-      <li><strong>Cada 2 días</strong> — Recordatorio de lectura con botones para apuntarse.</li>
-      <li><strong>Día anterior y día de la reunión</strong> — Aviso urgente con lista de asistentes.</li>
-    </ul>
-    <div class="tip">💡 También puedes enviar recordatorios manualmente desde el dashboard en cualquier momento.</div>
-  </div>
-
-  <div class="section">
-    <h2>📋 Comandos del bot (referencia rápida)</h2>
-    <p>Comandos de usuario: <code>/ayuda</code> <code>/proponer</code> <code>/propuestas</code> <code>/votar</code> <code>/resultados</code> <code>/reunion</code> <code>/asistir</code> <code>/noasistir</code> <code>/asistencia</code> <code>/tema</code> <code>/temas</code> <code>/libro</code> <code>/acta</code> <code>/progreso</code> <code>/estadisticas</code> <code>/trivia</code> <code>/preguntas</code> <code>/cita</code> <code>/recomendar</code></p>
-    <p style="margin-top:8px">Comandos de admin: <code>/admin_ayuda</code> <code>/ciclo</code> <code>/nuevo_ciclo</code> <code>/cerrar_ciclo</code> <code>/anuncio</code> <code>/anunciar_ganador</code> <code>/encuesta_libros</code> <code>/encuesta_temas</code> <code>/enviar_recordatorio</code> <code>/enviar_lectura</code> <code>/fijar</code> <code>/desfijar</code></p>
-  </div>
-
-  <div class="section">
-    <h2>🤖 Asistente IA del panel</h2>
-    <p>El botón flotante 🤖 en la esquina inferior izquierda del dashboard abre el asistente de IA. Tiene contexto completo del club:</p>
-    <ul>
-      <li>Libro del ciclo actual con sinopsis y votos</li>
-      <li>Top propuestas del ciclo</li>
-      <li>Próxima reunión con fecha, lugar y asistentes</li>
-      <li>Temáticas del ciclo</li>
-    </ul>
-    <p>Usa las sugerencias predefinidas o escribe tu propia pregunta. Requiere <code>GROQ_API_KEY</code>.</p>
-    <div class="tip">💡 Puedes pedirle que redacte mensajes para enviar al grupo, analice votos, o sugiera actividades para la reunión.</div>
-  </div>
-
-  <div class="section">
-    <h2>💬 Bot en privado</h2>
-    <p>Los miembros del grupo pueden hablar con el bot en privado para usar todos los comandos sin molestar al grupo.</p>
-    <ul>
-      <li>El bot verifica automáticamente que el usuario sea miembro del grupo antes de responder en privado.</li>
-      <li>Para facilitar el acceso, fija un mensaje en el grupo con el enlace directo al bot:<br>
-          <code>https://t.me/NOMBRE_DEL_BOT</code></li>
-      <li>En privado el bot muestra el menú de comandos en Telegram (el icono <code>/</code> en el teclado).</li>
-    </ul>
-    <div class="tip">💡 El bot es admin del grupo, así que puede verificar la membresía. Si un no-miembro intenta usar el bot en privado, recibirá un aviso.</div>
-  </div>
-
-  <div class="section">
-    <h2>🟢 Servicio activo en Render</h2>
-    <p>El bot incluye un sistema de keep-alive que hace ping a <code>/health</code> cada 10 minutos para mantener el servicio despierto en Render.</p>
-    <ul>
-      <li>Si el servicio se cae de todas formas, revisa el plan de Render (los planes gratuitos tienen límites de horas activas).</li>
-      <li>Considera actualizar a un plan de pago en Render para uptime garantizado.</li>
-      <li>El endpoint <code>/health</code> devuelve <code>{"status": "running"}</code>.</li>
-    </ul>
-    <div class="tip">💡 Para Render, también puedes configurar un cron externo (UptimeRobot, cron-job.org) que haga ping a tu URL cada 5 minutos de forma gratuita.</div>
-  </div>
-
-  <div class="section">
-    <h2>⚖️ Gestión de empates</h2>
-    <p>Cuando hay empate en la votación de libros, el sistema actúa automáticamente:</p>
-    <ul>
-      <li>Se envía un mensaje al grupo notificando el empate con los libros empatados.</li>
-      <li>Se lanza automáticamente una encuesta de desempate en Telegram solo con los libros que empataron.</li>
-      <li>Esto ocurre tanto al cerrar la encuesta desde el panel admin como al usar <code>/anunciar_ganador</code> en el bot.</li>
-    </ul>
-    <div class="tip">💡 El desempate usa una encuesta nativa de Telegram, por lo que los miembros votan directamente en el grupo.</div>
-  </div>
+<div class="section">
+  <h2>🔄 Flujo de un ciclo completo</h2>
+  <p>El <strong>dashboard</strong> te guía paso a paso a través del ciclo. El banner superior siempre indica en qué paso estás y qué acción tomar.</p>
+  <ul>
+    <li><strong>1. Iniciar ciclo</strong> — Pulsa "Iniciar ciclo y pedir propuestas". Se crea el ciclo y se envía un mensaje al grupo invitando a sugerir libros con <code>/proponer</code>.</li>
+    <li><strong>2. Recoger propuestas</strong> — Los miembros proponen libros en Telegram. Puedes añadirlos también desde el panel.</li>
+    <li><strong>3. Encuesta de libros</strong> — Pulsa "Cerrar propuestas y lanzar encuesta". Se bloquean nuevas propuestas y se envía una encuesta nativa de Telegram.</li>
+    <li><strong>4. Cerrar encuesta</strong> — Cuando tengas suficientes votos, cierra la encuesta. El ganador se anuncia automáticamente.</li>
+    <li><strong>5. Fijar fecha</strong> — Ve al detalle de la reunión y añade la fecha directamente, o lanza una encuesta de fechas.</li>
+    <li><strong>6. Reunión</strong> — Los recordatorios automáticos gestionan el resto. Cuando pase la reunión, ciérrala desde su detalle.</li>
+  </ul>
+  <div class="tip">💡 También puedes crear ciclos con nombre personalizado desde <a href="/admin/ciclo">Gestión de Ciclo</a>.</div>
 </div>
-</body>
-</html>
+
+<div class="section">
+  <h2>📅 Estados de reunión</h2>
+  <ul>
+    <li><span class="help-badge badge-draft">⏳ Borrador</span> — Sin fecha confirmada.</li>
+    <li><span class="help-badge badge-scheduled">✅ Confirmada</span> — Fecha acordada. Aparece en recordatorios automáticos.</li>
+    <li><span class="help-badge badge-closed">🔒 Cerrada</span> — La reunión ya pasó.</li>
+  </ul>
+  <div class="tip">💡 Cuando cierras una encuesta de fechas, la reunión pasa automáticamente a "Confirmada".</div>
+</div>
+
+<div class="section">
+  <h2>🗳️ Encuestas</h2>
+  <ul>
+    <li><strong>Encuesta de libros</strong> — Se lanza desde el dashboard. Los miembros votan directamente en Telegram.</li>
+    <li><strong>Encuesta de temáticas</strong> — Para elegir la temática del próximo ciclo.</li>
+    <li><strong>Encuesta de fechas</strong> — Desde el detalle de una reunión.</li>
+  </ul>
+  <div class="tip">💡 Cierra siempre las encuestas desde el panel admin para que el sistema procese el ganador automáticamente.</div>
+</div>
+
+<div class="section">
+  <h2>✉️ Mensajes del bot</h2>
+  <p>Todos los textos que usa el bot son editables desde <a href="/admin/messages">Mensajes</a>.</p>
+  <ul>
+    <li>Si no personalizas un mensaje, se usa el texto por defecto.</li>
+    <li>Los mensajes admiten placeholders como <code>{user_name}</code>, <code>{book_title}</code>, <code>{meeting_date}</code>.</li>
+    <li>Usa el botón "Vista previa" para ver cómo quedará con datos de ejemplo.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>📌 Fijar mensajes</h2>
+  <ul>
+    <li>Para fijar, el bot necesita ser <strong>administrador del grupo</strong> con permiso de "Fijar mensajes".</li>
+    <li>Usa <code>/fijar</code> para fijar el recordatorio actual y <code>/desfijar</code> para quitarlo.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>🤖 Funciones de IA</h2>
+  <ul>
+    <li>Requiere configurar <code>GROQ_API_KEY</code> (gratis en <strong>console.groq.com</strong>).</li>
+    <li>Sin la clave, se usan textos de fallback predefinidos.</li>
+    <li>Comandos del bot: <code>/preguntas</code> y <code>/cita</code></li>
+    <li>El botón 🤖 en la esquina inferior izquierda abre el asistente IA del panel.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>⏰ Recordatorios automáticos</h2>
+  <ul>
+    <li><strong>Lunes a las 10:00</strong> — Recordatorio semanal con info de la reunión y libro.</li>
+    <li><strong>Cada 2 días</strong> — Recordatorio de lectura con botones para apuntarse.</li>
+    <li><strong>Día anterior y día de la reunión</strong> — Aviso urgente con lista de asistentes.</li>
+  </ul>
+  <div class="tip">💡 También puedes enviar recordatorios manualmente desde el dashboard.</div>
+</div>
+
+<div class="section">
+  <h2>📋 Comandos del bot (referencia rápida)</h2>
+  <p>Usuario: <code>/ayuda</code> <code>/proponer</code> <code>/propuestas</code> <code>/votar</code> <code>/resultados</code> <code>/reunion</code> <code>/asistir</code> <code>/noasistir</code> <code>/asistencia</code> <code>/tema</code> <code>/temas</code> <code>/libro</code> <code>/acta</code> <code>/progreso</code> <code>/estadisticas</code> <code>/trivia</code> <code>/preguntas</code> <code>/cita</code> <code>/recomendar</code></p>
+  <p style="margin-top:8px">Admin: <code>/admin_ayuda</code> <code>/ciclo</code> <code>/nuevo_ciclo</code> <code>/cerrar_ciclo</code> <code>/anuncio</code> <code>/anunciar_ganador</code> <code>/encuesta_libros</code> <code>/encuesta_temas</code> <code>/enviar_recordatorio</code> <code>/enviar_lectura</code> <code>/fijar</code> <code>/desfijar</code></p>
+</div>
+
+<div class="section">
+  <h2>💬 Bot en privado</h2>
+  <ul>
+    <li>Los miembros del grupo pueden usar el bot en privado para todos los comandos.</li>
+    <li>El bot verifica automáticamente que el usuario sea miembro del grupo.</li>
+    <li>Fija un mensaje con el enlace directo: <code>https://t.me/NOMBRE_DEL_BOT</code></li>
+  </ul>
+  <div class="tip">💡 Si un no-miembro intenta usar el bot en privado, recibirá un aviso.</div>
+</div>
+
+<div class="section">
+  <h2>🟢 Servicio activo en Render</h2>
+  <ul>
+    <li>El bot hace ping a <code>/health</code> cada 10 minutos para mantener el servicio despierto en Render.</li>
+    <li>Si se cae, revisa el plan de Render o configura un cron externo (UptimeRobot, cron-job.org).</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>⚖️ Gestión de empates</h2>
+  <ul>
+    <li>Si hay empate en votos, se envía un mensaje al grupo y se lanza automáticamente una encuesta de desempate.</li>
+    <li>Funciona tanto al cerrar desde el panel como con <code>/anunciar_ganador</code> en el bot.</li>
+  </ul>
+</div>
+{% endblock %}

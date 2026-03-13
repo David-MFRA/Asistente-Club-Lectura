@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Panel{% endblock %} · Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="stylesheet" href="/static/css/design-system.css">
+  <link rel="stylesheet" href="/static/css/admin.css">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="header">
+  <a class="header-brand" href="/admin">
+    <div class="header-logo">📚</div>
+    <div>
+      <div class="header-title">Club de Lectura</div>
+      <div class="header-sub">Panel de admin</div>
+    </div>
+  </a>
+  <nav class="header-nav">
+    <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="/admin">Dashboard</a>
+    <div class="nav-drop">
+      <button class="nav-link">Gestión <span class="caret">▾</span></button>
+      <div class="drop-menu">
+        <a class="drop-item" href="/meetings">📅 Reuniones</a>
+        <a class="drop-item" href="/themes">🏷️ Temáticas</a>
+        <a class="drop-item" href="/admin/ciclo">🔄 Ciclo activo</a>
+        <div class="drop-sep"></div>
+        <a class="drop-item" href="/attendance">👥 Asistencia</a>
+        <a class="drop-item" href="/ranking">🏆 Ranking</a>
+      </div>
+    </div>
+    <div class="nav-drop">
+      <button class="nav-link">Datos <span class="caret">▾</span></button>
+      <div class="drop-menu">
+        <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
+        <a class="drop-item" href="/admin/historico">📜 Histórico</a>
+        <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
+        <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
+        <a class="drop-item" href="/export">📤 Exportar CSV</a>
+      </div>
+    </div>
+    <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages"><span>✉️ Mensajes</span></a>
+    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler"><span>⏰ Programador</span></a>
+    <a class="nav-link" href="/publico" target="_blank"><span>🌐 Ver pública</span></a>
+    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help"><span>❓ Ayuda</span></a>
+    <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
+  </nav>
+  <!-- Hamburger visible solo en móvil -->
+  <button class="mob-menu-btn" onclick="openDrawer()" aria-label="Abrir menú">☰</button>
+</header>
+
+<!-- ── CONTENT ── -->
+<div class="main {% block main_class %}{% endblock %}">
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for cat, msg in messages %}
+          <div class="flash flash-{{ cat }}">
+            {% if cat == 'success' %}✅{% elif cat == 'danger' %}❌{% else %}⚠️{% endif %}
+            {{ msg }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<!-- ── DRAWER (menú móvil) ── -->
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-handle"></div>
+  <nav class="drawer-links">
+    <a class="drawer-link" href="/admin">🏠 Dashboard</a>
+    <a class="drawer-link" href="/meetings">📅 Reuniones</a>
+    <a class="drawer-link" href="/themes">🏷️ Temáticas</a>
+    <a class="drawer-link" href="/admin/ciclo">🔄 Ciclo</a>
+    <a class="drawer-link" href="/attendance">👥 Asistencia</a>
+    <a class="drawer-link" href="/ranking">🏆 Ranking</a>
+    <a class="drawer-link" href="/admin/historico">📜 Histórico</a>
+    <a class="drawer-link" href="/admin/galeria">🏛️ Galería</a>
+    <a class="drawer-link" href="/admin/messages">✉️ Mensajes</a>
+    <a class="drawer-link" href="/admin/scheduler">⏰ Programador</a>
+    <a class="drawer-link" href="/admin/db">🗄️ Base de datos</a>
+    <a class="drawer-link" href="/publico" target="_blank">🌐 Ver pública</a>
+    <a class="drawer-link" href="/admin/help">❓ Ayuda</a>
+    <a class="drawer-link" href="/admin/logout" style="color:#fca5a5">🚪 Salir</a>
+  </nav>
+</div>
+
+<!-- ── AI MODAL ── -->
+<button class="ai-fab" onclick="openAI()" aria-label="Asistente IA">🤖</button>
+<div class="ai-backdrop" id="ai-backdrop" onclick="closeAI()"></div>
+<div class="ai-modal" id="ai-modal">
+  <div class="ai-modal-header">
+    <div class="ai-modal-title">🤖 Asistente IA</div>
+    <button class="ai-close" onclick="closeAI()">✕</button>
+  </div>
+  <div class="ai-messages" id="ai-messages">
+    <div class="ai-message ai-message-bot">¡Hola! Soy tu asistente para el club de lectura. ¿En qué puedo ayudarte?</div>
+  </div>
+  <div class="ai-suggestions" id="ai-suggestions">
+    {% block ai_suggestions %}
+    <button onclick="askAI('¿Cuál es el libro actual?')">📖 Libro actual</button>
+    <button onclick="askAI('¿Cuándo es la próxima reunión?')">📅 Próxima reunión</button>
+    <button onclick="askAI('¿Quién va a la reunión?')">👥 Asistentes</button>
+    <button onclick="askAI('Redacta un recordatorio para el grupo')">✉️ Redactar recordatorio</button>
+    {% endblock %}
+  </div>
+  <div class="ai-input-row">
+    <textarea class="ai-input" id="ai-input" rows="1" placeholder="Pregunta algo sobre el club…"></textarea>
+    <button class="ai-send" id="ai-send" onclick="sendAI()">➤</button>
+  </div>
+</div>
+
+{% block extra_modals %}{% endblock %}
+
+<script src="/static/js/admin.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

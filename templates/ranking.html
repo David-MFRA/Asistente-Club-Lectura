@@ -34,7 +34,7 @@
             color:var(--text);
         }
 
-        body{padding:16px}
+        body{padding:12px 12px 80px}
         .container{max-width:1100px;margin:0 auto}
 
         .topbar{
@@ -145,12 +145,16 @@
         input,select,textarea{font-size:16px}
         .btn{min-height:44px;min-width:44px}
         html{scroll-behavior:smooth}
-        .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(15,23,42,.97);backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.1);display:flex;overflow-x:auto;padding:0 4px;z-index:99}
-        .bottom-nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-width:52px;padding:8px 4px;color:rgba(148,163,184,.8);text-decoration:none;font-size:.65rem;font-weight:600;gap:3px;transition:.15s ease}
-        .bottom-nav a:hover,.bottom-nav a.active{color:#a5b4fc}
-        .bottom-nav .bn-icon{font-size:1.1rem}
-        @media(max-width:560px){body{padding-bottom:72px}}
-        @media(min-width:641px){.bottom-nav{display:none}body{padding-bottom:16px}}
+        .fab{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;cursor:pointer;font-size:22px;color:#fff;box-shadow:0 4px 20px rgba(99,102,241,.5);z-index:200;display:flex;align-items:center;justify-content:center;transition:.2s ease}
+        .fab:hover{transform:scale(1.08)}
+        .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300}
+        .drawer-backdrop.open{display:block}
+        .drawer{position:fixed;bottom:0;left:0;right:0;background:#111827;border-top:1px solid rgba(255,255,255,.12);border-radius:20px 20px 0 0;padding:16px;z-index:400;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1)}
+        .drawer.open{transform:translateY(0)}
+        .drawer-handle{width:40px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 16px}
+        .drawer-links{display:flex;flex-direction:column;gap:4px}
+        .drawer-link{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:12px;color:#f1f5f9;text-decoration:none;font-size:.95rem;font-weight:600;transition:.15s ease}
+        .drawer-link:hover{background:rgba(255,255,255,.08)}
     </style>
 </head>
 <body>
@@ -196,12 +200,23 @@
     </section>
 </div>
 
-<nav class="bottom-nav">
-    <a href="/admin"><span class="bn-icon">📊</span>Dashboard</a>
-    <a href="/meetings"><span class="bn-icon">📅</span>Reuniones</a>
-    <a href="/themes"><span class="bn-icon">🏷️</span>Temáticas</a>
-    <a href="/admin/historico"><span class="bn-icon">📜</span>Historial</a>
-    <a href="/admin/logout" style="color:#fca5a5"><span class="bn-icon">🚪</span>Salir</a>
-</nav>
+<button class="fab" onclick="openDrawer()" aria-label="Menú">☰</button>
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<div class="drawer" id="drawer">
+    <div class="drawer-handle"></div>
+    <nav class="drawer-links">
+        <a class="drawer-link" href="/admin">🏠 Dashboard</a>
+        <a class="drawer-link" href="/meetings">📅 Reuniones</a>
+        <a class="drawer-link" href="/themes">🏷️ Temáticas</a>
+        <a class="drawer-link" href="/ranking">🏆 Ranking</a>
+        <a class="drawer-link" href="/admin/historico">📚 Histórico</a>
+        <a class="drawer-link" href="/admin/logout">🚪 Salir</a>
+    </nav>
+</div>
+<script>
+function openDrawer(){document.getElementById('drawer').classList.add('open');document.getElementById('drawer-backdrop').classList.add('open')}
+function closeDrawer(){document.getElementById('drawer').classList.remove('open');document.getElementById('drawer-backdrop').classList.remove('open')}
+document.getElementById('drawer-backdrop').addEventListener('click',closeDrawer);
+</script>
 </body>
 </html>

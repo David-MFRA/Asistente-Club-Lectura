@@ -7,7 +7,7 @@ import time as _time
 from datetime import datetime
 from http import HTTPStatus
 
-from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages
+from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages, jsonify
 from asgiref.wsgi import WsgiToAsgi
 import uvicorn
 
@@ -1074,6 +1074,34 @@ async def anuncio_cmd(update, context):
 
 async def anunciar_ganador_cmd(update, context):
     if not is_admin_user(update): return
+    tied = db.get_tied_books()
+    if len(tied) > 1:
+        tie_msg = (
+            f"⚖️ ¡Hay empate en la votación!\n\n"
+            f"Los siguientes libros han quedado empatados con {tied[0]['votes']} votos:\n"
+        )
+        for b in tied:
+            tie_msg += f"  📖 {b['title']}" + (f" — {b['author']}" if b.get('author') else "") + "\n"
+        tie_msg += "\n🔁 Lanzando encuesta de desempate..."
+        await send_to_group(tie_msg, parse_mode=None, message_type="tie_notification")
+        options = []
+        for b in tied[:10]:
+            label = b["title"]
+            if b.get("author"):
+                label = f"{b['title']} — {b['author']}"
+            options.append(label[:100])
+        if TELEGRAM_CHAT_ID:
+            tie_poll = await telegram_app.bot.send_poll(
+                chat_id=TELEGRAM_CHAT_ID,
+                question=f"⚖️ Desempate — ¿Cuál de estos {len(tied)} libros leemos?",
+                options=options,
+                is_anonymous=False,
+                allows_multiple_answers=False,
+            )
+            db.save_poll(chat_id=tie_poll.chat_id, message_id=tie_poll.message_id,
+                         poll_id=tie_poll.poll.id, poll_type="books")
+        await update.message.reply_text(f"⚖️ Empate detectado. Encuesta de desempate lanzada.", parse_mode=None)
+        return
     winner = db.get_winner_book()
     if not winner:
         await update.message.reply_text("📭 No hay libro ganador todavía\\.", parse_mode="MarkdownV2")
@@ -1657,11 +1685,13 @@ def admin_dashboard():
     open_poll_books  = db.get_open_poll(poll_type="books")
     open_poll_themes = db.get_open_poll(poll_type="themes")
     cycle_state      = db.get_cycle_dashboard_state()
+    tied_books       = db.get_tied_books()
     return render_template(
         "admin.html",
         books=books, meetings=meetings, themes=themes, ranking=ranking,
         open_poll_books=open_poll_books, open_poll_themes=open_poll_themes,
-        cycle_state=cycle_state,
+        cycle_state=cycle_state, tied_books=tied_books,
+        tied_count=len(tied_books),
     )
 
 # --------------------------------------------------
@@ -1742,15 +1772,47 @@ async def admin_cerrar_encuesta(poll_db_id):
         db.close_poll(poll_db_id)
         # Anunciar ganador y auto-asignar a la reunión próxima
         if poll.get("poll_type") == "books" and TELEGRAM_CHAT_ID:
-            winner = db.get_winner_book()
-            if winner:
-                await announce_winner(winner)
-                # Asignar automáticamente el libro ganador a la próxima reunión
-                next_meeting = db.get_latest_scheduled_meeting()
-                if next_meeting and not next_meeting.get("book_id"):
-                    db.update_meeting(meeting_id=next_meeting["id"], book_id=winner["id"])
-                    logger.info("Libro ganador '%s' asignado automáticamente a '%s'",
-                                winner["title"], next_meeting["name"])
+            tied = db.get_tied_books()
+            if len(tied) > 1:
+                # Send tie notification
+                tie_msg = (
+                    f"⚖️ ¡Hay empate en la votación!\n\n"
+                    f"Los siguientes libros han quedado empatados con {tied[0]['votes']} votos:\n"
+                )
+                for b in tied:
+                    tie_msg += f"  📖 {b['title']}" + (f" — {b['author']}" if b.get('author') else "") + "\n"
+                tie_msg += "\n🔁 Lanzando encuesta de desempate..."
+                await send_to_group(tie_msg, parse_mode=None, message_type="tie_notification")
+
+                # Create tiebreaker poll
+                options = []
+                for b in tied[:10]:
+                    label = b["title"]
+                    if b.get("author"):
+                        label = f"{b['title']} — {b['author']}"
+                    options.append(label[:100])
+
+                tie_poll = await telegram_app.bot.send_poll(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    question=f"⚖️ Desempate — ¿Cuál de estos {len(tied)} libros leemos?",
+                    options=options,
+                    is_anonymous=False,
+                    allows_multiple_answers=False,
+                )
+                db.save_poll(chat_id=tie_poll.chat_id, message_id=tie_poll.message_id,
+                             poll_id=tie_poll.poll.id, poll_type="books")
+                flash(f"¡Empate detectado! Se ha lanzado una encuesta de desempate con {len(tied)} libros.", "warning")
+                return redirect(url_for("admin_dashboard"))
+            else:
+                winner = db.get_winner_book()
+                if winner:
+                    await announce_winner(winner)
+                    # Asignar automáticamente el libro ganador a la próxima reunión
+                    next_meeting = db.get_latest_scheduled_meeting()
+                    if next_meeting and not next_meeting.get("book_id"):
+                        db.update_meeting(meeting_id=next_meeting["id"], book_id=winner["id"])
+                        logger.info("Libro ganador '%s' asignado automáticamente a '%s'",
+                                    winner["title"], next_meeting["name"])
     except Exception:
         logger.exception("Error cerrando encuesta")
         return "Error cerrando encuesta", 500
@@ -2429,6 +2491,59 @@ async def admin_ai_quote_send():
         logger.exception("Error enviando cita AI")
         flash("Error enviando cita", "danger")
     return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — AI ASSISTANT (contextual)
+# --------------------------------------------------
+
+@flask_app.post("/admin/ai/ask")
+async def admin_ai_ask():
+    auth = require_admin()
+    if auth: return jsonify({"error": "No autorizado"}), 401
+
+    question = request.json.get("question", "").strip() if request.is_json else request.form.get("question", "").strip()
+    if not question:
+        return jsonify({"error": "Pregunta vacía"}), 400
+
+    # Build context
+    cycle_key = db.get_current_cycle_key()
+    winner = db.get_winner_book()
+    proposals = db.get_book_proposals(cycle_key)
+    meeting = db.get_latest_scheduled_meeting()
+    attendees = db.get_attendance(meeting["id"]) if meeting else []
+    themes = db.get_themes(cycle_key)
+
+    context_lines = [
+        "Eres el asistente del Club de Lectura. Responde siempre en español.",
+        f"Fecha actual: {_utcnow().strftime('%d/%m/%Y')}",
+        f"Ciclo actual: {cycle_key}",
+    ]
+    if winner:
+        context_lines.append(f"Libro del ciclo: «{winner['title']}»" + (f" de {winner['author']}" if winner.get('author') else "") + f" ({winner.get('votes', 0)} votos)")
+        if winner.get('description'):
+            context_lines.append(f"Sinopsis: {winner['description'][:200]}")
+    if proposals:
+        tops = proposals[:5]
+        prop_str = ", ".join(f"«{b['title']}» ({b['votes']} votos)" for b in tops)
+        context_lines.append(f"Propuestas actuales (top 5): {prop_str}")
+    if meeting:
+        fecha = str(meeting['final_date'])[:16] if meeting.get('final_date') else 'Sin fecha'
+        context_lines.append(f"Próxima reunión: {meeting['name']} — {fecha}")
+        if meeting.get('location'):
+            context_lines.append(f"Lugar: {meeting['location']}")
+        if attendees:
+            context_lines.append(f"Asistentes ({len(attendees)}): {', '.join(attendees[:10])}")
+
+    full_prompt = "\n".join(context_lines) + f"\n\nPregunta del administrador: {question}"
+
+    try:
+        answer = ai_features._groq_chat(full_prompt)
+        if not answer:
+            return jsonify({"error": "No hay respuesta de la IA (¿está configurado GROQ_API_KEY?)"}), 503
+        return jsonify({"answer": answer})
+    except Exception as e:
+        logger.exception("Error en AI ask")
+        return jsonify({"error": str(e)}), 500
 
 # --------------------------------------------------
 # FLASK — POSTER DESIGNER

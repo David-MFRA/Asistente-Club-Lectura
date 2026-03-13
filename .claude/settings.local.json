@@ -16,7 +16,8 @@
       "Bash(python \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\\\\db.py\" 2>&1 | head -5 || true)",
       "Bash(python -c \"\nimport ast\nimport sys\nfor fpath in ['C:/Users/david/OneDrive/Escritorio/bot/db.py', 'C:/Users/david/OneDrive/Escritorio/bot/main.py']:\n    with open\\(fpath\\) as f:\n        src = f.read\\(\\)\n    try:\n        ast.parse\\(src\\)\n        print\\(fpath.split\\('/'\\)[-1] + ': OK'\\)\n    except SyntaxError as e:\n        print\\(fpath.split\\('/'\\)[-1] + ' SYNTAX ERROR: ' + str\\(e\\)\\)\n\" 2>&1)",
       "Bash(python -c \"\nimport ast\nfor fpath in ['C:/Users/david/OneDrive/Escritorio/bot/db.py', 'C:/Users/david/OneDrive/Escritorio/bot/main.py']:\n    with open\\(fpath, encoding='utf-8'\\) as f:\n        src = f.read\\(\\)\n    try:\n        ast.parse\\(src\\)\n        print\\(fpath.split\\('/'\\)[-1] + ': OK'\\)\n    except SyntaxError as e:\n        print\\(fpath.split\\('/'\\)[-1] + ' SYNTAX ERROR: ' + str\\(e\\)\\)\n\" 2>&1)",
-      "Bash(ls \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\\\\templates\\\\\" | grep -E \"waitlist|demo\")"
+      "Bash(ls \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\\\\templates\\\\\" | grep -E \"waitlist|demo\")",
+      "Bash(grep -n \"</body>\\\\|</style>\\\\|<script>\" /c/Users/david/OneDrive/Escritorio/bot/templates/admin_scheduler.html | head -10\ngrep -n \"</body>\\\\|</style>\\\\|<script>\" /c/Users/david/OneDrive/Escritorio/bot/templates/admin_messages.html | head -10\ngrep -n \"</body>\\\\|</style>\\\\|<script>\" /c/Users/david/OneDrive/Escritorio/bot/templates/admin_sent_messages.html | head -10\ngrep -n \"</body>\\\\|</style>\\\\|<script>\" /c/Users/david/OneDrive/Escritorio/bot/templates/admin_waitlist.html | head -10)"
     ]
   }
 }

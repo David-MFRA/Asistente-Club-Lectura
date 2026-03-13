@@ -382,6 +382,18 @@ def get_winner_book(cycle_key=None):
     return books[0] if books else None
 
 
+def get_tied_books(cycle_key=None):
+    """Returns list of books tied at the top. Empty list if no tie."""
+    books = get_books(cycle_key)
+    if len(books) < 2:
+        return []
+    max_votes = books[0].get('votes', 0)
+    if max_votes == 0:
+        return []
+    tied = [b for b in books if b.get('votes', 0) == max_votes]
+    return tied if len(tied) > 1 else []
+
+
 def get_book_by_id(book_id):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM books WHERE id = %s", (book_id,))

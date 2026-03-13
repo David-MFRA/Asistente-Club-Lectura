@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
-def _groq_chat(prompt: str, max_tokens: int = 400) -> str | None:
+def _groq_chat(prompt: str, max_tokens: int = 2000, model: str = "openai/gpt-oss-120b") -> str | None:
     """Llama a la API de Groq. Devuelve None si no está configurada o hay error."""
     if not GROQ_API_KEY:
         return None
     try:
         body = json.dumps({
-            "model": "llama3-8b-8192",
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": 0.8,
@@ -75,24 +75,112 @@ def _scrape_goodreads_quotes(book_title: str, author: str = "") -> list[str]:
         return []
 
 
+def _scrape_wikiquote_es(book_title: str) -> list[str]:
+    """Intenta obtener citas de la Wikipedia en español (Wikiquote)."""
+    try:
+        title_encoded = urllib.parse.quote(book_title.replace(" ", "_"))
+        url = f"https://es.wikiquote.org/wiki/{title_encoded}"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9",
+            "Accept": "text/html,application/xhtml+xml",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # Extraer <li> items de las secciones de la página
+        items = re.findall(r'<li>(.*?)</li>', html, re.DOTALL)
+        quotes = []
+        for item in items:
+            text = re.sub(r'<[^>]+>', '', item)
+            text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
+            text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&#39;', "'")
+            text = re.sub(r'\s+', ' ', text).strip().strip('""\'"\'«»')
+            if 30 < len(text) < 500 and not text.startswith('http'):
+                quotes.append(text)
+        return quotes[:8]
+    except Exception as e:
+        logger.debug("Wikiquote ES scrape failed: %s", e)
+        return []
+
+
+def _scrape_citas_in(author: str) -> list[str]:
+    """Intenta obtener citas de citas.in para el autor dado."""
+    if not author:
+        return []
+    try:
+        # Normalizar nombre del autor: minúsculas, espacios → guiones
+        normalized = author.lower().strip()
+        normalized = re.sub(r'[áàä]', 'a', normalized)
+        normalized = re.sub(r'[éèë]', 'e', normalized)
+        normalized = re.sub(r'[íìï]', 'i', normalized)
+        normalized = re.sub(r'[óòö]', 'o', normalized)
+        normalized = re.sub(r'[úùü]', 'u', normalized)
+        normalized = re.sub(r'[ñ]', 'n', normalized)
+        normalized = re.sub(r'[^a-z0-9\s-]', '', normalized)
+        normalized = re.sub(r'\s+', '-', normalized.strip())
+        url = f"https://citas.in/autores/{normalized}/"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        # Buscar bloques de citas (suelen estar en <p class="cita"> o similares)
+        blocks = re.findall(r'class="[^"]*cita[^"]*"[^>]*>(.*?)</[^>]+>', html, re.DOTALL | re.IGNORECASE)
+        if not blocks:
+            # Intentar extraer párrafos largos como citas
+            blocks = re.findall(r'<p[^>]*>(.*?)</p>', html, re.DOTALL)
+        quotes = []
+        for block in blocks:
+            text = re.sub(r'<[^>]+>', '', block)
+            text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&#39;', "'")
+            text = re.sub(r'\s+', ' ', text).strip().strip('""\'"\'«»')
+            if 30 < len(text) < 500:
+                quotes.append(text)
+        return quotes[:6]
+    except Exception as e:
+        logger.debug("citas.in scrape failed: %s", e)
+        return []
+
+
 def generate_book_quote(book_title: str, author: str = "") -> str:
-    """Obtiene una cita del libro. Primero intenta Goodreads, luego Groq."""
-    # 1. Intentar scraping de Goodreads
+    """Obtiene una cita del libro en español. Prueba varias fuentes antes de usar Groq."""
+    # 1. Intentar Wikiquote en español
+    quotes = _scrape_wikiquote_es(book_title)
+    if quotes:
+        quote = random.choice(quotes)
+        author_credit = f" — {author}" if author else ""
+        return f"«{quote}»{author_credit}"
+
+    # 2. Intentar citas.in con el nombre del autor
+    if author:
+        quotes = _scrape_citas_in(author)
+        if quotes:
+            quote = random.choice(quotes)
+            return f"«{quote}» — {author}"
+
+    # 3. Intentar scraping de Goodreads
     quotes = _scrape_goodreads_quotes(book_title, author)
     if quotes:
         quote = random.choice(quotes)
         author_credit = f" — {author}" if author else ""
         return f"«{quote}»{author_credit}"
 
-    # 2. Fallback: Groq
+    # 4. Fallback: Groq con modelo de mayor calidad
     author_part = f" de {author}" if author else ""
     prompt = (
+        f"RESPONDE OBLIGATORIAMENTE EN ESPAÑOL. "
         f"Dame UNA cita real y famosa del libro «{book_title}»{author_part}, "
-        f"que sea una frase que realmente aparezca en el libro. "
-        f"Si no conoces el libro exactamente, di una frase del autor {author} de otra obra suya. "
-        f"Formato exacto: «[cita textual]» — {author or 'Autor'}. Solo la cita, nada más."
+        f"que sea una frase que realmente aparezca en la traducción española del libro o en español original. "
+        f"NO uses inglés ni ningún otro idioma. "
+        f"Si no conoces el libro exactamente, da una frase del autor {author or 'desconocido'} de otra obra suya, en español. "
+        f"Formato exacto: «[cita textual en español]» — {author or 'Autor'}. Solo la cita, nada más."
     )
-    result = _groq_chat(prompt, max_tokens=200)
+    result = _groq_chat(prompt, max_tokens=2000, model="openai/gpt-oss-120b")
     if result:
         return result
 
@@ -127,7 +215,7 @@ def generate_discussion_questions(book_title: str, author: str = "", synopsis: s
             f"Responde SOLO con las 5 preguntas numeradas, sin introducción. En español."
         )
 
-    result = _groq_chat(prompt, max_tokens=600)
+    result = _groq_chat(prompt, max_tokens=2000)
     if result:
         return result
 
@@ -137,7 +225,7 @@ def generate_discussion_questions(book_title: str, author: str = "", synopsis: s
             f"Basándote en esta sinopsis de «{book_title}»:\n{synopsis[:500]}\n\n"
             f"Escribe 5 preguntas específicas para debatir en un club de lectura sobre este libro."
         )
-        result2 = _groq_chat(fallback, max_tokens=500)
+        result2 = _groq_chat(fallback, max_tokens=2000)
         if result2:
             return result2
 

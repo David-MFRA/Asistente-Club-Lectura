@@ -152,7 +152,7 @@
         [data-tip]:hover::before{opacity:1}
 
         /* Reminder grid */
-        .reminder-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .reminder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
         .rem-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:11px;padding:14px;text-align:center}
         .rem-icon{font-size:1.6rem;margin-bottom:6px}
         .rem-title{font-weight:700;font-size:.92rem;margin-bottom:3px}
@@ -260,11 +260,17 @@
                 <a class="drop-item" href="/admin/historico">📜 Histórico</a>
                 <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
                 <a class="drop-item" href="/export">📤 Exportar CSV</a>
+                <div class="drop-sep"></div>
+                <a class="drop-item" href="/admin/demo">🎯 Demo / Tour</a>
             </div>
         </div>
+        <button class="nav-link" onclick="startTour()" style="cursor:pointer"><span>🎯 Tour</span></button>
+        <a class="nav-link" href="/admin/waitlist"><span>📚 En espera</span></a>
+        <a class="nav-link" href="/admin/poster"><span>🖼️ Cartel</span></a>
         <a class="nav-link" href="/admin/messages"><span>✉️ Mensajes</span></a>
         <a class="nav-link" href="/admin/scheduler"><span>⏰ Programador</span></a>
         <a class="nav-link" href="/admin/help"><span>❓ Ayuda</span></a>
+        <a class="nav-link" href="/admin/demo"><span>🎯 Demo</span></a>
         <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
     </nav>
 </header>
@@ -578,6 +584,14 @@
                         <button class="btn btn-success" type="submit" data-tip="Envía la info de la reunión con botones inline">📨 Enviar ahora</button>
                     </form>
                 </div>
+                <div class="rem-card">
+                    <div class="rem-icon">📌</div>
+                    <div class="rem-title">Fijar todas las reuniones</div>
+                    <div class="rem-desc">Envía y fija un mensaje combinado con todas las reuniones activas.</div>
+                    <form action="/admin/send/pin-all" method="post">
+                        <button class="btn btn-primary" type="submit" data-tip="Fija un mensaje con todas las reuniones activas">📌 Fijar ahora</button>
+                    </form>
+                </div>
             </div>
             <div class="card" style="margin-top:10px">
                 <div class="card-label">Mensaje libre al grupo</div>
@@ -608,12 +622,9 @@
         <div class="det-body">
             <p style="color:var(--muted);font-size:.87rem;margin-bottom:12px">Genera contenido para el grupo usando IA. Requiere GROQ_API_KEY.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <form action="/admin/ai/questions" method="post">
-                    <button class="btn btn-soft" type="submit">💬 Generar preguntas de debate</button>
-                </form>
-                <form action="/admin/ai/quote" method="post">
-                    <button class="btn btn-soft" type="submit">✨ Generar cita literaria</button>
-                </form>
+                <a class="btn btn-soft" href="/admin/ai/questions">💬 Generar preguntas de debate</a>
+                <a class="btn btn-soft" href="/admin/ai/quote">✨ Generar cita literaria</a>
+                <a class="btn btn-soft" href="/admin/poster">🖼️ Diseñar cartel</a>
             </div>
         </div>
     </details>
@@ -625,6 +636,7 @@
     <a href="/admin" class="active"><span class="bn-icon">📊</span>Dashboard</a>
     <a href="/meetings"><span class="bn-icon">📅</span>Reuniones</a>
     <a href="/themes"><span class="bn-icon">🏷️</span>Temáticas</a>
+    <a href="/admin/poster"><span class="bn-icon">🖼️</span>Cartel</a>
     <a href="/admin/db"><span class="bn-icon">🗄️</span>BD</a>
     <a href="/admin/historico"><span class="bn-icon">📜</span>Historial</a>
     <a href="/admin/ciclo"><span class="bn-icon">🔄</span>Ciclo</a>
@@ -657,6 +669,85 @@ document.querySelectorAll('.flash').forEach(f => {
     if(text.includes('libro') || text.includes('propuesta'))
         document.querySelector('details:first-of-type')?.setAttribute('open','');
 });
+
+// ── TOUR OVERLAY ──────────────────────────────────────────
+const TOUR_STEPS = [
+    { selector: '.stats-bar', title: '📊 Estadísticas del ciclo', desc: 'Aquí ves de un vistazo: propuestas, votos, reuniones y asistentes del ciclo actual.' },
+    { selector: 'details:nth-of-type(1)', title: '📚 Gestión de libros', desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
+    { selector: 'details:nth-of-type(2)', title: '🏷️ Temáticas', desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
+    { selector: 'details:nth-of-type(3)', title: '📅 Reuniones', desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
+    { selector: '.header-nav', title: '🧭 Navegación', desc: 'Accede al historial, base de datos, mensajes del bot, programador, cartel y lista de espera.' },
+    { selector: '.reminder-grid', title: '🔔 Recordatorios', desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
+];
+
+let tourStep = 0;
+let tourActive = false;
+
+function startTour() {
+    tourActive = true;
+    tourStep = 0;
+    document.getElementById('tour-overlay').style.display = 'block';
+    showTourStep();
+}
+function endTour() {
+    tourActive = false;
+    document.getElementById('tour-overlay').style.display = 'none';
+    document.getElementById('tour-highlight').style.display = 'none';
+}
+function showTourStep() {
+    const step = TOUR_STEPS[tourStep];
+    if (!step) { endTour(); return; }
+    const el = document.querySelector(step.selector);
+    const tooltip = document.getElementById('tour-tooltip');
+    const hl = document.getElementById('tour-highlight');
+    document.getElementById('tour-title').textContent = step.title;
+    document.getElementById('tour-desc').textContent = step.desc;
+    document.getElementById('tour-counter').textContent = `${tourStep+1} / ${TOUR_STEPS.length}`;
+    document.getElementById('tour-prev').disabled = tourStep === 0;
+    document.getElementById('tour-next').textContent = tourStep === TOUR_STEPS.length-1 ? 'Finalizar' : 'Siguiente →';
+    if (el) {
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        setTimeout(() => {
+            const rect = el.getBoundingClientRect();
+            const scrollY = window.scrollY;
+            hl.style.cssText = `display:block;position:absolute;top:${rect.top+scrollY-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
+            const ttTop = rect.top+scrollY+rect.height+16;
+            tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${Math.max(8,Math.min(rect.left,window.innerWidth-330))}px;z-index:9999`;
+        }, 300);
+    } else {
+        hl.style.display = 'none';
+        tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+    }
+}
+document.getElementById('tour-next').addEventListener('click', () => {
+    if (tourStep >= TOUR_STEPS.length-1) { endTour(); return; }
+    tourStep++;
+    showTourStep();
+});
+document.getElementById('tour-prev').addEventListener('click', () => {
+    if (tourStep > 0) { tourStep--; showTourStep(); }
+});
+document.getElementById('tour-close').addEventListener('click', endTour);
+document.getElementById('tour-overlay').addEventListener('click', function(e) {
+    if (e.target === this) endTour();
+});
+if (new URLSearchParams(location.search).has('tour')) startTour();
 </script>
+
+<!-- Tour overlay -->
+<div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:9997;pointer-events:auto" aria-modal="true"></div>
+<div id="tour-highlight" style="display:none"></div>
+<div id="tour-tooltip" style="display:none;width:320px;background:rgba(15,23,42,.97);border:2px solid #6366f1;border-radius:16px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span id="tour-counter" style="font-size:.75rem;color:#a5b4fc;font-weight:700"></span>
+        <button id="tour-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Cerrar</button>
+    </div>
+    <div id="tour-title" style="font-size:1rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
+    <div id="tour-desc" style="font-size:.88rem;color:#94a3b8;line-height:1.55;margin-bottom:16px"></div>
+    <div style="display:flex;gap:8px">
+        <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
+        <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
+    </div>
+</div>
 </body>
 </html>

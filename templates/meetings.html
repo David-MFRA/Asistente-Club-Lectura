@@ -247,16 +247,67 @@
             border-radius:16px;
         }
 
+        input, select, textarea { font-size: 16px; }
+
+        /* Touch-friendly */
+        .btn { min-height: 44px; }
+        .small-btn { min-height: 44px; min-width: 44px; }
+
+        /* Bottom nav */
+        .bottom-nav{
+            position:fixed;bottom:0;left:0;right:0;
+            background:rgba(15,23,42,.97);backdrop-filter:blur(16px);
+            border-top:1px solid rgba(255,255,255,.1);
+            display:flex;overflow-x:auto;padding:0 4px;
+            z-index:99;
+        }
+        .bottom-nav a{
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            flex:1;min-width:52px;padding:8px 4px;
+            color:rgba(148,163,184,.8);text-decoration:none;font-size:.65rem;font-weight:600;gap:3px;
+            transition:.15s ease;
+        }
+        .bottom-nav a:hover,.bottom-nav a.active{color:#a5b4fc}
+        .bottom-nav .bn-icon{font-size:1.1rem}
+
+        html { scroll-behavior: smooth; }
+
+        /* ── CALENDAR VIEW ── */
+        .cal-wrap{display:none;padding-bottom:20px}
+        .cal-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+        .cal-nav{display:flex;align-items:center;gap:8px}
+        .cal-nav button{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 14px;cursor:pointer;font-size:.88rem;font-weight:700;transition:.15s ease}
+        .cal-nav button:hover{background:var(--card-2)}
+        .cal-month-label{font-size:1.1rem;font-weight:800;min-width:160px;text-align:center}
+        .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+        .cal-day-name{text-align:center;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;padding:6px 0}
+        .cal-day{min-height:64px;border-radius:10px;padding:6px;background:rgba(255,255,255,.04);border:1px solid transparent;position:relative;cursor:default}
+        .cal-day.has-event{border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.06);cursor:pointer}
+        .cal-day.has-event:hover{background:rgba(99,102,241,.12)}
+        .cal-day.today .cal-day-num{background:var(--primary);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+        .cal-day.other-month .cal-day-num{opacity:.3}
+        .cal-day-num{font-size:.82rem;font-weight:700;margin-bottom:4px;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+        .cal-event{font-size:.68rem;font-weight:700;line-height:1.2;padding:2px 5px;border-radius:5px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .cal-event.draft{background:rgba(245,158,11,.18);color:#fde68a}
+        .cal-event.scheduled{background:rgba(16,185,129,.18);color:#6ee7b7}
+        .cal-event.closed{background:rgba(255,255,255,.08);color:var(--muted)}
+        .cal-empty{text-align:center;padding:24px;color:var(--muted);font-size:.85rem}
+
         @media (max-width: 920px){
             .span-4,.span-8,.span-12{grid-column:span 12}
         }
 
         @media (max-width: 560px){
-            body{padding:12px}
+            body{padding:12px 12px 72px}
             h1{font-size:1.28rem}
             .meeting-item{
                 flex-direction:column;
             }
+        }
+
+        @media (min-width: 641px){
+            .bottom-nav{display:none}
+            body{padding-bottom:16px}
         }
     </style>
 </head>
@@ -272,7 +323,11 @@
         </div>
 
         <div class="actions">
+            <button id="btn-list" class="btn btn-primary" onclick="setView('list')">📋 Lista</button>
+            <button id="btn-cal" class="btn btn-soft" onclick="setView('calendar')">📅 Calendario</button>
             <a class="btn btn-soft" href="/admin">Dashboard</a>
+            <a class="btn btn-soft" href="/themes">Temáticas</a>
+            <a class="btn btn-soft" href="/admin/historico">Histórico</a>
             <a class="btn btn-primary" href="/admin/logout">Salir</a>
         </div>
     </div>
@@ -282,7 +337,7 @@
             <h2>Nueva reunión</h2>
             <p class="muted">Crea una reunión mensual con nombre y fecha inicial.</p>
 
-            <form method="post" action="/create_meeting">
+            <form method="post" action="/meetings">
                 <div class="field">
                     <label for="meeting_name">Nombre</label>
                     <input id="meeting_name" name="meeting_name" type="text" placeholder="Ej. Reunión de marzo" required>
@@ -336,5 +391,129 @@
         </section>
     </div>
 </div>
+
+<!-- Calendar view -->
+<div class="container">
+<div id="cal-view" class="cal-wrap">
+    <div class="cal-header">
+        <div class="cal-nav">
+            <button onclick="calPrev()">← Anterior</button>
+            <span id="cal-month-label" class="cal-month-label"></span>
+            <button onclick="calNext()">Siguiente →</button>
+        </div>
+        <button onclick="calToday()" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 14px;cursor:pointer;font-size:.88rem;font-weight:700;margin-left:auto">Hoy</button>
+    </div>
+    <div id="cal-grid" class="cal-grid"></div>
+</div>
+</div>
+
+<!-- Bottom nav (mobile) -->
+<nav class="bottom-nav">
+    <a href="/admin"><span class="bn-icon">📊</span>Dashboard</a>
+    <a href="/meetings" class="active"><span class="bn-icon">📅</span>Reuniones</a>
+    <a href="/themes"><span class="bn-icon">🏷️</span>Temáticas</a>
+    <a href="/admin/historico"><span class="bn-icon">📜</span>Historial</a>
+    <a href="/admin/logout" style="color:#fca5a5"><span class="bn-icon">🚪</span>Salir</a>
+</nav>
+
+<script>
+const MEETINGS_DATA = {{ meetings_json|safe }};
+let calYear, calMonth;
+const DAY_NAMES = ['L','M','X','J','V','S','D'];
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function calToday() {
+    const n = new Date();
+    calYear = n.getFullYear();
+    calMonth = n.getMonth();
+    renderCal();
+}
+function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCal(); }
+function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderCal(); }
+
+function renderCal() {
+    document.getElementById('cal-month-label').textContent = `${MONTH_NAMES[calMonth]} ${calYear}`;
+    const grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+    // Day headers
+    DAY_NAMES.forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-day-name';
+        h.textContent = d;
+        grid.appendChild(h);
+    });
+    const firstDay = new Date(calYear, calMonth, 1);
+    // Monday-first: 0=Mon..6=Sun
+    let startDow = firstDay.getDay(); // 0=Sun..6=Sat
+    startDow = (startDow + 6) % 7; // convert to Mon=0
+    const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    const daysInPrev = new Date(calYear, calMonth, 0).getDate();
+    const today = new Date();
+
+    // Build event lookup by date string
+    const evByDate = {};
+    MEETINGS_DATA.forEach(m => {
+        if (m.final_date) {
+            evByDate[m.final_date] = evByDate[m.final_date] || [];
+            evByDate[m.final_date].push(m);
+        }
+    });
+
+    // Fill prev month days
+    for (let i = startDow - 1; i >= 0; i--) {
+        const day = daysInPrev - i;
+        const el = document.createElement('div');
+        el.className = 'cal-day other-month';
+        el.innerHTML = `<div class="cal-day-num">${day}</div>`;
+        grid.appendChild(el);
+    }
+    // Fill current month
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const events = evByDate[dateStr] || [];
+        const el = document.createElement('div');
+        const isToday = today.getFullYear()===calYear && today.getMonth()===calMonth && today.getDate()===d;
+        el.className = 'cal-day' + (events.length?' has-event':'') + (isToday?' today':'');
+        let html = `<div class="cal-day-num">${d}</div>`;
+        events.forEach(ev => {
+            const cls = ev.status==='scheduled'?'scheduled':ev.status==='closed'?'closed':'draft';
+            html += `<div class="cal-event ${cls}" title="${ev.name}">${ev.name}</div>`;
+        });
+        el.innerHTML = html;
+        if (events.length === 1) {
+            el.onclick = () => window.location.href = `/meeting/${events[0].id}`;
+        } else if (events.length > 1) {
+            el.onclick = () => window.location.href = `/meeting/${events[0].id}`;
+        }
+        grid.appendChild(el);
+    }
+    // Fill next month days
+    const totalCells = startDow + daysInMonth;
+    const remaining = (7 - (totalCells % 7)) % 7;
+    for (let d = 1; d <= remaining; d++) {
+        const el = document.createElement('div');
+        el.className = 'cal-day other-month';
+        el.innerHTML = `<div class="cal-day-num">${d}</div>`;
+        grid.appendChild(el);
+    }
+}
+
+function setView(v) {
+    const listView = document.querySelector('.grid');
+    const calView = document.getElementById('cal-view');
+    if (v === 'calendar') {
+        listView.style.display = 'none';
+        calView.style.display = 'block';
+        document.getElementById('btn-list').className = 'btn btn-soft';
+        document.getElementById('btn-cal').className = 'btn btn-primary';
+        if (!calYear) calToday();
+    } else {
+        listView.style.display = '';
+        calView.style.display = 'none';
+        document.getElementById('btn-list').className = 'btn btn-primary';
+        document.getElementById('btn-cal').className = 'btn btn-soft';
+    }
+}
+</script>
 </body>
 </html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de espera · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <style>
+        :root{
+            --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
+            --panel:rgba(255,255,255,0.07); --panel-h:rgba(255,255,255,0.11);
+            --border:rgba(255,255,255,0.10); --text:#f1f5f9; --muted:#94a3b8;
+            --primary:#6366f1; --primary2:#8b5cf6;
+            --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
+            --shadow:0 8px 24px rgba(0,0,0,.3); --radius:16px;
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{min-height:100%;font-family:Inter,system-ui,sans-serif;
+            background:radial-gradient(ellipse at 0% 0%,rgba(99,102,241,.2),transparent 50%),
+                radial-gradient(ellipse at 100% 100%,rgba(139,92,246,.15),transparent 50%),
+                linear-gradient(160deg,var(--bg),var(--bg2) 60%,var(--bg3));
+            color:var(--text);font-size:15px}
+        body{padding:0 0 80px}
+
+        .header{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.92);
+            backdrop-filter:blur(20px);border-bottom:1px solid var(--border);
+            padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+        .header-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--text);flex-shrink:0}
+        .header-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px}
+        .header-title{font-weight:800;font-size:.97rem;line-height:1}
+        .header-sub{font-size:.74rem;color:var(--muted);margin-top:1px}
+        .header-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
+        .nav-link{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:.84rem;font-weight:600;transition:.15s ease;white-space:nowrap;border:none;background:none;cursor:pointer}
+        .nav-link:hover,.nav-link.active{color:var(--text);background:var(--panel)}
+        .nav-link.active{color:#a5b4fc}
+
+        .main{max-width:1100px;margin:0 auto;padding:20px 16px 0}
+
+        .flashes{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+        .flash{padding:12px 15px;border-radius:11px;font-size:.9rem;font-weight:600;display:flex;align-items:center;gap:8px}
+        .flash-success{background:rgba(16,185,129,.13);border:1px solid rgba(16,185,129,.28);color:#6ee7b7}
+        .flash-danger{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.28);color:#fca5a5}
+        .flash-warning{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.28);color:#fde68a}
+
+        .page-header{margin-bottom:20px}
+        .page-header h1{font-size:1.5rem;font-weight:800;margin-bottom:4px}
+        .page-header .sub{color:var(--muted);font-size:.9rem}
+
+        .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
+        .filter-pill{display:inline-flex;align-items:center;padding:6px 14px;border-radius:999px;font-size:.82rem;font-weight:700;text-decoration:none;border:1px solid var(--border);color:var(--muted);transition:.15s ease;background:var(--panel)}
+        .filter-pill:hover,.filter-pill.active{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.4);color:#a5b4fc}
+
+        .layout{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+
+        .section-title{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px}
+
+        .theme-group{margin-bottom:24px}
+        .theme-label{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-weight:700;font-size:.95rem;color:#a5b4fc}
+        .theme-label::after{content:'';flex:1;height:1px;background:var(--border)}
+
+        .book-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;display:flex;gap:13px;align-items:flex-start}
+        .book-card:last-child{margin-bottom:0}
+        .book-cover-img{width:46px;min-width:46px;height:66px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.08)}
+        .book-cover-fb{width:46px;min-width:46px;height:66px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,.18);font-size:20px;flex-shrink:0}
+        .book-info{flex:1;min-width:0}
+        .book-title{font-weight:700;font-size:.93rem;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .book-author{color:var(--muted);font-size:.82rem;margin-bottom:5px}
+        .book-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+        .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:.73rem;font-weight:700}
+        .badge-pos{background:rgba(245,158,11,.15);color:#fde68a}
+        .badge-votes{background:rgba(16,185,129,.14);color:#6ee7b7}
+        .badge-cycle{background:rgba(99,102,241,.14);color:#a5b4fc}
+        .badge-theme{background:rgba(139,92,246,.14);color:#c4b5fd}
+        .book-notes{font-size:.8rem;color:var(--muted);font-style:italic;margin-top:4px}
+        .book-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+
+        .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border:none;border-radius:10px;cursor:pointer;font-size:.86rem;font-weight:700;text-decoration:none;transition:.15s ease;white-space:nowrap;font-family:inherit}
+        .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .btn:active{transform:translateY(0)}
+        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.3)}
+        .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+        .btn-danger{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+        .btn-warning{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.25)}
+        .btn-success{background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
+        .btn-sm{padding:6px 10px;font-size:.8rem;border-radius:8px}
+        .btn-xs{padding:4px 8px;font-size:.74rem;border-radius:7px}
+
+        .sidebar-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+        .sidebar-card h3{font-size:.9rem;font-weight:700;margin-bottom:12px}
+
+        .field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+        .field:last-child{margin-bottom:0}
+        label{color:var(--muted);font-size:.82rem;font-weight:600}
+        input,textarea,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:var(--text);outline:none;font-size:.92rem;font-family:inherit;transition:.18s ease}
+        input:focus,textarea:focus,select:focus{border-color:rgba(99,102,241,.6);box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+        input::placeholder,textarea::placeholder{color:rgba(255,255,255,.3)}
+        select option{background:#1e293b}
+        textarea{resize:vertical;min-height:60px}
+
+        .empty{padding:30px 20px;text-align:center;color:var(--muted);background:rgba(255,255,255,.03);border:1px dashed var(--border);border-radius:14px}
+        .empty-icon{font-size:2rem;margin-bottom:8px}
+
+        .recommend-box{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:14px;padding:14px;margin-bottom:16px}
+        .recommend-box h3{font-size:.9rem;font-weight:700;margin-bottom:6px;color:#a5b4fc}
+        .recommend-book{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
+        .recommend-book:last-child{border-bottom:none}
+
+        @media(max-width:768px){
+            .layout{grid-template-columns:1fr}
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <a class="header-brand" href="/admin">
+        <div class="header-logo">📚</div>
+        <div>
+            <div class="header-title">Club de Lectura</div>
+            <div class="header-sub">Lista de espera</div>
+        </div>
+    </a>
+    <nav class="header-nav">
+        <a class="nav-link" href="/admin">Dashboard</a>
+        <a class="nav-link" href="/meetings">Reuniones</a>
+        <a class="nav-link" href="/themes">Temáticas</a>
+        <a class="nav-link active" href="/admin/waitlist">En espera</a>
+        <a class="nav-link" href="/admin/logout" style="color:#fca5a5">Salir</a>
+    </nav>
+</header>
+
+<div class="main">
+
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            <div class="flashes">
+            {% for cat, msg in messages %}
+                <div class="flash flash-{{ cat }}">
+                    {% if cat == 'success' %}✅{% elif cat == 'danger' %}❌{% else %}⚠️{% endif %}
+                    {{ msg }}
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="page-header">
+        <h1>📚 Lista de espera</h1>
+        <div class="sub">Libros que no ganaron, guardados por temática para futuras propuestas</div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <a class="filter-pill {% if not theme_filter %}active{% endif %}" href="/admin/waitlist">Todas</a>
+        {% for t in themes %}
+            <a class="filter-pill {% if theme_filter == t %}active{% endif %}" href="/admin/waitlist?theme={{ t | urlencode }}">🏷️ {{ t }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="layout">
+        <!-- Main list -->
+        <div>
+            {% if not theme_filter and themes %}
+            <!-- Recommended box: books in waitlist with most common theme -->
+            {% set first_theme = themes[0] %}
+            {% set matching = waitlist | selectattr('cycle_theme', 'equalto', first_theme) | list %}
+            {% if matching %}
+            <div class="recommend-box">
+                <h3>📌 Recomendados — {{ first_theme }}</h3>
+                {% for b in matching[:5] %}
+                <div class="recommend-book">
+                    📖 <strong>{{ b.title }}</strong>{% if b.author %} — {{ b.author }}{% endif %}
+                    {% if b.position_at_time %} <span style="color:#fde68a;font-size:.78rem">#{{ b.position_at_time }}</span>{% endif %}
+                </div>
+                {% endfor %}
+                <div style="margin-top:8px">
+                    <a href="/admin/waitlist?theme={{ first_theme | urlencode }}" class="btn btn-soft btn-xs">Ver todos →</a>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+
+            {% if waitlist %}
+                {% set ns = namespace(current_theme='__unset__') %}
+                {% for b in waitlist %}
+                    {% if b.cycle_theme != ns.current_theme %}
+                        {% if ns.current_theme != '__unset__' %}</div>{% endif %}
+                        {% set ns.current_theme = b.cycle_theme %}
+                        <div class="theme-group">
+                            <div class="theme-label">{% if b.cycle_theme %}🏷️ {{ b.cycle_theme }}{% else %}Sin temática{% endif %}</div>
+                    {% endif %}
+                    <div class="book-card">
+                        {% if b.cover %}
+                            <img class="book-cover-img" src="{{ b.cover }}" alt="portada" loading="lazy">
+                        {% else %}
+                            <div class="book-cover-fb">📖</div>
+                        {% endif %}
+                        <div class="book-info">
+                            <div class="book-title" title="{{ b.title }}">{{ b.title }}</div>
+                            {% if b.author %}<div class="book-author">{{ b.author }}</div>{% endif %}
+                            <div class="book-badges">
+                                {% if b.position_at_time %}
+                                    <span class="badge badge-pos">
+                                        {% if b.position_at_time == 1 %}🥇 1º{% elif b.position_at_time == 2 %}🥈 2º{% elif b.position_at_time == 3 %}🥉 3º{% else %}#{{ b.position_at_time }}{% endif %}
+                                    </span>
+                                {% endif %}
+                                {% if b.votes_at_time %}<span class="badge badge-votes">{{ b.votes_at_time }} votos</span>{% endif %}
+                                <span class="badge badge-cycle">Ciclo {{ b.cycle_key }}</span>
+                                {% if b.pages %}<span class="badge" style="background:rgba(255,255,255,.06);color:var(--muted)">{{ b.pages }} págs</span>{% endif %}
+                            </div>
+                            {% if b.notes %}<div class="book-notes">📝 {{ b.notes }}</div>{% endif %}
+                        </div>
+                        <div class="book-actions">
+                            <form method="post" action="/admin/waitlist/{{ b.id }}/delete" onsubmit="return confirm('¿Eliminar de la lista de espera?')">
+                                <button class="btn btn-danger btn-xs" type="submit">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% if loop.last %}</div>{% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="empty">
+                    <div class="empty-icon">📭</div>
+                    <div>No hay libros en la lista de espera{% if theme_filter %} para «{{ theme_filter }}»{% endif %}.</div>
+                    <div style="margin-top:6px;font-size:.83rem">Al cerrar un ciclo, los libros del 2º y 3º puesto se añaden automáticamente.</div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <aside>
+            <!-- Suggest to group -->
+            <div class="sidebar-card">
+                <h3>📢 Sugerir al grupo</h3>
+                <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Envía la lista de espera al grupo de Telegram para que los miembros la recuerden.</p>
+                <form method="post" action="/admin/waitlist/suggest">
+                    <input type="hidden" name="theme" value="{{ theme_filter }}">
+                    <button class="btn btn-warning" type="submit" style="width:100%">📢 Enviar al grupo{% if theme_filter %} ({{ theme_filter }}){% endif %}</button>
+                </form>
+            </div>
+
+            <!-- Add book manually -->
+            <div class="sidebar-card">
+                <h3>➕ Añadir libro</h3>
+                <form method="post" action="/admin/waitlist/add">
+                    <div class="field">
+                        <label>Libro (propuesta del ciclo actual)</label>
+                        <select name="book_id" required>
+                            <option value="">-- Selecciona un libro --</option>
+                            {% for b in books %}
+                                <option value="{{ b.id }}">{{ b.title }}{% if b.author %} — {{ b.author }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Temática (opcional)</label>
+                        <input type="text" name="cycle_theme" placeholder="Ej. Ciencia ficción" value="{{ theme_filter }}">
+                    </div>
+                    <div class="field">
+                        <label>Notas (opcional)</label>
+                        <textarea name="notes" placeholder="Motivo, comentarios..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" type="submit" style="width:100%">Añadir a la lista</button>
+                </form>
+            </div>
+
+            <!-- Info box -->
+            <div class="sidebar-card" style="background:rgba(16,185,129,.06);border-color:rgba(16,185,129,.2)">
+                <h3 style="color:#6ee7b7">ℹ️ ¿Cómo funciona?</h3>
+                <ul style="color:var(--muted);font-size:.82rem;padding-left:16px;line-height:1.7">
+                    <li>Al <strong style="color:var(--text)">cerrar un ciclo</strong>, los libros del 2º y 3º puesto se añaden aquí automáticamente.</li>
+                    <li>Usa los <strong style="color:var(--text)">filtros por temática</strong> para ver qué libros encajan con el próximo ciclo.</li>
+                    <li>Pulsa <strong style="color:var(--text)">Sugerir al grupo</strong> para recordarles los libros pendientes.</li>
+                </ul>
+            </div>
+        </aside>
+    </div>
+</div>
+
+</body>
+</html>

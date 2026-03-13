@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} · Preview · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <style>
+        :root{
+            --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
+            --panel:rgba(255,255,255,0.07); --panel-h:rgba(255,255,255,0.11);
+            --border:rgba(255,255,255,0.10); --text:#f1f5f9; --muted:#94a3b8;
+            --primary:#6366f1; --primary2:#8b5cf6;
+            --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
+            --shadow:0 8px 24px rgba(0,0,0,.3); --radius:16px;
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{
+            min-height:100%;
+            font-family:Inter,system-ui,sans-serif;
+            background:
+                radial-gradient(ellipse at 0% 0%,rgba(99,102,241,.2),transparent 50%),
+                radial-gradient(ellipse at 100% 100%,rgba(139,92,246,.15),transparent 50%),
+                linear-gradient(160deg,var(--bg),var(--bg2) 60%,var(--bg3));
+            color:var(--text);
+            font-size:15px;
+        }
+        body{padding:0 0 32px}
+
+        /* Header */
+        .header{
+            position:sticky;top:0;z-index:100;
+            background:rgba(11,17,32,.92);backdrop-filter:blur(20px);
+            border-bottom:1px solid var(--border);
+            padding:0 16px;
+            display:flex;align-items:center;gap:12px;height:56px;
+        }
+        .header-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--text)}
+        .header-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px}
+        .header-title{font-weight:800;font-size:.97rem}
+        .header-back{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+        /* Main */
+        .main{max-width:800px;margin:0 auto;padding:24px 16px}
+
+        /* Page title */
+        .page-header{margin-bottom:24px}
+        .page-title{font-size:1.4rem;font-weight:800;margin-bottom:4px}
+        .page-sub{color:var(--muted);font-size:.9rem}
+
+        /* Book info bar */
+        .book-bar{
+            display:flex;align-items:center;gap:14px;
+            background:var(--panel);border:1px solid var(--border);
+            border-radius:14px;padding:14px 16px;margin-bottom:20px;
+        }
+        .book-cover-img{width:48px;height:68px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.1);flex-shrink:0}
+        .book-cover-fb{width:48px;height:68px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,.2);font-size:22px;flex-shrink:0}
+        .book-info{flex:1;min-width:0}
+        .book-title-text{font-weight:800;font-size:1rem;margin-bottom:3px}
+        .book-author-text{color:var(--muted);font-size:.86rem}
+
+        /* Telegram preview box */
+        .tg-preview-wrap{
+            background:rgba(0,0,0,.3);
+            border-radius:18px;
+            padding:16px;
+            margin-bottom:20px;
+            border:1px solid rgba(255,255,255,.06);
+        }
+        .tg-preview-label{
+            color:var(--muted);font-size:.76rem;font-weight:700;
+            text-transform:uppercase;letter-spacing:.05em;
+            margin-bottom:10px;display:flex;align-items:center;gap:6px;
+        }
+        .tg-bubble{
+            background:#1e2d3d;
+            border-radius:18px 18px 18px 4px;
+            padding:14px 16px;
+            max-width:500px;
+            border:1px solid rgba(255,255,255,.07);
+            box-shadow:0 4px 16px rgba(0,0,0,.3);
+        }
+        .tg-sender{
+            font-size:.78rem;font-weight:700;color:#6fb3f2;
+            margin-bottom:6px;
+        }
+        .tg-text{
+            font-size:.93rem;line-height:1.6;
+            white-space:pre-wrap;word-break:break-word;
+            color:#e8edf2;
+        }
+        .tg-time{
+            font-size:.72rem;color:rgba(255,255,255,.35);
+            text-align:right;margin-top:8px;
+        }
+
+        /* Action buttons */
+        .actions{
+            display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+        }
+        .btn{
+            display:inline-flex;align-items:center;justify-content:center;gap:6px;
+            padding:11px 18px;border:none;border-radius:12px;cursor:pointer;
+            font-size:.9rem;font-weight:700;text-decoration:none;
+            transition:.15s ease;white-space:nowrap;font-family:inherit;
+            min-height:44px;
+        }
+        .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .btn:active{transform:translateY(0)}
+        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.3)}
+        .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+        .btn-success{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.28)}
+        .btn-warning{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.25)}
+
+        /* Notice */
+        .notice{
+            background:rgba(99,102,241,.08);
+            border:1px solid rgba(99,102,241,.22);
+            border-radius:12px;padding:12px 14px;
+            color:var(--muted);font-size:.86rem;margin-bottom:20px;
+            line-height:1.5;
+        }
+        .notice strong{color:#a5b4fc}
+
+        /* Divider */
+        .divider{height:1px;background:var(--border);margin:20px 0}
+
+        /* Content type badge */
+        .type-badge{
+            display:inline-flex;align-items:center;gap:5px;
+            padding:4px 10px;border-radius:999px;
+            font-size:.76rem;font-weight:700;
+            {% if content_type == 'questions' %}
+            background:rgba(99,102,241,.15);color:#a5b4fc;
+            {% else %}
+            background:rgba(245,158,11,.15);color:#fde68a;
+            {% endif %}
+        }
+
+        html{scroll-behavior:smooth}
+        input,select,textarea{font-size:16px}
+
+        @media(max-width:560px){
+            .main{padding:16px 12px}
+            .page-title{font-size:1.2rem}
+            .actions{flex-direction:column}
+            .btn{width:100%;justify-content:center}
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <a class="header-brand" href="/admin">
+        <div class="header-logo">📚</div>
+        <div class="header-title">Club de Lectura</div>
+    </a>
+    <div class="header-back">
+        <a class="btn btn-soft" href="/admin" style="padding:7px 12px;font-size:.84rem">← Dashboard</a>
+    </div>
+</header>
+
+<div class="main">
+
+    <div class="page-header">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <div class="page-title">
+                {% if content_type == 'questions' %}💬{% else %}✨{% endif %}
+                {{ title }}
+            </div>
+            <span class="type-badge">
+                {% if content_type == 'questions' %}Preguntas IA{% else %}Cita IA{% endif %}
+            </span>
+        </div>
+        <div class="page-sub">Revisa el contenido antes de enviarlo al grupo de Telegram</div>
+    </div>
+
+    <!-- Book info -->
+    {% if winner %}
+    <div class="book-bar">
+        {% if winner.cover %}
+            <img class="book-cover-img" src="{{ winner.cover }}" alt="Portada">
+        {% else %}
+            <div class="book-cover-fb">📗</div>
+        {% endif %}
+        <div class="book-info">
+            <div class="book-title-text">{{ winner.title }}</div>
+            {% if winner.author %}
+                <div class="book-author-text">✍️ {{ winner.author }}</div>
+            {% endif %}
+            {% if winner.pages %}
+                <div style="color:var(--muted);font-size:.8rem;margin-top:2px">📄 {{ winner.pages }} páginas</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Preview -->
+    <div class="tg-preview-wrap">
+        <div class="tg-preview-label">
+            <span>📱</span> Vista previa en Telegram
+        </div>
+        <div class="tg-bubble">
+            <div class="tg-sender">Club de Lectura · Bot</div>
+            <div class="tg-text" id="preview-text">{{ content }}</div>
+            <div class="tg-time">ahora</div>
+        </div>
+    </div>
+
+    <div class="notice">
+        <strong>Nota:</strong> El contenido se generó con IA. Puedes regenerarlo si no te convence.
+        Una vez enviado, el mensaje aparecerá en el grupo de Telegram.
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+        <form action="{{ send_url }}" method="post" style="display:contents">
+            <input type="hidden" name="content" value="{{ content }}">
+            <button type="submit" class="btn btn-success">
+                📨 Enviar al grupo
+            </button>
+        </form>
+
+        <a class="btn btn-warning" href="{{ regen_url }}">
+            🔄 Regenerar
+        </a>
+
+        <a class="btn btn-soft" href="/admin">
+            ✕ Cancelar
+        </a>
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="color:var(--muted);font-size:.82rem;line-height:1.6">
+        <strong style="color:var(--text)">Sobre la generación:</strong><br>
+        {% if content_type == 'questions' %}
+        Las preguntas se generan con IA (Groq) analizando el libro del ciclo actual.
+        Son específicas para la obra y pensadas para facilitar el debate del club.
+        {% else %}
+        La cita se obtiene de fuentes en español (Wikiquote, citas.in) o mediante IA.
+        Verifica que la cita sea auténtica antes de enviarla.
+        {% endif %}
+    </div>
+
+</div>
+
+</body>
+</html>

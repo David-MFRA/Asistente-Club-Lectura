@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import logging
 import unicodedata
 import time as _time
@@ -57,7 +58,9 @@ DEFAULT_MESSAGES = {
         "  /trivia — Pregunta para el debate\n"
         "  /preguntas — Preguntas de debate con IA\n"
         "  /cita — Cita literaria del libro actual\n"
-        "  /recomendar — Libros del tema activo"
+        "  /recomendar — Libros del tema activo\n"
+        "  /lista_espera — Libros en lista de espera\n"
+        "  /proponer_fecha DD/MM HH:MM — Proponer fecha de reunión"
     ),
     "next_meeting_message": (
         "📅 *{meeting_name}*\n\n"
@@ -216,7 +219,7 @@ async def send_to_group(text, parse_mode="MarkdownV2", reply_markup=None, messag
         return False
 
 async def send_and_pin(text, parse_mode=None, reply_markup=None):
-    """Envía un mensaje al grupo y lo fija. Guarda el message_id en app_config."""
+    """Envía un mensaje al grupo y lo fija. Guarda el message_id en app_config (soporte multi-pin con coma)."""
     if not TELEGRAM_CHAT_ID:
         return False
     try:
@@ -232,6 +235,11 @@ async def send_and_pin(text, parse_mode=None, reply_markup=None):
                 message_id=msg.message_id,
                 disable_notification=True
             )
+            # Acumular IDs de mensajes fijados (coma-separado) y también guardar el último
+            existing = db.get_config("pinned_message_ids") or ""
+            ids = [x for x in existing.split(",") if x.strip()]
+            ids.append(str(msg.message_id))
+            db.set_config("pinned_message_ids", ",".join(ids))
             db.set_config("pinned_message_id", str(msg.message_id))
         except Exception:
             logger.warning("No se pudo fijar el mensaje (¿el bot es admin?)")
@@ -1150,85 +1158,116 @@ async def encuesta_temas_cmd(update, context):
 # --------------------------------------------------
 
 async def send_meeting_reminder():
-    """Recordatorio semanal con días restantes y ritmo de páginas."""
-    meeting = db.get_latest_scheduled_meeting()
-    if not meeting:
-        return
-    asistentes = db.get_attendance(meeting["id"])
-    # Usar el libro asociado a la reunión, no el ganador del ciclo
-    book = None
-    if meeting.get("book_id"):
-        book = db.get_book_by_id(meeting["book_id"])
-    if not book:
-        book = db.get_winner_book()
+    """Recordatorio semanal con días restantes y ritmo de páginas. Incluye todas las reuniones activas."""
+    all_meetings = db.get_meetings(limit=10)
     now = datetime.utcnow()
+    upcoming = []
+    for m in all_meetings:
+        if m.get("status") == "closed":
+            continue
+        upcoming.append(m)
+    if not upcoming:
+        return
 
-    days_left = None
-    if meeting.get("final_date"):
-        try:
-            final_dt = meeting["final_date"]
-            if isinstance(final_dt, str):
-                final_dt = datetime.fromisoformat(final_dt)
-            days_left = (final_dt - now).days
-        except Exception:
-            pass
+    if len(upcoming) == 1:
+        # Modo reunión única (comportamiento original)
+        meeting = upcoming[0]
+        asistentes = db.get_attendance(meeting["id"])
+        book = None
+        if meeting.get("book_id"):
+            book = db.get_book_by_id(meeting["book_id"])
+        if not book:
+            book = db.get_winner_book()
 
-    fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-    names = "\n".join(f"  • {a}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
+        days_left = None
+        if meeting.get("final_date"):
+            try:
+                final_dt = meeting["final_date"]
+                if isinstance(final_dt, str):
+                    final_dt = datetime.fromisoformat(final_dt)
+                days_left = (final_dt - now).days
+            except Exception:
+                pass
 
-    lines = [f"📅 Recordatorio semanal del club\n"]
-    lines.append(f"Reunión: {meeting['name']}")
-    lines.append(f"📆 Fecha: {fecha_str}")
+        fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+        names = "\n".join(f"  • {a}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
 
-    if meeting.get("location"):
-        lines.append(f"📍 Lugar: {meeting['location']}")
-    if meeting.get("notes"):
-        lines.append(f"📝 {meeting['notes']}")
+        lines = [f"📅 Recordatorio semanal del club\n"]
+        lines.append(f"Reunión: {meeting['name']}")
+        lines.append(f"📆 Fecha: {fecha_str}")
 
-    if days_left is not None:
-        if days_left > 0:
-            lines.append(f"⏳ Faltan {days_left} día{'s' if days_left != 1 else ''} para la reunión")
-        elif days_left == 0:
-            lines.append(f"🔔 ¡La reunión es HOY!")
-        else:
-            lines.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
+        if meeting.get("location"):
+            lines.append(f"📍 Lugar: {meeting['location']}")
+        if meeting.get("notes"):
+            lines.append(f"📝 {meeting['notes']}")
 
-    if book and book.get("title"):
-        lines.append(f"\n📗 Libro: {book['title']}")
-        if book.get("author"):
-            lines.append(f"   ✍️ {book['author']}")
+        if days_left is not None:
+            if days_left > 0:
+                lines.append(f"⏳ Faltan {days_left} día{'s' if days_left != 1 else ''} para la reunión")
+            elif days_left == 0:
+                lines.append(f"🔔 ¡La reunión es HOY!")
+            else:
+                lines.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
 
-        pages = book.get("pages")
-        if pages and days_left and days_left > 0:
-            total_days = 30
-            elapsed    = max(0, total_days - days_left)
-            pages_now  = int(pages * elapsed / total_days)
-            daily_pace = max(1, int(pages / total_days))
-            lines.append(
-                f"\n📊 Ritmo de lectura\n"
-                f"  Para estar al día deberías llevar unas {pages_now} páginas de {pages} en total ✨\n"
-                f"  (Son unos {daily_pace} páginas al día, ¡tú puedes!)"
-            )
-        progress_list = db.get_reading_progress(book["id"])
-        if progress_list and pages:
-            lines.append(f"\n📖 Progreso del grupo")
-            for p in progress_list[:5]:
-                pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
-                lines.append(f"  • {p['user_name']}: {p['pages_read']} págs ({pct}%)")
+        if book and book.get("title"):
+            lines.append(f"\n📗 Libro: {book['title']}")
+            if book.get("author"):
+                lines.append(f"   ✍️ {book['author']}")
 
-    lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
-    lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📖")
+            pages = book.get("pages")
+            if pages and days_left and days_left > 0:
+                total_days = 30
+                elapsed    = max(0, total_days - days_left)
+                pages_now  = int(pages * elapsed / total_days)
+                daily_pace = max(1, int(pages / total_days))
+                lines.append(
+                    f"\n📊 Ritmo de lectura\n"
+                    f"  Para estar al día deberías llevar unas {pages_now} páginas de {pages} en total ✨\n"
+                    f"  (Son unos {daily_pace} páginas al día, ¡tú puedes!)"
+                )
+            progress_list = db.get_reading_progress(book["id"])
+            if progress_list and pages:
+                lines.append(f"\n📖 Progreso del grupo")
+                for p in progress_list[:5]:
+                    pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
+                    lines.append(f"  • {p['user_name']}: {p['pages_read']} págs ({pct}%)")
 
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
+        lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📖")
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+            ]
         ]
-    ]
-    if meeting.get("book_id"):
-        keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
+        if meeting.get("book_id"):
+            keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
 
-    await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+        await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        # Modo multi-reunión: mensaje combinado con todas las reuniones activas
+        lines = ["📌 REUNIONES ACTIVAS\n"]
+        keyboard = []
+        for idx, meeting in enumerate(upcoming[:5], 1):
+            asistentes = db.get_attendance(meeting["id"])
+            fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+            lines.append(f"📅 Reunión {idx}: {meeting['name']}")
+            lines.append(f"   📆 Fecha: {fecha_str}")
+            if meeting.get("location"):
+                lines.append(f"   📍 Lugar: {meeting['location']}")
+            lines.append(f"   👥 Apuntados: {len(asistentes)}")
+            if idx < len(upcoming[:5]):
+                lines.append("")
+            # Botones por reunión
+            short_name = meeting['name'][:20]
+            keyboard.append([
+                InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
+                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+            ])
+
+        lines.append(f"\nUsa /asistir para apuntarte a una reunión concreta 📖")
+        await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def send_reading_reminder():
@@ -1424,6 +1463,87 @@ async def preguntas_cmd(update, context):
         await update.message.reply_text("⚠️ Error generando preguntas.", parse_mode=None)
 
 
+async def lista_espera_cmd(update, context):
+    if not _allowed_chat(update): return
+    try:
+        theme = " ".join(context.args).strip() if context.args else None
+        books = db.get_waitlist(theme=theme)
+        if not books:
+            msg = "📭 No hay libros en la lista de espera" + (f" para la temática «{theme}»" if theme else "") + "."
+            await update.message.reply_text(msg, parse_mode=None)
+            return
+        lines = ["📚 Lista de espera — libros pendientes\n"]
+        if theme:
+            lines[0] = f"📚 Lista de espera — temática: {theme}\n"
+        current_theme = None
+        for b in books[:15]:
+            if b.get('cycle_theme') != current_theme:
+                current_theme = b.get('cycle_theme')
+                if current_theme:
+                    lines.append(f"\n🏷️ {current_theme}")
+            author_str = f" — {b['author']}" if b.get('author') else ""
+            pos_str = f" (#{b['position_at_time']})" if b.get('position_at_time') else ""
+            lines.append(f"  📖 {b['title']}{author_str}{pos_str}")
+        lines.append("\nUsa /lista_espera [temática] para filtrar por temática.")
+        await update.message.reply_text("\n".join(lines), parse_mode=None)
+    except Exception:
+        logger.exception("Error en /lista_espera")
+        await update.message.reply_text("⚠️ Error obteniendo la lista de espera.", parse_mode=None)
+
+
+async def proponer_fecha_cmd(update, context):
+    if not _allowed_chat(update): return
+    if not _check_cooldown(update.effective_user.id, "proponer_fecha", 30):
+        await update.message.reply_text("⏳ Espera unos segundos.", parse_mode=None)
+        return
+    try:
+        args = " ".join(context.args).strip()
+        if not args:
+            await update.message.reply_text(
+                "📅 Uso: /proponer_fecha DD/MM HH:MM\nEjemplo: /proponer_fecha 15/04 19:30",
+                parse_mode=None
+            )
+            return
+        m = re.match(r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?:\s+(\d{1,2}):(\d{2}))?', args)
+        if not m:
+            await update.message.reply_text("❌ Formato inválido. Usa: /proponer_fecha DD/MM HH:MM", parse_mode=None)
+            return
+        day, month = int(m.group(1)), int(m.group(2))
+        year = int(m.group(3)) if m.group(3) else datetime.now().year
+        if year < 100: year += 2000
+        hour = int(m.group(4)) if m.group(4) else 19
+        minute = int(m.group(5)) if m.group(5) else 0
+        try:
+            proposed_dt = datetime(year, month, day, hour, minute)
+        except ValueError:
+            await update.message.reply_text("❌ Fecha inválida.", parse_mode=None)
+            return
+        meeting = db.get_latest_scheduled_meeting()
+        if not meeting:
+            await update.message.reply_text("📭 No hay reunión activa para proponer una fecha.", parse_mode=None)
+            return
+        user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        result = db.propose_meeting_date(meeting['id'], proposed_dt, user)
+        if result:
+            fecha_str = proposed_dt.strftime("%d/%m/%Y a las %H:%M")
+            await update.message.reply_text(
+                f"📅 ¡Fecha propuesta!\n\n"
+                f"📌 Reunión: {meeting['name']}\n"
+                f"📆 Fecha propuesta: {fecha_str}\n"
+                f"👤 Por: {user}\n\n"
+                f"El admin cerrará la fecha definitiva pronto.",
+                parse_mode=None
+            )
+        else:
+            await update.message.reply_text(
+                f"ℹ️ Esa fecha ya estaba propuesta para {meeting['name']}.",
+                parse_mode=None
+            )
+    except Exception:
+        logger.exception("Error en /proponer_fecha")
+        await update.message.reply_text("⚠️ Error al proponer la fecha.", parse_mode=None)
+
+
 async def cita_cmd(update, context):
     """Genera una cita literaria relacionada con el libro actual."""
     if not _allowed_chat(update): return
@@ -1484,6 +1604,8 @@ telegram_app.add_handler(CommandHandler("fijar",            fijar_cmd))
 telegram_app.add_handler(CommandHandler("desfijar",         desfijar_cmd))
 telegram_app.add_handler(CommandHandler("preguntas",        preguntas_cmd))
 telegram_app.add_handler(CommandHandler("cita",             cita_cmd))
+telegram_app.add_handler(CommandHandler("lista_espera",     lista_espera_cmd))
+telegram_app.add_handler(CommandHandler("proponer_fecha",   proponer_fecha_cmd))
 telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
@@ -1737,12 +1859,32 @@ async def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
 # FLASK — REUNIONES
 # --------------------------------------------------
 
-@flask_app.get("/meetings")
+@flask_app.route("/meetings", methods=["GET", "POST"])
 def meetings_admin():
     auth = require_admin()
     if auth: return auth
-    meetings = db.get_meetings()
-    return render_template("meetings.html", meetings=meetings)
+    if request.method == "POST":
+        name         = request.form.get("meeting_name", "").strip()
+        meeting_date = request.form.get("meeting_date", "").strip() or None
+        location     = request.form.get("location", "").strip() or None
+        if not name:
+            meetings_list = db.get_meetings()
+            meetings_json = json.dumps([{'id': m['id'], 'name': m['name'], 'final_date': str(m['final_date'])[:10] if m.get('final_date') else None, 'status': m.get('status', 'draft')} for m in meetings_list])
+            return render_template("meetings.html", meetings=meetings_list, meetings_json=meetings_json, error="Falta el nombre")
+        try:
+            m = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
+            if location:
+                db.update_meeting(meeting_id=m["id"], location=location)
+        except Exception:
+            logger.exception("Error creando reunión")
+        return redirect(url_for("meetings_admin"))
+    meetings_list = db.get_meetings()
+    meetings_json = json.dumps([{
+        'id': m['id'], 'name': m['name'],
+        'final_date': str(m['final_date'])[:10] if m.get('final_date') else None,
+        'status': m.get('status', 'draft')
+    } for m in meetings_list])
+    return render_template("meetings.html", meetings=meetings_list, meetings_json=meetings_json)
 
 @flask_app.get("/themes")
 def themes_admin():
@@ -1830,7 +1972,7 @@ def create_meeting():
         m = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
         if location:
             db.update_meeting(meeting_id=m["id"], location=location)
-        return redirect(url_for("admin_dashboard"))
+        return redirect(url_for("meetings_admin"))
     except Exception:
         logger.exception("Error creando reunión")
         return "Error creando reunión", 500
@@ -1932,6 +2074,46 @@ async def admin_send_meeting_info():
     except Exception:
         logger.exception("Error enviando info de reunión")
         flash("Error enviando la información", "danger")
+    return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/send/pin-all")
+async def admin_send_pin_all():
+    """Envía y fija un mensaje combinado con todas las reuniones activas."""
+    auth = require_admin()
+    if auth: return auth
+    try:
+        all_meetings = db.get_meetings(limit=10)
+        upcoming = [m for m in all_meetings if m.get("status") != "closed"]
+        if not upcoming:
+            flash("No hay reuniones activas para fijar", "danger")
+            return redirect(url_for("admin_dashboard"))
+        lines = ["📌 REUNIONES ACTIVAS\n"]
+        keyboard = []
+        for idx, meeting in enumerate(upcoming[:5], 1):
+            asistentes = db.get_attendance(meeting["id"])
+            fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+            lines.append(f"📅 Reunión {idx}: {meeting['name']}")
+            lines.append(f"   📆 Fecha: {fecha_str}")
+            if meeting.get("location"):
+                lines.append(f"   📍 Lugar: {meeting['location']}")
+            lines.append(f"   👥 Apuntados: {len(asistentes)}")
+            if idx < len(upcoming[:5]):
+                lines.append("")
+            short_name = meeting['name'][:20]
+            keyboard.append([
+                InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
+                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+            ])
+        lines.append("\nUsa /asistir para apuntarte a una reunión concreta 📖")
+        await send_and_pin(
+            "\n".join(lines),
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        flash("Mensaje de reuniones fijado en el grupo", "success")
+    except Exception:
+        logger.exception("Error en pin-all")
+        flash("Error fijando mensaje", "danger")
     return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
@@ -2164,8 +2346,8 @@ def admin_scheduler_delete(msg_id):
 # FLASK — AI FEATURES
 # --------------------------------------------------
 
-@flask_app.post("/admin/ai/questions")
-async def admin_ai_questions():
+@flask_app.get("/admin/ai/questions")
+def admin_ai_questions():
     auth = require_admin()
     if auth: return auth
     winner = db.get_winner_book()
@@ -2176,16 +2358,39 @@ async def admin_ai_questions():
         questions = ai_features.generate_discussion_questions(
             winner["title"], winner.get("author", ""), winner.get("description", "")
         )
-        text = f"💬 Preguntas de debate — {winner['title']}\n\n{questions}"
-        await send_to_group(text, parse_mode=None, message_type="ai_questions")
-        flash("Preguntas de debate enviadas al grupo", "success")
+        content = f"💬 Preguntas de debate — {winner['title']}\n\n{questions}"
+        return render_template(
+            "admin_ai_preview.html",
+            content=content,
+            winner=winner,
+            content_type="questions",
+            send_url="/admin/ai/questions/send",
+            regen_url="/admin/ai/questions",
+            title="Preguntas de debate",
+        )
     except Exception:
         logger.exception("Error generando preguntas AI")
         flash("Error generando preguntas", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/ai/questions/send")
+async def admin_ai_questions_send():
+    auth = require_admin()
+    if auth: return auth
+    content = request.form.get("content", "").strip()
+    if not content:
+        flash("Contenido vacío", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        await send_to_group(content, parse_mode=None, message_type="ai_questions")
+        flash("Preguntas de debate enviadas al grupo", "success")
+    except Exception:
+        logger.exception("Error enviando preguntas AI")
+        flash("Error enviando preguntas", "danger")
     return redirect(url_for("admin_dashboard"))
 
-@flask_app.post("/admin/ai/quote")
-async def admin_ai_quote():
+@flask_app.get("/admin/ai/quote")
+def admin_ai_quote():
     auth = require_admin()
     if auth: return auth
     winner = db.get_winner_book()
@@ -2194,13 +2399,48 @@ async def admin_ai_quote():
         return redirect(url_for("admin_dashboard"))
     try:
         quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
-        text = f"✨ {quote}\n\n— Sobre «{winner['title']}»"
-        await send_to_group(text, parse_mode=None, message_type="ai_quote")
-        flash("Cita enviada al grupo", "success")
+        content = f"✨ {quote}\n\n— Sobre «{winner['title']}»"
+        return render_template(
+            "admin_ai_preview.html",
+            content=content,
+            winner=winner,
+            content_type="quote",
+            send_url="/admin/ai/quote/send",
+            regen_url="/admin/ai/quote",
+            title="Cita literaria",
+        )
     except Exception:
         logger.exception("Error generando cita AI")
         flash("Error generando cita", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+@flask_app.post("/admin/ai/quote/send")
+async def admin_ai_quote_send():
+    auth = require_admin()
+    if auth: return auth
+    content = request.form.get("content", "").strip()
+    if not content:
+        flash("Contenido vacío", "danger")
+        return redirect(url_for("admin_dashboard"))
+    try:
+        await send_to_group(content, parse_mode=None, message_type="ai_quote")
+        flash("Cita enviada al grupo", "success")
+    except Exception:
+        logger.exception("Error enviando cita AI")
+        flash("Error enviando cita", "danger")
     return redirect(url_for("admin_dashboard"))
+
+# --------------------------------------------------
+# FLASK — POSTER DESIGNER
+# --------------------------------------------------
+
+@flask_app.get("/admin/poster")
+def admin_poster():
+    auth = require_admin()
+    if auth: return auth
+    winner = db.get_winner_book()
+    meeting = db.get_latest_scheduled_meeting()
+    return render_template("admin_poster.html", winner=winner, meeting=meeting)
 
 # --------------------------------------------------
 # FLASK — ADMIN HELP
@@ -2250,7 +2490,12 @@ def admin_ciclo_cerrar():
     auth = require_admin()
     if auth: return auth
     cycle = db.get_current_cycle_key()
+    cycle_theme = db.get_config("active_theme") or None
     db.close_cycle(cycle)
+    try:
+        db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
+    except Exception:
+        logger.exception("Error añadiendo runners-up a la lista de espera")
     flash(f"Ciclo «{cycle}» cerrado. Propuestas y temáticas desactivadas.", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -2367,6 +2612,135 @@ def meeting_set_book(meeting_id):
     db.update_meeting(meeting_id=meeting_id, book_id=int(book_id) if book_id else None)
     flash("Libro asignado a la reunión", "success")
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
+# --------------------------------------------------
+# FLASK — BOOK WAITLIST
+# --------------------------------------------------
+
+@flask_app.get("/admin/waitlist")
+def admin_waitlist():
+    auth = require_admin()
+    if auth: return auth
+    theme_filter = request.args.get('theme', '')
+    waitlist = db.get_waitlist(theme=theme_filter if theme_filter else None)
+    themes = db.get_waitlist_themes()
+    winner = db.get_winner_book()
+    books = db.get_book_proposals()
+    return render_template('admin_waitlist.html', waitlist=waitlist, themes=themes,
+                           theme_filter=theme_filter, winner=winner, books=books)
+
+@flask_app.post("/admin/waitlist/add")
+def admin_waitlist_add():
+    auth = require_admin()
+    if auth: return auth
+    book_id = request.form.get('book_id', type=int)
+    cycle_theme = request.form.get('cycle_theme', '').strip() or None
+    notes = request.form.get('notes', '').strip() or None
+    if not book_id:
+        flash("Falta el ID del libro", "danger")
+        return redirect(url_for('admin_waitlist'))
+    cycle_key = db.get_current_cycle_key()
+    db.add_to_waitlist(book_id=book_id, cycle_key=cycle_key, cycle_theme=cycle_theme,
+                       added_by='admin', notes=notes)
+    flash("Libro añadido a la lista de espera", "success")
+    return redirect(url_for('admin_waitlist'))
+
+@flask_app.post("/admin/waitlist/<int:wl_id>/delete")
+def admin_waitlist_delete(wl_id):
+    auth = require_admin()
+    if auth: return auth
+    db.remove_from_waitlist(wl_id)
+    flash("Eliminado de la lista de espera", "success")
+    return redirect(url_for('admin_waitlist'))
+
+@flask_app.post("/admin/waitlist/suggest")
+async def admin_waitlist_suggest():
+    auth = require_admin()
+    if auth: return auth
+    theme = request.form.get('theme', '').strip()
+    books = db.get_waitlist(theme=theme if theme else None)
+    if not books:
+        flash("No hay libros en la lista de espera para esa temática", "warning")
+        return redirect(url_for('admin_waitlist'))
+    lines = ["📚 *Lista de espera — libros pendientes*\n"]
+    if theme:
+        lines[0] = f"📚 *Lista de espera — temática: {theme}*\n"
+    for i, b in enumerate(books[:10], 1):
+        lines.append(f"{i}. {b['title']}" + (f" — {b['author']}" if b.get('author') else ""))
+        if b.get('votes_at_time'):
+            lines[-1] += f" ({b['votes_at_time']} votos en su ciclo)"
+    lines.append("\n_¿Alguno de estos te apetece releer o proponer?_")
+    await send_to_group("\n".join(lines), parse_mode=None)
+    flash("Sugerencias enviadas al grupo", "success")
+    return redirect(url_for('admin_waitlist'))
+
+# --------------------------------------------------
+# FLASK — DEMO / TOUR
+# --------------------------------------------------
+
+def _utcnow():
+    from datetime import timezone as _tz
+    return datetime.now(_tz.utc).replace(tzinfo=None)
+
+@flask_app.get("/admin/demo")
+def admin_demo():
+    auth = require_admin()
+    if auth: return auth
+    demo_active = db.get_config("demo_mode") == "true"
+    return render_template("admin_demo.html", demo_active=demo_active)
+
+@flask_app.post("/admin/demo/seed")
+def admin_demo_seed():
+    auth = require_admin()
+    if auth: return auth
+    try:
+        from datetime import timedelta
+        demo_books = [
+            {"title": "El nombre del viento", "author": "Patrick Rothfuss", "pages": 662,
+             "description": "La historia de Kvothe, un mago legendario que narra su propia vida.", "language_code": "es"},
+            {"title": "Sapiens", "author": "Yuval Noah Harari", "pages": 496,
+             "description": "Una breve historia de la humanidad desde el homo sapiens hasta la actualidad.", "language_code": "es"},
+            {"title": "La sombra del viento", "author": "Carlos Ruiz Zafón", "pages": 544,
+             "description": "Un misterioso libro hace que un joven se aventure en el laberinto de los libros perdidos de Barcelona.", "language_code": "es"},
+        ]
+        cycle_key = db.get_current_cycle_key()
+        for b in demo_books:
+            try:
+                db.insert_book(b, proposed_by="demo", cycle_key=cycle_key)
+            except Exception:
+                pass
+        try:
+            db.create_theme("Fantasía épica", created_by="demo", cycle_key=cycle_key)
+        except Exception:
+            pass
+        demo_date = (_utcnow() + timedelta(days=14)).replace(hour=19, minute=0, second=0, microsecond=0)
+        try:
+            db.create_meeting(name="Reunión de demostración", final_date=str(demo_date), created_by="demo")
+        except Exception:
+            pass
+        db.set_config("demo_mode", "true")
+        flash("✅ Datos de demo sembrados correctamente", "success")
+    except Exception:
+        logger.exception("Error sembrando datos demo")
+        flash("Error al sembrar datos", "danger")
+    return redirect(url_for("admin_dashboard") + "?tour=1")
+
+@flask_app.post("/admin/demo/clear")
+def admin_demo_clear():
+    auth = require_admin()
+    if auth: return auth
+    try:
+        cycle_key = db.get_current_cycle_key()
+        with db.get_cursor(commit=True) as cur:
+            cur.execute("DELETE FROM book_proposals WHERE cycle_key = %s AND proposed_by = 'demo'", (cycle_key,))
+            cur.execute("DELETE FROM themes WHERE cycle_key = %s AND created_by = 'demo'", (cycle_key,))
+            cur.execute("DELETE FROM meetings WHERE cycle_key = %s AND created_by = 'demo'", (cycle_key,))
+        db.set_config("demo_mode", "false")
+        flash("🧹 Datos de demo eliminados", "success")
+    except Exception:
+        logger.exception("Error limpiando datos demo")
+        flash("Error al limpiar datos", "danger")
+    return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
 # WEBHOOK

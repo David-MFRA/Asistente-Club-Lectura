@@ -226,6 +226,19 @@ def init_db():
             sent BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS book_waitlist (
+            id SERIAL PRIMARY KEY,
+            book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+            cycle_key TEXT NOT NULL,
+            cycle_theme TEXT,
+            position_at_time INTEGER,
+            votes_at_time INTEGER,
+            added_by TEXT NOT NULL DEFAULT 'auto',
+            notes TEXT,
+            added_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(book_id, cycle_key)
+        )""")
 
 
 # =========================================================
@@ -1046,6 +1059,7 @@ ALLOWED_TABLES = [
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
     "message_templates", "sent_messages", "scheduled_messages",
+    "book_waitlist",
 ]
 
 
@@ -1077,3 +1091,83 @@ def truncate_table(table_name):
         raise ValueError(f"Tabla no permitida: {table_name}")
     with get_cursor(commit=True) as cur:
         cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")
+
+
+# =========================================================
+# BOOK WAITLIST
+# =========================================================
+
+def add_to_waitlist(book_id, cycle_key, cycle_theme=None, position=None, votes=None, added_by='auto', notes=None):
+    """Add a book to the waiting list."""
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO book_waitlist(book_id, cycle_key, cycle_theme, position_at_time, votes_at_time, added_by, notes)
+        VALUES(%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT(book_id, cycle_key) DO UPDATE SET notes=EXCLUDED.notes, added_by=EXCLUDED.added_by
+        RETURNING *
+        """, (book_id, cycle_key, cycle_theme, position, votes, added_by, notes))
+        return dict(cur.fetchone())
+
+
+def get_waitlist(theme=None):
+    """Get waitlist books, optionally filtered by theme. Returns books with book info."""
+    with get_cursor() as cur:
+        if theme:
+            cur.execute("""
+            SELECT wl.*, b.title, b.author, b.description, b.cover, b.pages, b.language_code
+            FROM book_waitlist wl JOIN books b ON b.id = wl.book_id
+            WHERE LOWER(wl.cycle_theme) = LOWER(%s)
+            ORDER BY wl.position_at_time ASC NULLS LAST, wl.votes_at_time DESC NULLS LAST, wl.added_at DESC
+            """, (theme,))
+        else:
+            cur.execute("""
+            SELECT wl.*, b.title, b.author, b.description, b.cover, b.pages, b.language_code
+            FROM book_waitlist wl JOIN books b ON b.id = wl.book_id
+            ORDER BY wl.cycle_theme NULLS LAST, wl.position_at_time ASC NULLS LAST, wl.votes_at_time DESC NULLS LAST
+            """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def remove_from_waitlist(waitlist_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM book_waitlist WHERE id = %s", (waitlist_id,))
+
+
+def get_waitlist_themes():
+    """Get distinct themes from waitlist."""
+    with get_cursor() as cur:
+        cur.execute("SELECT DISTINCT cycle_theme FROM book_waitlist WHERE cycle_theme IS NOT NULL ORDER BY cycle_theme")
+        return [r['cycle_theme'] for r in cur.fetchall()]
+
+
+def auto_add_runners_up_to_waitlist(cycle_key, cycle_theme=None):
+    """After a cycle ends, add 2nd, 3rd place (runners-up) to waitlist automatically."""
+    books = get_books(cycle_key)
+    added = []
+    for i, book in enumerate(books[1:4], start=2):  # positions 2, 3, 4
+        try:
+            add_to_waitlist(
+                book_id=book['id'],
+                cycle_key=cycle_key,
+                cycle_theme=cycle_theme,
+                position=i,
+                votes=book.get('votes', 0),
+                added_by='auto'
+            )
+            added.append(book)
+        except Exception:
+            pass
+    return added
+
+
+def propose_meeting_date(meeting_id, proposed_date, proposed_by):
+    """User proposes a date option for a meeting."""
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO meeting_date_options(meeting_id, option_date, created_at)
+        VALUES(%s,%s,NOW())
+        ON CONFLICT(meeting_id, option_date) DO NOTHING
+        RETURNING *
+        """, (meeting_id, proposed_date))
+        row = cur.fetchone()
+        return dict(row) if row else None

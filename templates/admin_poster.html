@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diseñador de cartel · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <style>
+/* ═══════════════════════════════════════════════════════════════
+   VARIABLES & RESET
+═══════════════════════════════════════════════════════════════ */
+:root{
+    --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
+    --panel:rgba(255,255,255,0.07); --panel-h:rgba(255,255,255,0.11);
+    --border:rgba(255,255,255,0.10); --text:#f1f5f9; --muted:#94a3b8;
+    --primary:#6366f1; --primary2:#8b5cf6;
+    --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
+    --shadow:0 8px 24px rgba(0,0,0,.3); --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+    min-height:100%;
+    font-family:Inter,system-ui,sans-serif;
+    background:
+        radial-gradient(ellipse at 0% 0%,rgba(99,102,241,.2),transparent 50%),
+        radial-gradient(ellipse at 100% 100%,rgba(139,92,246,.15),transparent 50%),
+        linear-gradient(160deg,var(--bg),var(--bg2) 60%,var(--bg3));
+    color:var(--text);font-size:14px;
+}
+body{padding:0 0 60px}
+html{scroll-behavior:smooth}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════════════════ */
+.header{
+    position:sticky;top:0;z-index:100;
+    background:rgba(11,17,32,.92);backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    padding:0 16px;display:flex;align-items:center;gap:12px;height:56px;
+}
+.header-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--text);flex-shrink:0}
+.header-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px}
+.header-title{font-weight:800;font-size:.97rem}
+.header-nav{margin-left:auto;display:flex;gap:6px}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════════════════════════════════ */
+.main{max-width:1260px;margin:0 auto;padding:20px 14px}
+.page-title{font-size:1.3rem;font-weight:800;margin-bottom:3px}
+.page-sub{color:var(--muted);font-size:.87rem;margin-bottom:18px}
+
+.editor-grid{
+    display:grid;
+    grid-template-columns:300px 1fr 220px;
+    gap:14px;
+    align-items:start;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PANELS
+═══════════════════════════════════════════════════════════════ */
+.panel{
+    background:var(--panel);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px;
+}
+.panel-title{
+    font-weight:700;font-size:.82rem;margin-bottom:10px;
+    display:flex;align-items:center;gap:6px;color:var(--text);
+    text-transform:uppercase;letter-spacing:.05em;
+}
+.divider{height:1px;background:var(--border);margin:12px 0}
+
+/* ═══════════════════════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════════════════════ */
+.tabs{display:flex;gap:2px;background:rgba(0,0,0,.3);border-radius:10px;padding:3px;margin-bottom:12px}
+.tab-btn{
+    flex:1;padding:7px 4px;border:none;border-radius:8px;background:none;
+    color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;
+    transition:.15s ease;font-family:inherit;
+}
+.tab-btn.active{background:rgba(99,102,241,.3);color:#a5b4fc}
+.tab-btn:hover:not(.active){color:var(--text)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORM FIELDS
+═══════════════════════════════════════════════════════════════ */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.field:last-child{margin-bottom:0}
+label{color:var(--muted);font-size:.77rem;font-weight:700}
+input[type=text],input[type=url],input[type=number],textarea,select{
+    width:100%;padding:8px 10px;border-radius:9px;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);
+    color:var(--text);outline:none;font-size:.85rem;font-family:inherit;transition:.18s ease;
+}
+input[type=text]:focus,input[type=url]:focus,input[type=number]:focus,
+textarea:focus,select:focus{
+    border-color:rgba(99,102,241,.6);box-shadow:0 0 0 3px rgba(99,102,241,.15)
+}
+input::placeholder,textarea::placeholder{color:rgba(255,255,255,.3)}
+textarea{resize:vertical;min-height:54px}
+select option{background:#1e2030;color:var(--text)}
+
+input[type=range]{
+    width:100%;accent-color:var(--primary);cursor:pointer;
+}
+input[type=color]{
+    width:100%;height:36px;padding:2px;border-radius:9px;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);
+    cursor:pointer;
+}
+input[type=checkbox]{
+    width:15px;height:15px;cursor:pointer;accent-color:var(--primary);
+}
+
+.row-inline{display:flex;align-items:center;gap:8px}
+.row-inline label{margin:0;cursor:pointer}
+
+/* ═══════════════════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════════════════ */
+.btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:5px;
+    padding:8px 14px;border:none;border-radius:9px;cursor:pointer;
+    font-size:.82rem;font-weight:700;text-decoration:none;transition:.15s ease;
+    white-space:nowrap;font-family:inherit;min-height:36px;
+}
+.btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 4px 12px rgba(99,102,241,.3)}
+.btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+.btn-success{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.28)}
+.btn-danger{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+.btn-sm{padding:5px 10px;font-size:.76rem;min-height:28px}
+.btn-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.btn-icon{
+    width:28px;height:28px;min-height:0;padding:0;border-radius:7px;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:.85rem;border:1px solid var(--border);background:var(--panel);
+    color:var(--text);cursor:pointer;transition:.15s ease;
+}
+.btn-icon:hover{background:var(--panel-h);filter:brightness(1.15)}
+
+/* ═══════════════════════════════════════════════════════════════
+   THEME & LAYOUT CHIPS
+═══════════════════════════════════════════════════════════════ */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{
+    padding:5px 11px;border-radius:999px;font-size:.76rem;font-weight:700;
+    border:2px solid transparent;cursor:pointer;transition:.15s ease;
+}
+.chip:hover{transform:scale(1.04)}
+.chip.active{border-color:#fff!important}
+.chip-indigo{background:rgba(99,102,241,.25);color:#a5b4fc}
+.chip-purple{background:rgba(139,92,246,.25);color:#c4b5fd}
+.chip-emerald{background:rgba(16,185,129,.25);color:#6ee7b7}
+.chip-amber{background:rgba(245,158,11,.25);color:#fde68a}
+.chip-layout{background:var(--panel);color:var(--muted);border-color:var(--border)!important}
+.chip-layout.active{background:rgba(99,102,241,.2);color:#a5b4fc;border-color:rgba(99,102,241,.5)!important}
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS AREA
+═══════════════════════════════════════════════════════════════ */
+.canvas-wrap{
+    background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.07);
+    border-radius:18px;padding:14px;
+    display:flex;flex-direction:column;align-items:center;gap:12px;
+}
+.canvas-label{
+    color:var(--muted);font-size:.72rem;font-weight:700;
+    text-transform:uppercase;letter-spacing:.06em;align-self:flex-start;
+}
+#poster-canvas{
+    border-radius:12px;max-width:100%;
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+    display:block;touch-action:none;
+}
+.canvas-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%}
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYER LIST & PROPERTIES
+═══════════════════════════════════════════════════════════════ */
+.layer-list{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+.layer-item{
+    display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;
+    cursor:pointer;transition:.12s ease;border:1px solid transparent;
+    font-size:.8rem;font-weight:600;
+}
+.layer-item:hover{background:var(--panel-h)}
+.layer-item.selected{background:rgba(99,102,241,.18);border-color:rgba(99,102,241,.4);color:#a5b4fc}
+.layer-item .layer-vis{font-size:.85rem;opacity:.7;cursor:pointer;flex-shrink:0}
+.layer-item .layer-vis:hover{opacity:1}
+.layer-item .layer-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layer-item .layer-type{color:var(--muted);font-size:.7rem;margin-left:auto;flex-shrink:0}
+.layer-arrows{display:flex;gap:3px;flex-shrink:0}
+
+.props-section{margin-top:0}
+.props-section .field{margin-bottom:8px}
+.props-title{font-weight:700;font-size:.78rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
+.toggle-row{display:flex;gap:6px;margin-bottom:8px}
+.toggle-btn{
+    flex:1;padding:6px 4px;border:1px solid var(--border);border-radius:8px;
+    background:var(--panel);color:var(--muted);font-size:.76rem;font-weight:700;
+    cursor:pointer;font-family:inherit;transition:.15s ease;
+}
+.toggle-btn.active{background:rgba(99,102,241,.25);color:#a5b4fc;border-color:rgba(99,102,241,.4)}
+
+.no-selection{color:var(--muted);font-size:.8rem;text-align:center;padding:20px 0;line-height:1.6}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:99px}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════════ */
+@media(max-width:1000px){
+    .editor-grid{grid-template-columns:280px 1fr}
+    .right-col{display:none}
+}
+@media(max-width:700px){
+    .editor-grid{grid-template-columns:1fr}
+    .left-col{order:2}
+    .center-col{order:1}
+}
+@media(max-width:480px){
+    .main{padding:12px 8px}
+}
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════════════════ -->
+<header class="header">
+    <a class="header-brand" href="/admin">
+        <div class="header-logo">📚</div>
+        <div class="header-title">Club de Lectura</div>
+    </a>
+    <nav class="header-nav">
+        <a class="btn btn-soft" href="/admin" style="padding:6px 11px;font-size:.8rem">← Dashboard</a>
+    </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN
+═══════════════════════════════════════════════════════════════ -->
+<div class="main">
+    <div class="page-title">🖼️ Diseñador de cartel</div>
+    <div class="page-sub">Editor interactivo — arrastra los elementos, personaliza colores y descarga en PNG</div>
+
+    <div class="editor-grid">
+
+        <!-- ─── LEFT PANEL ─────────────────────────────────────── -->
+        <aside class="left-col">
+            <div class="panel">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('contenido',this)">Contenido</button>
+                    <button class="tab-btn" onclick="switchTab('qr',this)">QR</button>
+                    <button class="tab-btn" onclick="switchTab('imagenes',this)">Imágenes</button>
+                </div>
+
+                <!-- ── TAB: CONTENIDO ──────────────────── -->
+                <div class="tab-pane active" id="tab-contenido">
+
+                    <div class="panel-title">🎨 Tema</div>
+                    <div class="chips">
+                        <span class="chip chip-indigo active" data-theme="indigo" onclick="setTheme('indigo',this)">Índigo</span>
+                        <span class="chip chip-purple" data-theme="purple" onclick="setTheme('purple',this)">Morado</span>
+                        <span class="chip chip-emerald" data-theme="emerald" onclick="setTheme('emerald',this)">Esmeralda</span>
+                        <span class="chip chip-amber" data-theme="amber" onclick="setTheme('amber',this)">Ámbar</span>
+                    </div>
+
+                    <div class="panel-title" style="margin-top:4px">📐 Diseño</div>
+                    <div class="chips">
+                        <span class="chip chip-layout active" data-layout="minimal" onclick="setLayout('minimal',this)">Minimal</span>
+                        <span class="chip chip-layout" data-layout="colorful" onclick="setLayout('colorful',this)">Colorido</span>
+                        <span class="chip chip-layout" data-layout="classic" onclick="setLayout('classic',this)">Clásico</span>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-title">📝 Textos</div>
+
+                    <div class="field">
+                        <label>Club (campo "club")</label>
+                        <input type="text" id="f-club" value="Club de Lectura" oninput="syncElementText('club',this.value)">
+                    </div>
+                    <div class="field">
+                        <label>Título del libro</label>
+                        <input type="text" id="f-title" placeholder="Ej. Cien años de soledad"
+                            value="{{ winner.title if winner else 'Título del libro' }}"
+                            oninput="syncElementText('title',this.value)">
+                    </div>
+                    <div class="field">
+                        <label>Autor</label>
+                        <input type="text" id="f-author" placeholder="Ej. García Márquez"
+                            value="{{ ('✍️ ' + winner.author) if winner and winner.author else '' }}"
+                            oninput="syncElementText('author',this.value)">
+                    </div>
+                    <div class="field">
+                        <label>Fecha de reunión</label>
+                        <input type="text" id="f-date" placeholder="Ej. 15 de marzo"
+                            value="{{ '📅 ' + (meeting.final_date | string)[:16] if meeting and meeting.final_date else '' }}"
+                            oninput="syncElementText('date',this.value)">
+                    </div>
+                    <div class="field">
+                        <label>Subtítulo / cita</label>
+                        <textarea id="f-subtitle" rows="2" placeholder="Una frase o descripción…"
+                            oninput="syncElementText('subtitle',this.value)">{% if winner and winner.description %}{{ winner.description[:80] }}{% endif %}</textarea>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="btn-row">
+                        <button class="btn btn-soft btn-sm" onclick="addTextElement()">+ Añadir texto</button>
+                        <button class="btn btn-soft btn-sm" onclick="resetPositions()">↺ Resetear</button>
+                    </div>
+                    <div class="btn-row" style="margin-top:6px">
+                        <button class="btn btn-soft btn-sm" onclick="saveTemplate()">💾 Guardar plantilla</button>
+                        <button class="btn btn-soft btn-sm" onclick="loadTemplate()">📂 Cargar plantilla</button>
+                    </div>
+                </div>
+
+                <!-- ── TAB: QR ──────────────────────────── -->
+                <div class="tab-pane" id="tab-qr">
+                    <div class="panel-title">📱 Código QR</div>
+
+                    <div class="field">
+                        <label>URL del grupo Telegram</label>
+                        <input type="url" id="f-qrurl" placeholder="https://t.me/tu_grupo" oninput="scheduleQR()">
+                    </div>
+
+                    <div class="field">
+                        <label>Estilo de puntos</label>
+                        <select id="f-qrdots" onchange="scheduleQR()">
+                            <option value="square">Square</option>
+                            <option value="dots">Dots</option>
+                            <option value="rounded">Rounded</option>
+                            <option value="extra-rounded">Extra Rounded</option>
+                            <option value="classy">Classy</option>
+                            <option value="classy-rounded">Classy Rounded</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Forma de ojos (corner squares)</label>
+                        <select id="f-qreye" onchange="scheduleQR()">
+                            <option value="square">Square</option>
+                            <option value="extra-rounded">Extra Rounded</option>
+                            <option value="dot">Dot</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Color de puntos</label>
+                        <input type="color" id="f-qrdotcolor" value="#ffffff" oninput="scheduleQR()">
+                    </div>
+
+                    <div class="field">
+                        <label>Color de fondo QR</label>
+                        <input type="color" id="f-qrbgcolor" value="#0f172a" oninput="scheduleQR()">
+                    </div>
+
+                    <div class="field">
+                        <label>Logo dentro del QR</label>
+                        <input type="file" id="f-qrlogo" accept="image/*" onchange="loadQRLogo(this)" style="background:none;border:none;padding:0;font-size:.78rem;color:var(--muted)">
+                    </div>
+
+                    <div class="field">
+                        <label>Tamaño en el cartel: <span id="qr-size-val">90</span>px</label>
+                        <input type="range" id="f-qrsize" min="60" max="160" value="90" oninput="document.getElementById('qr-size-val').textContent=this.value;drawPoster()">
+                    </div>
+
+                    <div class="field row-inline" style="margin-top:2px">
+                        <input type="checkbox" id="f-showqr" onchange="drawPoster()">
+                        <label for="f-showqr">Mostrar QR en el cartel</label>
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn btn-soft btn-sm" onclick="downloadQR()">⬇️ Descargar QR solo</button>
+                    </div>
+                </div>
+
+                <!-- ── TAB: IMÁGENES ────────────────────── -->
+                <div class="tab-pane" id="tab-imagenes">
+                    <div class="panel-title">🖼️ Fondo del cartel</div>
+                    <div class="field">
+                        <label>Imagen de fondo (reemplaza degradado)</label>
+                        <input type="file" id="f-bgimg" accept="image/*" onchange="loadBgImage(this)" style="background:none;border:none;padding:0;font-size:.78rem;color:var(--muted)">
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-soft btn-sm" onclick="clearBgImage()">✕ Limpiar fondo</button>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-title">📷 Logo / portada</div>
+                    <div class="field">
+                        <label>Imagen (arrastrable en el cartel)</label>
+                        <input type="file" id="f-logoimg" accept="image/*" onchange="loadLogoImage(this)" style="background:none;border:none;padding:0;font-size:.78rem;color:var(--muted)">
+                    </div>
+                    <div class="field">
+                        <label>Tamaño logo: <span id="logo-size-val">80</span>px</label>
+                        <input type="range" id="f-logosize" min="30" max="200" value="80" oninput="document.getElementById('logo-size-val').textContent=this.value;updateLogoSize()">
+                    </div>
+                </div>
+
+            </div><!-- /.panel -->
+        </aside>
+
+        <!-- ─── CENTER: CANVAS ────────────────────────────────── -->
+        <div class="center-col">
+            <div class="canvas-wrap">
+                <div class="canvas-label">🖱️ Vista previa — arrastra los elementos</div>
+                <canvas id="poster-canvas" width="600" height="400"></canvas>
+                <div class="canvas-actions">
+                    <button class="btn btn-primary" onclick="downloadPoster()">⬇️ Descargar PNG</button>
+                    <button class="btn btn-soft" onclick="copyCanvas()">📋 Copiar imagen</button>
+                    <button class="btn btn-soft" onclick="downloadQR()">📱 Descargar QR</button>
+                    <button class="btn btn-soft" onclick="resetPositions()">↺ Resetear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── RIGHT PANEL: LAYERS + PROPERTIES ─────────────── -->
+        <aside class="right-col">
+
+            <!-- Layers -->
+            <div class="panel" style="margin-bottom:12px">
+                <div class="panel-title">🗂️ Capas</div>
+                <div class="layer-list" id="layer-list"></div>
+            </div>
+
+            <!-- Properties -->
+            <div class="panel">
+                <div class="panel-title">⚙️ Propiedades</div>
+                <div id="props-panel">
+                    <div class="no-selection">Selecciona un elemento en el cartel o en la lista de capas</div>
+                </div>
+            </div>
+
+        </aside>
+
+    </div><!-- /.editor-grid -->
+</div>
+
+<!-- Hidden QR render target (off-screen) -->
+<div id="qr-render" style="position:fixed;left:-9999px;top:-9999px;width:200px;height:200px;overflow:hidden"></div>
+
+<script src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════════════════════════ */
+const W = 600, H = 400;
+const HANDLE_SIZE = 8;
+
+/* ═══════════════════════════════════════════════════════════════
+   THEMES
+═══════════════════════════════════════════════════════════════ */
+const THEMES = {
+    indigo: {
+        bg1:'#0f172a', bg2:'#1e1b4b',
+        accent1:'#6366f1', accent2:'#818cf8',
+        text:'#f8fafc', sub:'#c7d2fe', muted:'#94a3b8', bar:'#6366f1'
+    },
+    purple: {
+        bg1:'#1a0a2e', bg2:'#2d1b69',
+        accent1:'#8b5cf6', accent2:'#a78bfa',
+        text:'#faf5ff', sub:'#ddd6fe', muted:'#a78bfa', bar:'#7c3aed'
+    },
+    emerald: {
+        bg1:'#022c22', bg2:'#065f46',
+        accent1:'#10b981', accent2:'#34d399',
+        text:'#f0fdf4', sub:'#a7f3d0', muted:'#6ee7b7', bar:'#059669'
+    },
+    amber: {
+        bg1:'#1c1007', bg2:'#451a03',
+        accent1:'#f59e0b', accent2:'#fbbf24',
+        text:'#fffbeb', sub:'#fde68a', muted:'#fcd34d', bar:'#d97706'
+    }
+};
+
+let currentTheme = 'indigo';
+let currentLayout = 'minimal';
+
+/* ═══════════════════════════════════════════════════════════════
+   ELEMENTS ARRAY
+═══════════════════════════════════════════════════════════════ */
+let nextId = 100;
+
+function makeEl(overrides) {
+    return Object.assign({
+        id: nextId++, type:'text',
+        x:40, y:40, w:200, h:30,
+        text:'', fontSize:18, color:'#ffffff',
+        fontWeight:'bold', fontStyle:'normal',
+        fontFamily:'Inter',
+        align:'left', visible:true, selected:false,
+        deletable:false, img:null, imgObj:null,
+        opacity:1.0, shadowGlow:false
+    }, overrides);
+}
+
+// Default element positions per layout
+const LAYOUT_POSITIONS = {
+    minimal: {
+        club:   {x:44, y:44},
+        title:  {x:44, y:108},
+        author: {x:44, y:172},
+        date:   {x:44, y:338},
+        subtitle:{x:44, y:220},
+        qr:     {x:490, y:300},
+        logo:   {x:490, y:30}
+    },
+    colorful: {
+        club:   {x:20, y:200, align:'center'},
+        title:  {x:272, y:100},
+        author: {x:272, y:148},
+        date:   {x:272, y:310},
+        subtitle:{x:272, y:188},
+        qr:     {x:490, y:300},
+        logo:   {x:30, y:160}
+    },
+    classic: {
+        club:   {x:300, y:54, align:'center'},
+        title:  {x:300, y:180, align:'center'},
+        author: {x:300, y:228, align:'center'},
+        date:   {x:300, y:352, align:'center'},
+        subtitle:{x:300, y:268, align:'center'},
+        qr:     {x:490, y:300},
+        logo:   {x:490, y:20}
+    }
+};
+
+let elements = [];
+
+function buildDefaultElements() {
+    const clubVal   = document.getElementById('f-club').value || 'Club de Lectura';
+    const titleVal  = document.getElementById('f-title').value || 'Título del libro';
+    const authorVal = document.getElementById('f-author').value || '';
+    const dateVal   = document.getElementById('f-date').value || '';
+    const subVal    = document.getElementById('f-subtitle').value || '';
+
+    const t = THEMES[currentTheme];
+    const pos = LAYOUT_POSITIONS[currentLayout];
+
+    elements = [
+        makeEl({id:'club',    text:clubVal,   fontSize:12, fontWeight:'bold', color:t.sub,  ...pos.club,   deletable:false}),
+        makeEl({id:'title',   text:titleVal,  fontSize:32, fontWeight:'bold', color:t.text, ...pos.title,  deletable:false}),
+        makeEl({id:'author',  text:authorVal, fontSize:17, fontWeight:'normal',color:t.sub, ...pos.author, deletable:false}),
+        makeEl({id:'date',    text:dateVal,   fontSize:14, fontWeight:'bold', color:t.sub,  ...pos.date,   deletable:false}),
+        makeEl({id:'subtitle',text:subVal,    fontSize:13, fontWeight:'normal',fontStyle:'italic',color:t.muted,...pos.subtitle, deletable:false}),
+        makeEl({id:'qr', type:'qr', x:pos.qr.x, y:pos.qr.y, text:'QR', fontSize:14, color:'#ffffff', visible:false, deletable:false}),
+        makeEl({id:'logo',type:'image', x:pos.logo.x, y:pos.logo.y, w:80, h:80, text:'Logo', visible:false, deletable:false})
+    ];
+    nextId = 200;
+}
+
+function getEl(id) { return elements.find(e => e.id === id); }
+
+function syncElementText(id, val) {
+    const el = getEl(id);
+    if (el) { el.text = val; drawPoster(); renderLayerList(); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   QR STATE
+═══════════════════════════════════════════════════════════════ */
+let qrInstance = null;
+let qrCanvas = null;         // the <canvas> extracted from qr-render
+let qrLogoDataUrl = null;
+let qrTimer = null;
+let qrReady = false;
+
+/* ═══════════════════════════════════════════════════════════════
+   IMAGE STATE
+═══════════════════════════════════════════════════════════════ */
+let bgImage = null;
+let logoImage = null;
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS & CTX
+═══════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('poster-canvas');
+const ctx = canvas.getContext('2d');
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAG STATE
+═══════════════════════════════════════════════════════════════ */
+let dragging = false;
+let dragEl = null;
+let dragOffX = 0, dragOffY = 0;
+let resizing = false;
+let resizeEl = null;
+let resizeStartX = 0, resizeStartY = 0, resizeStartFS = 0;
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS UTILITY
+═══════════════════════════════════════════════════════════════ */
+function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const src = e.touches ? e.touches[0] : e;
+    return {
+        x: (src.clientX - rect.left) * scaleX,
+        y: (src.clientY - rect.top)  * scaleY
+    };
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+    if (!text) return y;
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+            ctx.fillText(line, x, cy);
+            line = word;
+            cy += lineHeight;
+        } else {
+            line = test;
+        }
+    }
+    if (line) ctx.fillText(line, x, cy);
+    return cy + lineHeight;
+}
+
+function getTextBounds(el) {
+    ctx.save();
+    ctx.font = buildFont(el);
+    const lines = el.text ? el.text.split('\n') : [''];
+    let maxW = 0;
+    for (const ln of lines) maxW = Math.max(maxW, ctx.measureText(ln).width);
+    ctx.restore();
+    const lh = el.fontSize * 1.3;
+    return { w: Math.min(maxW, W - el.x), h: lh * lines.length };
+}
+
+function buildFont(el) {
+    const style = el.fontStyle === 'italic' ? 'italic ' : '';
+    const weight = el.fontWeight || 'normal';
+    const family = el.fontFamily || 'Inter';
+    return `${style}${weight} ${el.fontSize}px ${family}, system-ui, sans-serif`;
+}
+
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r);
+    ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HIT TESTING
+═══════════════════════════════════════════════════════════════ */
+function getResizeHandle(el, px, py) {
+    if (el.type !== 'text') return null;
+    const b = getTextBounds(el);
+    const corners = [
+        {x: el.x + b.w, y: el.y - b.h * 0.75 + b.h, name:'br'}
+    ];
+    for (const c of corners) {
+        if (Math.abs(px - c.x) < 8 && Math.abs(py - c.y) < 8) return c;
+    }
+    return null;
+}
+
+function hitTest(px, py) {
+    // Test in reverse order (top element first)
+    for (let i = elements.length - 1; i >= 0; i--) {
+        const el = elements[i];
+        if (!el.visible) continue;
+        if (el.type === 'qr') {
+            const size = parseInt(document.getElementById('f-qrsize').value) + 12;
+            if (px >= el.x && px <= el.x + size && py >= el.y && py <= el.y + size) return el;
+        } else if (el.type === 'image') {
+            const s = parseInt(document.getElementById('f-logosize').value);
+            if (px >= el.x && px <= el.x + s && py >= el.y && py <= el.y + s) return el;
+        } else {
+            // text: use measured bounds
+            const b = getTextBounds(el);
+            const pad = 6;
+            if (px >= el.x - pad && px <= el.x + b.w + pad &&
+                py >= el.y - b.h * 0.85 - pad && py <= el.y + b.h * 0.15 + pad) return el;
+        }
+    }
+    return null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAW POSTER
+═══════════════════════════════════════════════════════════════ */
+function drawPoster() {
+    const t = THEMES[currentTheme];
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    if (bgImage) {
+        ctx.drawImage(bgImage, 0, 0, W, H);
+        // Subtle overlay so text remains readable
+        ctx.fillStyle = 'rgba(0,0,0,0.38)';
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        const grd = ctx.createLinearGradient(0, 0, W, H);
+        grd.addColorStop(0, t.bg1);
+        grd.addColorStop(1, t.bg2);
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    // Layout decorations
+    if (currentLayout === 'minimal') drawDecoMinimal(t);
+    else if (currentLayout === 'colorful') drawDecoColorful(t);
+    else drawDecoClassic(t);
+
+    // Elements (in order)
+    for (const el of elements) {
+        if (!el.visible) continue;
+        drawElement(el, t);
+    }
+
+    // Selection overlay
+    const sel = elements.find(e => e.selected);
+    if (sel) drawSelection(sel);
+}
+
+function drawDecoMinimal(t) {
+    // Top accent bar
+    ctx.fillStyle = t.accent1;
+    ctx.fillRect(0, 0, W, 5);
+    // Radial glow
+    const glow = ctx.createRadialGradient(W*0.15, H*0.3, 0, W*0.15, H*0.3, 220);
+    glow.addColorStop(0, hexToRgba(t.accent1, 0.18));
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+    // Bottom bar
+    ctx.fillStyle = t.accent1;
+    ctx.fillRect(0, H-5, W, 5);
+    // Divider line
+    ctx.strokeStyle = hexToRgba(t.accent1, 0.35);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(44, H-76); ctx.lineTo(W-44, H-76); ctx.stroke();
+}
+
+function drawDecoColorful(t) {
+    // Left accent block
+    const grd2 = ctx.createLinearGradient(0,0,W*0.44,H);
+    grd2.addColorStop(0, hexToRgba(t.accent1, 0.82));
+    grd2.addColorStop(1, hexToRgba(t.accent2, 0.28));
+    ctx.fillStyle = grd2;
+    roundRectPath(ctx, 0, 0, W*0.43, H, 0, 0, 22, 22);
+    ctx.fill();
+    // Book emoji area hint
+    ctx.font = '54px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('📚', W*0.215, H/2+20);
+    ctx.textAlign = 'left';
+    // Right divider
+    ctx.strokeStyle = hexToRgba(t.accent1, 0.3);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W*0.455, 30); ctx.lineTo(W*0.455, H-30); ctx.stroke();
+}
+
+function drawDecoClassic(t) {
+    // Outer border
+    ctx.strokeStyle = hexToRgba(t.accent1, 0.55);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(18, 18, W-36, H-36);
+    // Inner border
+    ctx.strokeStyle = hexToRgba(t.accent1, 0.2);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(25, 25, W-50, H-50);
+    // Header band
+    const hgrd = ctx.createLinearGradient(0, 0, W, 72);
+    hgrd.addColorStop(0, hexToRgba(t.accent1, 0.3));
+    hgrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = hgrd;
+    ctx.fillRect(18, 18, W-36, 72);
+    // Book
+    ctx.font = '40px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('📖', W/2, 136);
+    ctx.textAlign = 'left';
+}
+
+function drawElement(el, t) {
+    if (el.type === 'qr') {
+        drawQRElement(el);
+        return;
+    }
+    if (el.type === 'image') {
+        drawImageElement(el);
+        return;
+    }
+    // Text
+    ctx.save();
+    ctx.globalAlpha = el.opacity !== undefined ? el.opacity : 1.0;
+    ctx.font = buildFont(el);
+    ctx.fillStyle = el.color || t.text;
+    ctx.textAlign = el.align || 'left';
+    if (el.shadowGlow) {
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = el.color || t.text;
+    } else {
+        ctx.shadowBlur = 0;
+    }
+
+    // Determine maxWidth based on layout
+    let maxW = W - el.x - 30;
+    if (currentLayout === 'colorful' && el.id !== 'club') maxW = W - el.x - 20;
+
+    const lineH = el.fontSize * 1.35;
+    wrapText(ctx, el.text, el.x, el.y, maxW, lineH);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+}
+
+function drawQRElement(el) {
+    if (!qrCanvas || !qrReady) return;
+    if (!document.getElementById('f-showqr').checked) return;
+    const rawSize = parseInt(document.getElementById('f-qrsize').value);
+    const pad = 6;
+    const boxSize = rawSize + pad * 2;
+    // White rounded bg
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    roundRectPath(ctx, el.x - pad, el.y - pad, boxSize, boxSize, 8);
+    ctx.fill();
+    ctx.drawImage(qrCanvas, el.x, el.y, rawSize, rawSize);
+    ctx.restore();
+}
+
+function drawImageElement(el) {
+    const obj = logoImage;
+    if (!obj) return;
+    const s = parseInt(document.getElementById('f-logosize').value);
+    ctx.save();
+    ctx.drawImage(obj, el.x, el.y, s, s);
+    ctx.restore();
+}
+
+function drawSelection(el) {
+    let bx, by, bw, bh;
+    if (el.type === 'qr') {
+        const s = parseInt(document.getElementById('f-qrsize').value) + 12;
+        bx = el.x - 6; by = el.y - 6; bw = s; bh = s;
+    } else if (el.type === 'image') {
+        const s = parseInt(document.getElementById('f-logosize').value);
+        bx = el.x - 3; by = el.y - 3; bw = s + 6; bh = s + 6;
+    } else {
+        const b = getTextBounds(el);
+        bx = el.x - 4;
+        by = el.y - b.h * 0.85 - 4;
+        bw = b.w + 8;
+        bh = b.h + 8;
+    }
+    // Dashed selection rect
+    ctx.save();
+    ctx.strokeStyle = 'rgba(99,102,241,0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.setLineDash([]);
+    // Corner handles
+    const hs = HANDLE_SIZE;
+    const corners = [
+        {x: bx,         y: by},
+        {x: bx+bw-hs,   y: by},
+        {x: bx,         y: by+bh-hs},
+        {x: bx+bw-hs,   y: by+bh-hs}
+    ];
+    ctx.fillStyle = '#6366f1';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    for (const c of corners) {
+        ctx.fillRect(c.x, c.y, hs, hs);
+        ctx.strokeRect(c.x, c.y, hs, hs);
+    }
+    ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   QR CODE
+═══════════════════════════════════════════════════════════════ */
+function scheduleQR() {
+    clearTimeout(qrTimer);
+    qrTimer = setTimeout(buildQR, 800);
+}
+
+function buildQR() {
+    const url = document.getElementById('f-qrurl').value.trim();
+    if (!url) {
+        qrReady = false; qrCanvas = null; drawPoster(); return;
+    }
+    if (typeof QRCodeStyling === 'undefined') { drawPoster(); return; }
+
+    qrReady = false;
+    const container = document.getElementById('qr-render');
+    container.innerHTML = '';
+
+    const opts = {
+        width: 200, height: 200,
+        type: 'canvas',
+        data: url,
+        dotsOptions: {
+            color: document.getElementById('f-qrdotcolor').value,
+            type:  document.getElementById('f-qrdots').value
+        },
+        cornersSquareOptions: {
+            type: document.getElementById('f-qreye').value
+        },
+        backgroundOptions: {
+            color: document.getElementById('f-qrbgcolor').value
+        }
+    };
+    if (qrLogoDataUrl) {
+        opts.image = qrLogoDataUrl;
+        opts.imageOptions = { crossOrigin:'anonymous', margin:4 };
+    }
+
+    qrInstance = new QRCodeStyling(opts);
+    qrInstance.append(container);
+
+    // Poll for canvas to appear
+    let tries = 0;
+    const poll = setInterval(() => {
+        const c = container.querySelector('canvas');
+        if (c) {
+            clearInterval(poll);
+            qrCanvas = c;
+            qrReady = true;
+            // Auto-show QR element
+            const qrEl = getEl('qr');
+            if (qrEl) qrEl.visible = true;
+            document.getElementById('f-showqr').checked = true;
+            drawPoster();
+            renderLayerList();
+        } else if (++tries > 40) {
+            clearInterval(poll);
+        }
+    }, 50);
+}
+
+function loadQRLogo(input) {
+    if (!input.files[0]) return;
+    const fr = new FileReader();
+    fr.onload = e => { qrLogoDataUrl = e.target.result; scheduleQR(); };
+    fr.readAsDataURL(input.files[0]);
+}
+
+function downloadQR() {
+    if (!qrInstance) { alert('Primero genera un QR introduciendo una URL.'); return; }
+    qrInstance.download({ name:'qr-club-lectura', extension:'png' });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMAGES
+═══════════════════════════════════════════════════════════════ */
+function loadBgImage(input) {
+    if (!input.files[0]) return;
+    const fr = new FileReader();
+    fr.onload = e => {
+        const img = new Image();
+        img.onload = () => { bgImage = img; drawPoster(); };
+        img.src = e.target.result;
+    };
+    fr.readAsDataURL(input.files[0]);
+}
+
+function clearBgImage() {
+    bgImage = null;
+    document.getElementById('f-bgimg').value = '';
+    drawPoster();
+}
+
+function loadLogoImage(input) {
+    if (!input.files[0]) return;
+    const fr = new FileReader();
+    fr.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+            logoImage = img;
+            const logoEl = getEl('logo');
+            if (logoEl) logoEl.visible = true;
+            drawPoster();
+            renderLayerList();
+        };
+        img.src = e.target.result;
+    };
+    fr.readAsDataURL(input.files[0]);
+}
+
+function updateLogoSize() {
+    drawPoster();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   THEME & LAYOUT
+═══════════════════════════════════════════════════════════════ */
+function setTheme(name, el) {
+    currentTheme = name;
+    document.querySelectorAll('.chip[data-theme]').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    // Update default element colors
+    const t = THEMES[name];
+    const colorMap = { club:t.sub, title:t.text, author:t.sub, date:t.sub, subtitle:t.muted };
+    for (const [id, col] of Object.entries(colorMap)) {
+        const e = getEl(id); if (e) e.color = col;
+    }
+    drawPoster();
+    renderPropsPanel();
+}
+
+function setLayout(name, el) {
+    currentLayout = name;
+    document.querySelectorAll('.chip[data-layout]').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    applyLayoutPositions();
+    drawPoster();
+}
+
+function applyLayoutPositions() {
+    const pos = LAYOUT_POSITIONS[currentLayout];
+    for (const [id, p] of Object.entries(pos)) {
+        const el = getEl(id);
+        if (el) {
+            el.x = p.x; el.y = p.y;
+            if (p.align) el.align = p.align;
+        }
+    }
+}
+
+function resetPositions() {
+    applyLayoutPositions();
+    drawPoster();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ADD CUSTOM TEXT
+═══════════════════════════════════════════════════════════════ */
+function addTextElement() {
+    const t = THEMES[currentTheme];
+    const el = makeEl({
+        text:'Texto libre',
+        x: 40 + Math.random()*200,
+        y: 80 + Math.random()*200,
+        fontSize: 18,
+        color: t.text,
+        deletable: true
+    });
+    elements.push(el);
+    selectElement(el);
+    drawPoster();
+    renderLayerList();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SELECTION
+═══════════════════════════════════════════════════════════════ */
+function selectElement(el) {
+    elements.forEach(e => e.selected = false);
+    if (el) el.selected = true;
+    renderLayerList();
+    renderPropsPanel();
+}
+
+function getSelected() { return elements.find(e => e.selected) || null; }
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYER LIST
+═══════════════════════════════════════════════════════════════ */
+function renderLayerList() {
+    const list = document.getElementById('layer-list');
+    list.innerHTML = '';
+    // Show in reverse order (topmost first)
+    const reversed = [...elements].reverse();
+    for (const el of reversed) {
+        const idx = elements.indexOf(el);
+        const div = document.createElement('div');
+        div.className = 'layer-item' + (el.selected ? ' selected' : '');
+        div.onclick = () => { selectElement(el); drawPoster(); };
+
+        const icon = el.type === 'qr' ? '📱' : el.type === 'image' ? '🖼️' : '📝';
+        const visIcon = el.visible ? '👁️' : '🙈';
+        const nameLabel = typeof el.id === 'string' ? el.id : (el.text.slice(0,12) || 'elemento');
+
+        div.innerHTML = `
+            <span class="layer-vis" title="Visibilidad" onclick="toggleVis(event,'${el.id}')">${visIcon}</span>
+            <span class="layer-name">${icon} ${nameLabel}</span>
+            <span class="layer-type">${el.type}</span>
+            <div class="layer-arrows">
+                <button class="btn-icon" style="font-size:.7rem" title="Subir" onclick="moveLayer(event,'${el.id}',1)">▲</button>
+                <button class="btn-icon" style="font-size:.7rem" title="Bajar" onclick="moveLayer(event,'${el.id}',-1)">▼</button>
+            </div>
+        `;
+        list.appendChild(div);
+    }
+}
+
+function toggleVis(e, id) {
+    e.stopPropagation();
+    const el = getEl(id);
+    if (el) { el.visible = !el.visible; drawPoster(); renderLayerList(); renderPropsPanel(); }
+}
+
+function moveLayer(e, id, dir) {
+    e.stopPropagation();
+    const idx = elements.findIndex(el => String(el.id) === String(id));
+    if (idx < 0) return;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= elements.length) return;
+    [elements[idx], elements[newIdx]] = [elements[newIdx], elements[idx]];
+    drawPoster(); renderLayerList();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PROPERTIES PANEL
+═══════════════════════════════════════════════════════════════ */
+function renderPropsPanel() {
+    const panel = document.getElementById('props-panel');
+    const el = getSelected();
+    if (!el) {
+        panel.innerHTML = '<div class="no-selection">Selecciona un elemento en el cartel o en la lista de capas</div>';
+        return;
+    }
+
+    const nameLabel = typeof el.id === 'string' ? el.id : `elemento #${el.id}`;
+    const isText = el.type === 'text';
+
+    panel.innerHTML = `
+        <div class="props-title">${nameLabel}</div>
+
+        <div class="field">
+            <label>X</label>
+            <input type="number" id="prop-x" value="${Math.round(el.x)}" style="font-size:.8rem"
+                oninput="setPropXY()">
+        </div>
+        <div class="field">
+            <label>Y</label>
+            <input type="number" id="prop-y" value="${Math.round(el.y)}" style="font-size:.8rem"
+                oninput="setPropXY()">
+        </div>
+
+        ${isText ? `
+        <div class="field">
+            <label>Texto</label>
+            <textarea id="prop-text" rows="2" style="font-size:.8rem" oninput="setPropText(this.value)">${el.text}</textarea>
+        </div>
+        <div class="field">
+            <label>Tamaño fuente: <span id="prop-fs-val">${el.fontSize}</span>px</label>
+            <input type="range" id="prop-fs" min="8" max="72" value="${el.fontSize}" oninput="setPropFS(this.value)">
+        </div>
+        <div class="field">
+            <label>Color</label>
+            <input type="color" id="prop-color" value="${el.color.slice(0,7)}" oninput="setPropColor(this.value)">
+        </div>
+        <div class="toggle-row">
+            <button class="toggle-btn ${el.fontWeight==='bold'?'active':''}" id="prop-bold" onclick="toggleBold()"><b>N</b></button>
+            <button class="toggle-btn ${el.fontStyle==='italic'?'active':''}" id="prop-italic" onclick="toggleItalic()"><i>I</i></button>
+        </div>
+        <div class="field">
+            <label>Fuente</label>
+            <select id="prop-font" onchange="setPropFont(this.value)" style="font-size:.8rem">
+                <option value="Inter" ${(el.fontFamily||'Inter')==='Inter'?'selected':''}>Inter (sans-serif)</option>
+                <option value="Georgia" ${el.fontFamily==='Georgia'?'selected':''}>Georgia (serif)</option>
+                <option value="'Courier New'" ${el.fontFamily==="'Courier New'"?'selected':''}>Courier (monospace)</option>
+                <option value="Arial Black" ${el.fontFamily==='Arial Black'?'selected':''}>Arial Black</option>
+            </select>
+        </div>
+        <div class="field">
+            <label>Opacidad: <span id="prop-op-val">${Math.round((el.opacity||1)*100)}%</span></label>
+            <input type="range" id="prop-opacity" min="0" max="100" value="${Math.round((el.opacity||1)*100)}" oninput="setPropOpacity(this.value)">
+        </div>
+        <div class="field row-inline" style="margin-top:2px">
+            <input type="checkbox" id="prop-shadow" ${el.shadowGlow?'checked':''} onchange="setPropShadow(this.checked)">
+            <label for="prop-shadow">Sombra / glow</label>
+        </div>
+        ` : ''}
+
+        <div class="field row-inline" style="margin-top:4px">
+            <input type="checkbox" id="prop-vis" ${el.visible?'checked':''} onchange="setPropVis(this.checked)">
+            <label for="prop-vis">Visible</label>
+        </div>
+
+        ${el.deletable ? `
+        <div style="margin-top:8px">
+            <button class="btn btn-danger btn-sm" onclick="deleteElement('${el.id}')">🗑️ Eliminar</button>
+        </div>
+        ` : ''}
+    `;
+}
+
+function setPropXY() {
+    const el = getSelected(); if (!el) return;
+    const x = parseFloat(document.getElementById('prop-x').value);
+    const y = parseFloat(document.getElementById('prop-y').value);
+    if (!isNaN(x)) el.x = x;
+    if (!isNaN(y)) el.y = y;
+    drawPoster();
+}
+
+function setPropText(val) {
+    const el = getSelected(); if (!el) return;
+    el.text = val;
+    // Sync matching text input fields
+    const fieldMap = {club:'f-club', title:'f-title', author:'f-author', date:'f-date', subtitle:'f-subtitle'};
+    if (fieldMap[el.id]) {
+        const inp = document.getElementById(fieldMap[el.id]);
+        if (inp) inp.value = val;
+    }
+    drawPoster(); renderLayerList();
+}
+
+function setPropFS(val) {
+    const el = getSelected(); if (!el) return;
+    el.fontSize = parseInt(val);
+    document.getElementById('prop-fs-val').textContent = val;
+    drawPoster();
+}
+
+function setPropColor(val) {
+    const el = getSelected(); if (!el) return;
+    el.color = val;
+    drawPoster();
+}
+
+function toggleBold() {
+    const el = getSelected(); if (!el) return;
+    el.fontWeight = el.fontWeight === 'bold' ? 'normal' : 'bold';
+    renderPropsPanel(); drawPoster();
+}
+
+function toggleItalic() {
+    const el = getSelected(); if (!el) return;
+    el.fontStyle = el.fontStyle === 'italic' ? 'normal' : 'italic';
+    renderPropsPanel(); drawPoster();
+}
+
+function setPropVis(val) {
+    const el = getSelected(); if (!el) return;
+    el.visible = val;
+    drawPoster(); renderLayerList();
+}
+
+function setPropFont(val) {
+    const el = getSelected(); if (!el) return;
+    el.fontFamily = val;
+    drawPoster();
+}
+
+function setPropOpacity(val) {
+    const el = getSelected(); if (!el) return;
+    el.opacity = parseInt(val) / 100;
+    const lbl = document.getElementById('prop-op-val');
+    if (lbl) lbl.textContent = val + '%';
+    drawPoster();
+}
+
+function setPropShadow(val) {
+    const el = getSelected(); if (!el) return;
+    el.shadowGlow = val;
+    drawPoster();
+}
+
+function saveTemplate() {
+    const data = {
+        theme: currentTheme, layout: currentLayout,
+        elements: elements.map(e => ({
+            id: e.id, x: e.x, y: e.y, text: e.text, fontSize: e.fontSize,
+            color: e.color, fontWeight: e.fontWeight, fontStyle: e.fontStyle,
+            fontFamily: e.fontFamily || 'Inter',
+            visible: e.visible, opacity: e.opacity !== undefined ? e.opacity : 1,
+            shadowGlow: e.shadowGlow || false
+        }))
+    };
+    localStorage.setItem('poster_template', JSON.stringify(data));
+    alert('Plantilla guardada correctamente');
+}
+
+function loadTemplate() {
+    const raw = localStorage.getItem('poster_template');
+    if (!raw) { alert('No hay plantilla guardada.'); return; }
+    try {
+        const data = JSON.parse(raw);
+        if (data.theme) {
+            currentTheme = data.theme;
+            document.querySelector(`[data-theme="${data.theme}"]`)?.click();
+        }
+        if (data.layout) {
+            currentLayout = data.layout;
+            document.querySelector(`[data-layout="${data.layout}"]`)?.click();
+        }
+        for (const saved of (data.elements || [])) {
+            const el = getEl(saved.id);
+            if (el) Object.assign(el, saved);
+        }
+        drawPoster(); renderLayerList(); renderPropsPanel();
+        alert('Plantilla cargada correctamente');
+    } catch(e) {
+        alert('Error cargando plantilla: ' + e.message);
+    }
+}
+
+function deleteElement(id) {
+    const idx = elements.findIndex(e => String(e.id) === String(id));
+    if (idx >= 0) {
+        elements.splice(idx, 1);
+        renderLayerList(); renderPropsPanel(); drawPoster();
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════════════════════════ */
+function switchTab(name, btn) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOUSE / TOUCH EVENTS
+═══════════════════════════════════════════════════════════════ */
+function onPointerDown(px, py) {
+    // Check resize handle first on selected element
+    const sel = getSelected();
+    if (sel && sel.type === 'text') {
+        const b = getTextBounds(sel);
+        const hx = sel.x + b.w;
+        const hy = sel.y - b.h * 0.75 + b.h;
+        if (Math.abs(px - hx) < 10 && Math.abs(py - hy) < 10) {
+            resizing = true; resizeEl = sel;
+            resizeStartX = px; resizeStartY = py; resizeStartFS = sel.fontSize;
+            return;
+        }
+    }
+    const hit = hitTest(px, py);
+    if (hit) {
+        selectElement(hit);
+        dragging = true; dragEl = hit;
+        dragOffX = px - hit.x;
+        dragOffY = py - hit.y;
+    } else {
+        selectElement(null);
+    }
+    drawPoster();
+}
+
+function onPointerMove(px, py) {
+    if (resizing && resizeEl) {
+        const dx = px - resizeStartX;
+        const newFS = Math.max(8, Math.min(96, resizeStartFS + dx * 0.4));
+        resizeEl.fontSize = Math.round(newFS);
+        renderPropsPanel();
+        drawPoster();
+        return;
+    }
+    if (dragging && dragEl) {
+        dragEl.x = Math.round(px - dragOffX);
+        dragEl.y = Math.round(py - dragOffY);
+        // Update X/Y in props if visible
+        const xIn = document.getElementById('prop-x');
+        const yIn = document.getElementById('prop-y');
+        if (xIn) xIn.value = dragEl.x;
+        if (yIn) yIn.value = dragEl.y;
+        drawPoster();
+        return;
+    }
+    // Cursor feedback
+    const hit = hitTest(px, py);
+    const sel = getSelected();
+    if (sel && sel.type === 'text') {
+        const b = getTextBounds(sel);
+        const hx = sel.x + b.w;
+        const hy = sel.y - b.h * 0.75 + b.h;
+        if (Math.abs(px - hx) < 10 && Math.abs(py - hy) < 10) {
+            canvas.style.cursor = 'nwse-resize'; return;
+        }
+    }
+    canvas.style.cursor = hit ? 'grab' : 'default';
+}
+
+function onPointerUp() {
+    if (dragging) {
+        canvas.style.cursor = 'default';
+        dragging = false; dragEl = null;
+    }
+    if (resizing) {
+        resizing = false; resizeEl = null;
+    }
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', e => {
+    const p = getCanvasPos(e);
+    onPointerDown(p.x, p.y);
+    canvas.style.cursor = dragging ? 'grabbing' : canvas.style.cursor;
+});
+window.addEventListener('mousemove', e => {
+    const p = getCanvasPos(e);
+    onPointerMove(p.x, p.y);
+});
+window.addEventListener('mouseup', () => onPointerUp());
+
+// Touch events
+canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const p = getCanvasPos(e);
+    onPointerDown(p.x, p.y);
+}, {passive:false});
+canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const p = getCanvasPos(e);
+    onPointerMove(p.x, p.y);
+}, {passive:false});
+canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    onPointerUp();
+}, {passive:false});
+
+/* ═══════════════════════════════════════════════════════════════
+   DOWNLOAD / COPY
+═══════════════════════════════════════════════════════════════ */
+function downloadPoster() {
+    // Deselect to hide dashes in download
+    const prev = getSelected();
+    elements.forEach(e => e.selected = false);
+    drawPoster();
+
+    const title = (getEl('title')?.text || 'cartel').slice(0,20).replace(/\s+/g,'-').toLowerCase();
+    canvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.download = `cartel-club-lectura-${title}.png`;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        // Restore selection
+        if (prev) { prev.selected = true; }
+        drawPoster(); renderLayerList();
+    }, 'image/png');
+}
+
+async function copyCanvas() {
+    const prev = getSelected();
+    elements.forEach(e => e.selected = false);
+    drawPoster();
+    try {
+        await new Promise(res => canvas.toBlob(async blob => {
+            await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+            res();
+        }, 'image/png'));
+        if (prev) { prev.selected = true; drawPoster(); }
+        // Brief success feedback
+        const btn = document.querySelector('.canvas-actions .btn-soft');
+        if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copiado!'; setTimeout(()=>btn.textContent=orig, 2000); }
+    } catch(err) {
+        if (prev) { prev.selected = true; drawPoster(); }
+        alert('Tu navegador no admite copiar imágenes. Descárgala con el botón PNG.');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════════ */
+function init() {
+    buildDefaultElements();
+    renderLayerList();
+    renderPropsPanel();
+    document.fonts.ready.then(() => drawPoster());
+    drawPoster();
+}
+
+init();
+</script>
+</body>
+</html>

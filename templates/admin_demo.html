@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo / Tour · Club de Lectura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+    <style>
+        :root{
+            --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
+            --panel:rgba(255,255,255,0.07); --panel-h:rgba(255,255,255,0.11);
+            --border:rgba(255,255,255,0.10); --text:#f1f5f9; --muted:#94a3b8;
+            --primary:#6366f1; --primary2:#8b5cf6;
+            --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
+            --shadow:0 8px 24px rgba(0,0,0,.3); --radius:16px;
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        html,body{min-height:100%;font-family:Inter,system-ui,sans-serif;
+            background:radial-gradient(ellipse at 0% 0%,rgba(99,102,241,.2),transparent 50%),
+                radial-gradient(ellipse at 100% 100%,rgba(139,92,246,.15),transparent 50%),
+                linear-gradient(160deg,var(--bg),var(--bg2) 60%,var(--bg3));
+            color:var(--text);font-size:15px}
+        body{padding:40px 16px 80px}
+
+        .header{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(11,17,32,.92);
+            backdrop-filter:blur(20px);border-bottom:1px solid var(--border);
+            padding:0 16px;display:flex;align-items:center;gap:12px;height:56px}
+        .header-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--text)}
+        .header-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px}
+        .header-title{font-weight:800;font-size:.97rem;line-height:1}
+        .header-sub{font-size:.74rem;color:var(--muted);margin-top:1px}
+        .header-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
+        .nav-link{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:.84rem;font-weight:600;transition:.15s ease;white-space:nowrap}
+        .nav-link:hover,.nav-link.active{color:var(--text);background:var(--panel)}
+        .nav-link.active{color:#a5b4fc}
+
+        .main{max-width:800px;margin:56px auto 0;padding:30px 0 0}
+
+        .flashes{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+        .flash{padding:12px 15px;border-radius:11px;font-size:.9rem;font-weight:600;display:flex;align-items:center;gap:8px}
+        .flash-success{background:rgba(16,185,129,.13);border:1px solid rgba(16,185,129,.28);color:#6ee7b7}
+        .flash-danger{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.28);color:#fca5a5}
+        .flash-warning{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.28);color:#fde68a}
+
+        .hero{text-align:center;padding:40px 20px 30px;margin-bottom:30px}
+        .hero-icon{font-size:4rem;margin-bottom:16px}
+        .hero h1{font-size:2rem;font-weight:900;margin-bottom:10px;background:linear-gradient(135deg,#a5b4fc,#c4b5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .hero p{color:var(--muted);font-size:1.05rem;max-width:500px;margin:0 auto;line-height:1.6}
+
+        .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px}
+        .card h2{font-size:1.05rem;font-weight:800;margin-bottom:8px}
+        .card p{color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:16px}
+        .card ul{color:var(--muted);font-size:.88rem;padding-left:18px;line-height:1.8}
+        .card ul li strong{color:var(--text)}
+
+        .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 20px;border:none;border-radius:12px;cursor:pointer;font-size:.92rem;font-weight:700;text-decoration:none;transition:.15s ease;white-space:nowrap;font-family:inherit}
+        .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.3)}
+        .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
+        .btn-danger{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+        .btn-warning{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.25)}
+        .btn-success{background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
+
+        .btn-group{display:flex;gap:10px;flex-wrap:wrap}
+
+        .status-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:.82rem;font-weight:700}
+        .status-active{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+        .status-inactive{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--border)}
+
+        .tour-steps{display:grid;gap:12px}
+        .step{display:flex;gap:14px;align-items:flex-start;padding:14px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px}
+        .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;flex-shrink:0}
+        .step-info h4{font-size:.9rem;font-weight:700;margin-bottom:3px}
+        .step-info p{font-size:.82rem;color:var(--muted)}
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <a class="header-brand" href="/admin">
+        <div class="header-logo">📚</div>
+        <div>
+            <div class="header-title">Club de Lectura</div>
+            <div class="header-sub">Demo / Tour</div>
+        </div>
+    </a>
+    <nav class="header-nav">
+        <a class="nav-link" href="/admin">Dashboard</a>
+        <a class="nav-link" href="/admin/help">Ayuda</a>
+        <a class="nav-link active" href="/admin/demo">Demo</a>
+        <a class="nav-link" href="/admin/logout" style="color:#fca5a5">Salir</a>
+    </nav>
+</header>
+
+<div class="main">
+
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            <div class="flashes">
+            {% for cat, msg in messages %}
+                <div class="flash flash-{{ cat }}">
+                    {% if cat == 'success' %}✅{% elif cat == 'danger' %}❌{% else %}⚠️{% endif %}
+                    {{ msg }}
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="hero">
+        <div class="hero-icon">🎯</div>
+        <h1>Demo interactivo del panel</h1>
+        <p>Explora todas las funciones del panel de administración con un tour guiado o siembra datos de demostración para verlo en acción.</p>
+    </div>
+
+    <!-- Demo data status -->
+    <div class="card">
+        <h2>📊 Estado de datos de demo</h2>
+        <p>Siembra libros, temáticas y una reunión de demostración en el ciclo actual para probar el panel sin datos reales.</p>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <span>Estado:</span>
+            {% if demo_active %}
+                <span class="status-badge status-active">🟢 Demo activa</span>
+            {% else %}
+                <span class="status-badge status-inactive">⚪ Sin datos demo</span>
+            {% endif %}
+        </div>
+        <div class="btn-group">
+            <form method="post" action="/admin/demo/seed">
+                <button class="btn btn-primary" type="submit">🌱 Sembrar datos de demo</button>
+            </form>
+            {% if demo_active %}
+            <form method="post" action="/admin/demo/clear" onsubmit="return confirm('¿Eliminar todos los datos de demo?')">
+                <button class="btn btn-danger" type="submit">🧹 Limpiar datos demo</button>
+            </form>
+            {% endif %}
+        </div>
+        <p style="margin-top:12px;font-size:.82rem">La siembra de datos redirige al dashboard con el tour activado automáticamente.</p>
+    </div>
+
+    <!-- Tour launcher -->
+    <div class="card">
+        <h2>🎯 Tour guiado del panel</h2>
+        <p>El tour te muestra cada sección del dashboard con explicaciones detalladas. Puedes iniciarlo en cualquier momento desde el botón de la cabecera.</p>
+        <a class="btn btn-success" href="/admin?tour=1">▶ Iniciar tour guiado</a>
+    </div>
+
+    <!-- Tour steps info -->
+    <div class="card">
+        <h2>📋 Pasos del tour</h2>
+        <p style="margin-bottom:16px">El tour cubre las siguientes secciones:</p>
+        <div class="tour-steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-info">
+                    <h4>📊 Estadísticas del ciclo</h4>
+                    <p>Resumen rápido: propuestas, votos, reuniones y asistentes del ciclo actual.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-info">
+                    <h4>📚 Gestión de libros</h4>
+                    <p>Añadir libros, lanzar encuestas de votación y anunciar al ganador.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-info">
+                    <h4>🏷️ Temáticas</h4>
+                    <p>Gestionar temáticas del club y lanzar encuestas para elegir la siguiente.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-info">
+                    <h4>📅 Reuniones</h4>
+                    <p>Crear reuniones, gestionar fechas y enviar recordatorios al grupo.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">5</div>
+                <div class="step-info">
+                    <h4>🧭 Navegación superior</h4>
+                    <p>Acceso rápido al historial, BD, mensajes del bot, programador y cartel.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">6</div>
+                <div class="step-info">
+                    <h4>🔔 Recordatorios</h4>
+                    <p>Enviar recordatorios de reunión o lectura al grupo con un clic.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align:center;padding-top:10px">
+        <a class="btn btn-soft" href="/admin">← Volver al dashboard</a>
+    </div>
+
+</div>
+</body>
+</html>

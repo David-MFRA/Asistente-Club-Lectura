@@ -57,8 +57,16 @@
         input{width:100%;padding:13px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text);outline:none;font-size:.95rem}
         input:focus{border-color:rgba(99,102,241,.65);box-shadow:0 0 0 4px rgba(99,102,241,.16)}
         .empty{text-align:center;padding:22px;color:var(--muted);background:rgba(255,255,255,.04);border-radius:16px}
+        input,select,textarea{font-size:16px!important}
+        .btn{min-height:44px}
+        html{scroll-behavior:smooth}
+        .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(15,23,42,.97);backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.1);display:flex;overflow-x:auto;padding:0 4px;z-index:99}
+        .bottom-nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-width:52px;padding:8px 4px;color:rgba(148,163,184,.8);text-decoration:none;font-size:.65rem;font-weight:600;gap:3px;transition:.15s ease}
+        .bottom-nav a:hover,.bottom-nav a.active{color:#a5b4fc}
+        .bottom-nav .bn-icon{font-size:1.1rem}
         @media(max-width:920px){.span-4,.span-8,.span-12{grid-column:span 12}}
-        @media(max-width:560px){body{padding:12px}h1{font-size:1.28rem}}
+        @media(max-width:560px){body{padding:12px 12px 72px}h1{font-size:1.28rem}}
+        @media(min-width:641px){.bottom-nav{display:none}body{padding-bottom:16px}}
     </style>
 </head>
 <body>
@@ -158,5 +166,13 @@ function cancelEdit(id) {
     document.getElementById('tedit-' + id).style.display = 'none';
 }
 </script>
+
+<nav class="bottom-nav">
+    <a href="/admin"><span class="bn-icon">📊</span>Dashboard</a>
+    <a href="/meetings"><span class="bn-icon">📅</span>Reuniones</a>
+    <a href="/themes" class="active"><span class="bn-icon">🏷️</span>Temáticas</a>
+    <a href="/admin/historico"><span class="bn-icon">📜</span>Historial</a>
+    <a href="/admin/logout" style="color:#fca5a5"><span class="bn-icon">🚪</span>Salir</a>
+</nav>
 </body>
 </html>

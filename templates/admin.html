@@ -1,831 +1,526 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard · Club de Lectura</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
-    <style>
-        :root{
-            --bg:#0b1120; --bg2:#111827; --bg3:#0f172a;
-            --panel:rgba(255,255,255,0.07); --panel-h:rgba(255,255,255,0.11);
-            --border:rgba(255,255,255,0.10); --text:#f1f5f9; --muted:#94a3b8;
-            --primary:#6366f1; --primary2:#8b5cf6;
-            --success:#10b981; --danger:#ef4444; --warning:#f59e0b;
-            --shadow:0 8px 24px rgba(0,0,0,.3); --radius:16px;
-        }
-        *{box-sizing:border-box;margin:0;padding:0}
-        html,body{min-height:100%;font-family:Inter,system-ui,sans-serif;
-            background:radial-gradient(ellipse at 0% 0%,rgba(99,102,241,.2),transparent 50%),
-                radial-gradient(ellipse at 100% 100%,rgba(139,92,246,.15),transparent 50%),
-                linear-gradient(160deg,var(--bg),var(--bg2) 60%,var(--bg3));
-            color:var(--text);font-size:15px}
-        body{padding:0}
+{% extends '_base.html' %}
+{% block title %}Dashboard{% endblock %}
 
-        /* ── HEADER ────────────────────────────────────── */
-        .header{
-            position:sticky;top:0;z-index:100;
-            background:rgba(11,17,32,.92);
-            backdrop-filter:blur(20px);
-            border-bottom:1px solid var(--border);
-            padding:0 16px;
-            display:flex;align-items:center;gap:12px;height:56px;
-        }
-        .header-brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--text);flex-shrink:0}
-        .header-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--primary2));display:flex;align-items:center;justify-content:center;font-size:17px}
-        .header-title{font-weight:800;font-size:.97rem;line-height:1}
-        .header-sub{font-size:.74rem;color:var(--muted);margin-top:1px}
-        .header-nav{display:flex;align-items:center;gap:2px;margin-left:auto}
-        .nav-link{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:.84rem;font-weight:600;transition:.15s ease;white-space:nowrap;border:none;background:none;cursor:pointer}
-        .nav-link:hover,.nav-link.active{color:var(--text);background:var(--panel)}
-        .nav-link.active{color:#a5b4fc}
+{% block head_extra %}
+<style>
+  /* ── STATS BAR ─────────────────────────── */
+  .stats-bar { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .stat-chip { flex:1; min-width:110px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+  .stat-chip-label { color:var(--muted); font-size:.76rem; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .stat-chip-value { font-size:1.5rem; font-weight:800; line-height:1; }
+  .stat-chip-sub { color:var(--muted); font-size:.75rem; margin-top:3px; }
 
-        /* Dropdown */
-        .nav-drop{position:relative}
-        .nav-drop .drop-menu{
-            display:none;position:absolute;top:calc(100% + 6px);right:0;
-            background:rgba(15,23,42,.97);border:1px solid var(--border);
-            border-radius:12px;padding:6px;min-width:170px;
-            box-shadow:0 12px 32px rgba(0,0,0,.4);backdrop-filter:blur(20px);
-            z-index:200;
-        }
-        .nav-drop:hover .drop-menu,.nav-drop:focus-within .drop-menu{display:block}
-        .drop-item{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;color:var(--text);text-decoration:none;font-size:.85rem;font-weight:600;transition:.12s ease}
-        .drop-item:hover{background:var(--panel-h)}
-        .drop-sep{height:1px;background:var(--border);margin:4px 0}
-        .caret{font-size:.68rem;opacity:.6;margin-left:2px}
+  /* ── ALERT POLL ────────────────────────── */
+  .alert-poll { background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.3); border-radius:14px; padding:14px 16px; margin-bottom:14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .alert-poll-icon { font-size:1.3rem; flex-shrink:0; }
+  .alert-poll-text { flex:1; min-width:150px; }
+  .alert-poll-title { font-weight:700; margin-bottom:2px; }
+  .alert-poll-sub { color:var(--muted); font-size:.85rem; }
 
-        /* ── MAIN ────────────────────────────────────── */
-        .main{max-width:1100px;margin:0 auto;padding:18px 16px 0}
+  /* ── REMINDER GRID ─────────────────────── */
+  .reminder-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+  .rem-card { background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:11px; padding:14px; text-align:center; }
+  .rem-icon { font-size:1.6rem; margin-bottom:6px; }
+  .rem-title { font-weight:700; font-size:.92rem; margin-bottom:3px; }
+  .rem-desc { color:var(--muted); font-size:.79rem; margin-bottom:10px; line-height:1.4; }
 
-        /* Flash messages */
-        .flashes{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-        .flash{padding:12px 15px;border-radius:11px;font-size:.9rem;font-weight:600;display:flex;align-items:center;gap:8px}
-        .flash-success{background:rgba(16,185,129,.13);border:1px solid rgba(16,185,129,.28);color:#6ee7b7}
-        .flash-danger{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.28);color:#fca5a5}
-        .flash-warning{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.28);color:#fde68a}
+  /* ── BOOK TABLE EXTRAS ─────────────────── */
+  .pos-badge { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:8px; background:rgba(99,102,241,.2); color:#a5b4fc; font-weight:800; font-size:.85rem; flex-shrink:0; }
 
-        /* Stats bar */
-        .stats-bar{
-            display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;
-        }
-        .stat-chip{
-            flex:1;min-width:110px;
-            background:var(--panel);border:1px solid var(--border);
-            border-radius:12px;padding:12px 14px;
-        }
-        .stat-chip-label{color:var(--muted);font-size:.76rem;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-        .stat-chip-value{font-size:1.5rem;font-weight:800;line-height:1}
-        .stat-chip-sub{color:var(--muted);font-size:.75rem;margin-top:3px}
+  /* ── BOOK EDIT PANEL ───────────────────── */
+  .book-edit-panel { display:none; background:rgba(0,0,0,.2); border:1px solid rgba(99,102,241,.2); border-radius:10px; padding:13px; margin-top:6px; }
+  .edit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-bottom:8px; }
 
-        /* Alert (encuesta activa) */
-        .alert-poll{
-            background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);
-            border-radius:14px;padding:14px 16px;margin-bottom:14px;
-            display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-        }
-        .alert-poll-icon{font-size:1.3rem;flex-shrink:0}
-        .alert-poll-text{flex:1;min-width:150px}
-        .alert-poll-title{font-weight:700;margin-bottom:2px}
-        .alert-poll-sub{color:var(--muted);font-size:.85rem}
+  /* ── THEME LIST ────────────────────────── */
+  .theme-row { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:11px 13px; display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+  .theme-row:last-child { margin-bottom:0; }
+  .theme-name { font-weight:700; font-size:.92rem; flex:1; }
+  .theme-votes { color:var(--muted); font-size:.8rem; margin-top:1px; }
+  .theme-acts { display:flex; gap:5px; flex-shrink:0; }
+  .edit-form { display:none; flex:1; gap:7px; align-items:center; }
 
-        /* Collapsible sections */
-        details{
-            background:var(--panel);border:1px solid var(--border);
-            border-radius:var(--radius);margin-bottom:10px;overflow:hidden;
-        }
-        details summary{
-            padding:14px 16px;cursor:pointer;font-weight:700;font-size:.97rem;
-            display:flex;align-items:center;gap:9px;user-select:none;list-style:none;
-        }
-        details summary::-webkit-details-marker{display:none}
-        details summary::after{content:'›';margin-left:auto;font-size:1.1rem;color:var(--muted);transition:transform .2s ease;display:inline-block}
-        details[open] summary::after{transform:rotate(90deg)}
-        details summary:hover{background:rgba(255,255,255,.04)}
-        .det-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:rgba(99,102,241,.18);color:#a5b4fc;font-size:.75rem;font-weight:700}
-        .det-badge.green{background:rgba(16,185,129,.15);color:#6ee7b7}
-        .det-badge.amber{background:rgba(245,158,11,.15);color:#fde68a}
-        .det-body{padding:0 16px 16px}
+  /* ── WINNER BANNER ─────────────────────── */
+  .winner-banner { background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.25); border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .winner-banner-text { flex:1; }
+  .winner-banner-title { font-weight:700; color:#6ee7b7; font-size:.88rem; }
+  .winner-banner-book { font-weight:800; margin-top:2px; }
 
-        /* Cards inside sections */
-        .card{background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;padding:14px}
-        .card+.card{margin-top:10px}
-        .card-label{color:var(--muted);font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px}
+  @media(max-width:640px) {
+    .stats-bar { gap:7px; }
+    .stat-chip { min-width:90px; padding:10px 11px; }
+    .stat-chip-value { font-size:1.25rem; }
+    .reminder-grid { grid-template-columns:1fr; }
+    table { min-width:480px; }
+  }
+</style>
+{% endblock %}
 
-        /* Forms */
-        .field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-        .field:last-child{margin-bottom:0}
-        label{color:var(--muted);font-size:.82rem;font-weight:600}
-        input,textarea,select{
-            width:100%;padding:10px 12px;border-radius:10px;
-            border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);
-            color:var(--text);outline:none;font-size:.92rem;font-family:inherit;transition:.18s ease
-        }
-        input:focus,textarea:focus,select:focus{border-color:rgba(99,102,241,.6);box-shadow:0 0 0 3px rgba(99,102,241,.15)}
-        input::placeholder,textarea::placeholder{color:rgba(255,255,255,.3)}
-        input[type="datetime-local"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.6;cursor:pointer}
-        textarea{resize:vertical;min-height:72px}
+{% block nav_extra %}
+<button class="nav-link" onclick="startTour()">🎯 Tour</button>
+{% endblock %}
 
-        /* Buttons */
-        .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border:none;border-radius:10px;cursor:pointer;font-size:.86rem;font-weight:700;text-decoration:none;transition:.15s ease;white-space:nowrap;font-family:inherit}
-        .btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
-        .btn:active{transform:translateY(0)}
-        .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.3)}
-        .btn-soft{background:var(--panel);color:var(--text);border:1px solid var(--border)}
-        .btn-danger{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
-        .btn-warning{background:rgba(245,158,11,.12);color:#fde68a;border:1px solid rgba(245,158,11,.25)}
-        .btn-success{background:rgba(16,185,129,.12);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
-        .btn-sm{padding:6px 10px;font-size:.8rem;border-radius:8px}
-        .btn-xs{padding:4px 8px;font-size:.75rem;border-radius:7px}
+{% block ai_suggestions %}
+<button onclick="askAI('¿Qué libro deberíamos elegir según los votos actuales?')">📊 ¿Qué libro elegir?</button>
+<button onclick="askAI('Resume la situación del ciclo actual')">📋 Resumen del ciclo</button>
+<button onclick="askAI('Sugiere un plan detallado para la próxima reunión')">📅 Plan de reunión</button>
+<button onclick="askAI('Dame ideas para aumentar la participación del club')">💡 Ideas participación</button>
+<button onclick="askAI('Analiza los libros propuestos y dime cuál recomendarías leer')">📚 Análisis propuestas</button>
+<button onclick="askAI('Redacta un mensaje motivador y atractivo para enviar al grupo Telegram del club')">✍️ Mensaje motivador</button>
+<button onclick="askAI('¿Cómo podríamos gestionar un empate en la votación de forma justa?')">⚖️ Gestionar empate</button>
+<button onclick="askAI('Sugiere 3 actividades dinámicas para hacer durante la reunión')">🎯 Actividades reunión</button>
+<button onclick="askAI('Dame una sinopsis atractiva y motivadora del libro del ciclo actual para compartir en redes')">📣 Sinopsis para compartir</button>
+<button onclick="askAI('¿Qué temática propones para el próximo ciclo y por qué?')">🏷️ Temática próximo ciclo</button>
+<button onclick="askAI('¿Cómo podemos hacer que los miembros que no vienen a reuniones se animen a participar?')">👥 Retener miembros</button>
+<button onclick="askAI('Crea un anuncio atractivo para el libro ganador del ciclo')">🏆 Anuncio ganador</button>
+{% endblock %}
 
-        /* Tooltips */
-        [data-tip]{position:relative}
-        [data-tip]::before{
-            content:attr(data-tip);
-            position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
-            background:rgba(15,23,42,.97);border:1px solid rgba(255,255,255,.12);
-            color:#e2e8f0;padding:6px 10px;border-radius:8px;
-            font-size:.75rem;font-weight:400;white-space:nowrap;
-            z-index:300;pointer-events:none;opacity:0;transition:opacity .15s ease;
-            box-shadow:0 8px 20px rgba(0,0,0,.4);
-        }
-        [data-tip]:hover::before{opacity:1}
+{% block content %}
 
-        /* Reminder grid */
-        .reminder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-        .rem-card{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:11px;padding:14px;text-align:center}
-        .rem-icon{font-size:1.6rem;margin-bottom:6px}
-        .rem-title{font-weight:700;font-size:.92rem;margin-bottom:3px}
-        .rem-desc{color:var(--muted);font-size:.79rem;margin-bottom:10px;line-height:1.4}
+  <!-- ── CYCLE WIZARD ── -->
+  {% if cycle_state %}
+  <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.25);border-radius:16px;padding:18px 20px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#a5b4fc">Ciclo {{ cycle_state.cycle }} — Paso actual</span>
+      </div>
+      <div style="font-size:1.05rem;font-weight:800;margin-bottom:4px">
+        {% if cycle_state.step == 'new_cycle' %}🆕
+        {% elif cycle_state.step == 'collecting_proposals' %}📬
+        {% elif cycle_state.step == 'poll_open' %}🗳️
+        {% elif cycle_state.step in ('awaiting_date','dates_poll_open') %}📅
+        {% elif cycle_state.step == 'meeting_scheduled' %}✅
+        {% endif %}
+        {{ cycle_state.step_label }}
+      </div>
+      <div style="color:var(--muted);font-size:.85rem">{{ cycle_state.step_desc }}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      {% if cycle_state.step_url and cycle_state.step_url != '#books' %}
+      <form action="{{ cycle_state.step_url }}" method="post">
+        <button type="submit" class="btn btn-primary" style="font-size:.88rem">{{ cycle_state.step_action }} →</button>
+      </form>
+      {% endif %}
+      {% if cycle_state.step == 'new_cycle' %}
+      <small style="color:var(--muted);font-size:.78rem">O crea el ciclo manualmente en <a href="/admin/ciclo" style="color:#a5b4fc">Gestión de Ciclo</a></small>
+      {% endif %}
+    </div>
+  </div>
+  <!-- Barra de progreso del ciclo -->
+  <div style="display:flex;gap:6px;margin-bottom:16px">
+    {% for sname in ['Inicio','Propuestas','Encuesta','Fecha','Reunión'] %}
+    {% set i = loop.index0 %}
+    {% set current_idx = 0 if cycle_state.step == 'new_cycle' else (1 if cycle_state.step == 'collecting_proposals' else (2 if cycle_state.step == 'poll_open' else (3 if cycle_state.step in ('awaiting_date','dates_poll_open') else 4))) %}
+    <div style="flex:1;text-align:center">
+      <div style="height:4px;border-radius:2px;margin-bottom:4px;background:{% if i <= current_idx %}var(--primary){% else %}rgba(255,255,255,.1){% endif %}"></div>
+      <div style="font-size:.68rem;color:{% if i == current_idx %}#a5b4fc{% else %}var(--muted){% endif %};font-weight:{% if i == current_idx %}700{% else %}400{% endif %}">{{ sname }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
-        /* Book table */
-        .table-wrap{overflow:auto;border-radius:10px;border:1px solid rgba(255,255,255,.07);margin-top:10px}
-        table{width:100%;border-collapse:collapse}
-        th,td{padding:10px 11px;text-align:left;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
-        th{background:rgba(15,23,42,.95);font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0}
-        tbody tr:hover{background:rgba(255,255,255,.03)}
-        .book-cell{display:flex;gap:9px;align-items:flex-start}
-        .book-cover{width:38px;min-width:38px;height:54px;object-fit:cover;border-radius:7px;border:1px solid rgba(255,255,255,.07)}
-        .book-cover-fb{width:38px;min-width:38px;height:54px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,.2);font-size:16px}
-        .book-title{font-weight:700;font-size:.9rem;margin-bottom:2px}
-        .book-author{color:var(--muted);font-size:.8rem}
-        .vote-badge{display:inline-flex;align-items:center;min-width:32px;padding:4px 8px;border-radius:999px;background:rgba(16,185,129,.14);color:#6ee7b7;font-weight:800;font-size:.85rem}
-        .pos-badge{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;background:rgba(99,102,241,.2);color:#a5b4fc;font-weight:800;font-size:.85rem;flex-shrink:0}
+  <!-- Stats bar -->
+  {% set next_meeting = meetings[0] if meetings else None %}
+  <div class="stats-bar">
+    <div class="stat-chip">
+      <div class="stat-chip-label">Libros</div>
+      <div class="stat-chip-value">{{ books|length }}</div>
+      <div class="stat-chip-sub">propuestas</div>
+    </div>
+    <div class="stat-chip">
+      <div class="stat-chip-label">Votos</div>
+      <div class="stat-chip-value">{{ books | sum(attribute='votes') }}</div>
+      <div class="stat-chip-sub">este ciclo</div>
+    </div>
+    <div class="stat-chip">
+      <div class="stat-chip-label">Temáticas</div>
+      <div class="stat-chip-value">{{ themes|length }}</div>
+      <div class="stat-chip-sub">propuestas</div>
+    </div>
+    <div class="stat-chip" style="flex:2;min-width:160px">
+      <div class="stat-chip-label">Próxima reunión</div>
+      {% if next_meeting %}
+        <div class="stat-chip-value" style="font-size:1rem;margin-top:2px">{{ next_meeting.name }}</div>
+        <div class="stat-chip-sub">{{ next_meeting.final_date | dt_local if next_meeting.final_date else 'Sin fecha' }}</div>
+      {% else %}
+        <div class="stat-chip-value" style="font-size:.95rem;color:var(--muted)">Sin reuniones</div>
+      {% endif %}
+    </div>
+  </div>
 
-        /* Theme list */
-        .theme-row{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:10px;margin-bottom:7px}
-        .theme-row:last-child{margin-bottom:0}
-        .theme-name{font-weight:700;font-size:.92rem;flex:1}
-        .theme-votes{color:var(--muted);font-size:.8rem;margin-top:1px}
-        .theme-acts{display:flex;gap:5px;flex-shrink:0}
-        .edit-form{display:none;flex:1;gap:7px;align-items:center}
+  <!-- Alertas encuestas activas -->
+  {% if open_poll_books %}
+  <div class="alert-poll">
+    <div class="alert-poll-icon">🗳️</div>
+    <div class="alert-poll-text">
+      <div class="alert-poll-title">Encuesta de libros activa en Telegram</div>
+      <div class="alert-poll-sub">Ciérrala para anunciar el ganador y asignarlo automáticamente a la próxima reunión.</div>
+    </div>
+    <form action="/admin/encuesta/{{ open_poll_books.id }}/cerrar" method="post">
+      <button class="btn btn-danger" type="submit" data-tip="Cierra la encuesta y anuncia el libro ganador">🔒 Cerrar y anunciar</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if open_poll_themes %}
+  <div class="alert-poll" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3)">
+    <div class="alert-poll-icon">🏷️</div>
+    <div class="alert-poll-text">
+      <div class="alert-poll-title">Encuesta de temáticas activa</div>
+      <div class="alert-poll-sub">Ciérrala cuando terminen las votaciones.</div>
+    </div>
+    <form action="/admin/encuesta/{{ open_poll_themes.id }}/cerrar" method="post">
+      <button class="btn btn-danger" type="submit">🔒 Cerrar</button>
+    </form>
+  </div>
+  {% endif %}
 
-        /* Inline book edit */
-        .book-edit-panel{display:none;background:rgba(0,0,0,.2);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:13px;margin-top:6px}
-        .edit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:8px}
-
-        /* Empty state */
-        .empty{padding:20px;text-align:center;color:var(--muted);font-size:.9rem}
-
-        /* Row flex util */
-        .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
-        .row .field{flex:1;min-width:160px;margin:0}
-
-        /* Poll closed badge */
-        .winner-banner{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
-        .winner-banner-text{flex:1}
-        .winner-banner-title{font-weight:700;color:#6ee7b7;font-size:.88rem}
-        .winner-banner-book{font-weight:800;margin-top:2px}
-
-        @media(max-width:640px){
-            .stats-bar{gap:7px}
-            .stat-chip{min-width:90px;padding:10px 11px}
-            .stat-chip-value{font-size:1.25rem}
-            .reminder-grid{grid-template-columns:1fr}
-            .header-nav .nav-link span{display:none}
-            table{min-width:480px}
-            .main{padding:18px 12px 0;max-width:100%}
-        }
-
-        /* AI Assistant floating button + modal */
-        .ai-fab{position:fixed;bottom:20px;left:20px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#6366f1);border:none;cursor:pointer;font-size:24px;color:#fff;box-shadow:0 4px 20px rgba(139,92,246,.5);z-index:200;display:flex;align-items:center;justify-content:center;transition:.2s ease}
-        .ai-fab:hover{transform:scale(1.08)}
-        .ai-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px)}
-        .ai-backdrop.open{display:block}
-        .ai-modal{display:none;position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:20px 20px 0 0;padding:0;z-index:600;flex-direction:column;max-height:85vh}
-        .ai-modal.open{display:flex}
-        @media(min-width:600px){.ai-modal{bottom:20px;left:auto;right:20px;border-radius:20px;width:460px;max-height:80vh}}
-        .ai-modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
-        .ai-modal-title{font-weight:800;font-size:1rem;display:flex;align-items:center;gap:8px}
-        .ai-close{background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;padding:4px 8px;border-radius:6px}
-        .ai-close:hover{color:#f1f5f9;background:rgba(255,255,255,.08)}
-        .ai-messages{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-height:80px}
-        .ai-message{padding:10px 14px;border-radius:14px;font-size:.88rem;line-height:1.5;max-width:90%;white-space:pre-wrap}
-        .ai-message-bot{background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.2);color:#e2e8f0;align-self:flex-start}
-        .ai-message-user{background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.25);color:#f1f5f9;align-self:flex-end}
-        .ai-message-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:#fca5a5;align-self:flex-start}
-        .ai-thinking{color:#94a3b8;font-style:italic;font-size:.82rem}
-        .ai-suggestions{padding:0 14px 10px;display:flex;flex-wrap:wrap;gap:5px}
-        .ai-suggestions button{padding:5px 10px;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.1);color:#a5b4fc;font-size:.75rem;cursor:pointer;white-space:nowrap;font-family:inherit;transition:.15s ease}
-        .ai-suggestions button:hover{background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6)}
-        .ai-input-row{display:flex;gap:8px;padding:10px 14px 16px;border-top:1px solid rgba(255,255,255,.08)}
-        .ai-input{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#f1f5f9;padding:10px 12px;font-size:.88rem;font-family:inherit;resize:none;outline:none;transition:.18s ease}
-        .ai-input:focus{border-color:rgba(99,102,241,.6);box-shadow:0 0 0 3px rgba(99,102,241,.15)}
-        .ai-send{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;color:#fff;font-size:1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:.15s ease;align-self:flex-end}
-        .ai-send:hover{filter:brightness(1.15)}
-        .ai-send:disabled{opacity:.5;cursor:not-allowed}
-    </style>
-</head>
-<body>
-
-<!-- ── HEADER ── -->
-<header class="header">
-    <a class="header-brand" href="/admin">
-        <div class="header-logo">📚</div>
-        <div>
-            <div class="header-title">Club de Lectura</div>
-            <div class="header-sub">Panel de admin</div>
+  <!-- ── LIBROS ── -->
+  <details open>
+    <summary>📚 Libros <span class="det-badge">{{ books|length }}</span>
+      {% if books %}<span class="det-badge green" style="margin-left:4px">{{ books | sum(attribute='votes') }} votos</span>{% endif %}
+      {% if tied_books is defined and tied_books|length > 1 %}<span class="det-badge amber" style="margin-left:4px">⚖️ Empate</span>{% endif %}
+    </summary>
+    <div class="det-body">
+      {% if tied_books is defined and tied_books|length > 1 %}
+      <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:1.2rem">⚖️</span>
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:700;color:#fde68a">¡Empate! {{ tied_books|length }} libros empatados con {{ tied_books[0].votes }} votos</div>
+          <div style="color:var(--muted);font-size:.83rem;margin-top:2px">Se necesita una encuesta de desempate para determinar el ganador.</div>
         </div>
-    </a>
-    <nav class="header-nav">
-        <a class="nav-link active" href="/admin">Dashboard</a>
-        <div class="nav-drop">
-            <button class="nav-link">Gestión <span class="caret">▾</span></button>
-            <div class="drop-menu">
-                <a class="drop-item" href="/meetings">📅 Reuniones</a>
-                <a class="drop-item" href="/themes">🏷️ Temáticas</a>
-                <a class="drop-item" href="/admin/ciclo">🔄 Ciclo activo</a>
-                <div class="drop-sep"></div>
-                <a class="drop-item" href="/attendance">👥 Asistencia</a>
-                <a class="drop-item" href="/ranking">🏆 Ranking</a>
-            </div>
-        </div>
-        <div class="nav-drop">
-            <button class="nav-link">Datos <span class="caret">▾</span></button>
-            <div class="drop-menu">
-                <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
-                <a class="drop-item" href="/admin/historico">📜 Histórico</a>
-                <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
-                <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
-                <a class="drop-item" href="/export">📤 Exportar CSV</a>
-                <div class="drop-sep"></div>
-                <a class="drop-item" href="/admin/demo">🎯 Demo / Tour</a>
-            </div>
-        </div>
-        <button class="nav-link" onclick="startTour()" style="cursor:pointer"><span>🎯 Tour</span></button>
-        <a class="nav-link" href="/admin/waitlist"><span>📚 En espera</span></a>
-        <a class="nav-link" href="/admin/poster"><span>🖼️ Cartel</span></a>
-        <a class="nav-link" href="/admin/messages"><span>✉️ Mensajes</span></a>
-        <a class="nav-link" href="/admin/scheduler"><span>⏰ Programador</span></a>
-        <a class="nav-link" href="/publico" target="_blank"><span>🌐 Ver pública</span></a>
-        <a class="nav-link" href="/admin/help"><span>❓ Ayuda</span></a>
-        <a class="nav-link" href="/admin/demo"><span>🎯 Demo</span></a>
-        <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
-    </nav>
-</header>
+      </div>
+      {% endif %}
 
-<div class="main">
+      <div class="card">
+        <div class="card-label">Añadir propuesta</div>
+        <form action="/admin/book/add" method="post" class="row">
+          <div class="field"><label>Título</label><input name="title" type="text" placeholder="Ej. Cien años de soledad" required></div>
+          <div class="field"><label>Autor (fallback)</label><input name="author" type="text" placeholder="García Márquez"></div>
+          <button class="btn btn-success" type="submit" data-tip="Busca en Google Books y añade a las propuestas">➕ Añadir</button>
+        </form>
+      </div>
 
-    <!-- Flash messages -->
-    {% with messages = get_flashed_messages(with_categories=True) %}
-        {% if messages %}
-            <div class="flashes">
-            {% for cat, msg in messages %}
-                <div class="flash flash-{{ cat }}">
-                    {% if cat == 'success' %}✅{% elif cat == 'danger' %}❌{% else %}⚠️{% endif %}
-                    {{ msg }}
+      {% if not open_poll_books %}
+      <div class="card" style="margin-top:10px">
+        <div class="card-label">Encuesta de libros</div>
+        {% if books|length >= 2 %}
+          <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">Se enviarán {{ books|length }} opciones al grupo de Telegram.</p>
+          <form action="/admin/encuesta/libros/crear" method="post">
+            <button class="btn btn-primary" type="submit" data-tip="Cierra las propuestas y envía una encuesta a Telegram para que el grupo vote">📨 Lanzar encuesta en Telegram</button>
+          </form>
+        {% else %}
+          <div class="empty">Necesitas al menos 2 propuestas para crear una encuesta.</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if books %}
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>#</th><th>Libro</th><th>Por</th><th>Votos</th><th>Acc.</th>
+            </tr></thead>
+            <tbody>
+            {% for b in books %}
+            <tr>
+              <td><span class="pos-badge">{{ b.cycle_position }}</span></td>
+              <td>
+                <div class="book-cell">
+                  {% if b.cover %}<img class="book-cover" src="{{ b.cover }}" alt="">
+                  {% else %}<div class="book-cover-fb">📘</div>{% endif %}
+                  <div>
+                    <div class="book-title">{{ b.title }}</div>
+                    <div class="book-author">{{ b.author or 'Autor desconocido' }}</div>
+                    {% if b.pages %}<div style="color:var(--muted);font-size:.75rem">{{ b.pages }} págs.</div>{% endif %}
+                  </div>
                 </div>
+              </td>
+              <td style="color:var(--muted);font-size:.82rem">{{ b.proposed_by }}</td>
+              <td><span class="vote-badge">{{ b.votes }}</span></td>
+              <td>
+                <div style="display:flex;gap:5px">
+                  <button class="btn btn-soft btn-xs" type="button" onclick="toggleEdit('be{{ b.id }}')" data-tip="Editar metadatos del libro">✏️</button>
+                  <form action="/admin/book/{{ b.proposal_id }}/delete" method="post" onsubmit="return confirm('¿Quitar «{{ b.title }}»?')">
+                    <button class="btn btn-danger btn-xs" type="submit" data-tip="Quitar de las propuestas del ciclo">🗑</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <tr id="be{{ b.id }}-row" style="display:none">
+              <td colspan="5">
+                <div class="book-edit-panel" id="be{{ b.id }}" style="display:block">
+                  <form action="/admin/book/{{ b.id }}/edit" method="post">
+                    <div class="edit-grid">
+                      <div class="field"><label>Título</label><input name="title" value="{{ b.title }}"></div>
+                      <div class="field"><label>Autor</label><input name="author" value="{{ b.author or '' }}"></div>
+                      <div class="field"><label>Páginas</label><input name="pages" type="number" value="{{ b.pages or '' }}"></div>
+                      <div class="field"><label>URL portada</label><input name="cover" value="{{ b.cover or '' }}"></div>
+                    </div>
+                    <div class="field"><label>Descripción</label><textarea name="description">{{ b.description or '' }}</textarea></div>
+                    <div style="display:flex;gap:7px">
+                      <button class="btn btn-success btn-sm" type="submit">✓ Guardar</button>
+                      <button class="btn btn-soft btn-sm" type="button" onclick="toggleEdit('be{{ b.id }}')">Cancelar</button>
+                    </div>
+                  </form>
+                </div>
+              </td>
+            </tr>
             {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
-
-    <!-- ── CYCLE WIZARD ── -->
-    {% if cycle_state %}
-    <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.25);border-radius:16px;padding:18px 20px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#a5b4fc">Ciclo {{ cycle_state.cycle }} — Paso actual</span>
-            </div>
-            <div style="font-size:1.05rem;font-weight:800;margin-bottom:4px">
-                {% if cycle_state.step == 'new_cycle' %}🆕
-                {% elif cycle_state.step == 'collecting_proposals' %}📬
-                {% elif cycle_state.step == 'poll_open' %}🗳️
-                {% elif cycle_state.step in ('awaiting_date','dates_poll_open') %}📅
-                {% elif cycle_state.step == 'meeting_scheduled' %}✅
-                {% endif %}
-                {{ cycle_state.step_label }}
-            </div>
-            <div style="color:var(--muted);font-size:.85rem">{{ cycle_state.step_desc }}</div>
+            </tbody>
+          </table>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            {% if cycle_state.step_url and cycle_state.step_url != '#books' %}
-            <form action="{{ cycle_state.step_url }}" method="post">
-                <button type="submit" class="btn btn-primary" style="font-size:.88rem">
-                    {{ cycle_state.step_action }} →
-                </button>
-            </form>
-            {% endif %}
-            {% if cycle_state.step == 'new_cycle' %}
-            <small style="color:var(--muted);font-size:.78rem">O crea el ciclo manualmente en <a href="/admin/ciclo" style="color:#a5b4fc">Gestión de Ciclo</a></small>
-            {% endif %}
-        </div>
+      {% else %}
+        <div class="empty">📭 Sin propuestas este ciclo — los miembros pueden proponer libros con <span style="color:#a5b4fc;font-weight:700">/proponer</span> en el chat</div>
+      {% endif %}
     </div>
-    <!-- Barra de progreso del ciclo -->
-    <div style="display:flex;gap:6px;margin-bottom:16px">
-        {% for sname in ['Inicio','Propuestas','Encuesta','Fecha','Reunión'] %}
-        {% set i = loop.index0 %}
-        {% set current_idx = 0 if cycle_state.step == 'new_cycle' else (1 if cycle_state.step == 'collecting_proposals' else (2 if cycle_state.step == 'poll_open' else (3 if cycle_state.step in ('awaiting_date','dates_poll_open') else 4))) %}
-        <div style="flex:1;text-align:center">
-            <div style="height:4px;border-radius:2px;margin-bottom:4px;background:{% if i <= current_idx %}var(--primary){% else %}rgba(255,255,255,.1){% endif %}"></div>
-            <div style="font-size:.68rem;color:{% if i == current_idx %}#a5b4fc{% else %}var(--muted){% endif %};font-weight:{% if i == current_idx %}700{% else %}400{% endif %}">{{ sname }}</div>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+  </details>
 
-    <!-- Stats bar -->
-    {% set next_meeting = meetings[0] if meetings else None %}
-    <div class="stats-bar">
-        <div class="stat-chip">
-            <div class="stat-chip-label">Libros</div>
-            <div class="stat-chip-value">{{ books|length }}</div>
-            <div class="stat-chip-sub">propuestas</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-chip-label">Votos</div>
-            <div class="stat-chip-value">{{ books | sum(attribute='votes') }}</div>
-            <div class="stat-chip-sub">este ciclo</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-chip-label">Temáticas</div>
-            <div class="stat-chip-value">{{ themes|length }}</div>
-            <div class="stat-chip-sub">propuestas</div>
-        </div>
-        <div class="stat-chip" style="flex:2;min-width:160px">
-            <div class="stat-chip-label">Próxima reunión</div>
-            {% if next_meeting %}
-                <div class="stat-chip-value" style="font-size:1rem;margin-top:2px">{{ next_meeting.name }}</div>
-                <div class="stat-chip-sub">{{ next_meeting.final_date | dt_local if next_meeting.final_date else 'Sin fecha' }}</div>
-            {% else %}
-                <div class="stat-chip-value" style="font-size:.95rem;color:var(--muted)">Sin reuniones</div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Alerta encuesta activa -->
-    {% if open_poll_books %}
-    <div class="alert-poll">
-        <div class="alert-poll-icon">🗳️</div>
-        <div class="alert-poll-text">
-            <div class="alert-poll-title">Encuesta de libros activa en Telegram</div>
-            <div class="alert-poll-sub">Ciérrala para anunciar el ganador y asignarlo automáticamente a la próxima reunión.</div>
-        </div>
-        <form action="/admin/encuesta/{{ open_poll_books.id }}/cerrar" method="post">
-            <button class="btn btn-danger" type="submit" data-tip="Cierra la encuesta y anuncia el libro ganador">🔒 Cerrar y anunciar</button>
+  <!-- ── TEMÁTICAS ── -->
+  <details>
+    <summary>🏷️ Temáticas <span class="det-badge">{{ themes|length }}</span></summary>
+    <div class="det-body">
+      <div class="card">
+        <div class="card-label">Añadir temática</div>
+        <form action="/admin/theme/add" method="post" class="row">
+          <div class="field"><label>Nombre</label><input name="name" type="text" placeholder="Ej. Ciencia ficción, Clásicos…" required></div>
+          <button class="btn btn-success" type="submit">➕ Añadir</button>
         </form>
-    </div>
-    {% endif %}
-    {% if open_poll_themes %}
-    <div class="alert-poll" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3)">
-        <div class="alert-poll-icon">🏷️</div>
-        <div class="alert-poll-text">
-            <div class="alert-poll-title">Encuesta de temáticas activa</div>
-            <div class="alert-poll-sub">Ciérrala cuando terminen las votaciones.</div>
-        </div>
-        <form action="/admin/encuesta/{{ open_poll_themes.id }}/cerrar" method="post">
-            <button class="btn btn-danger" type="submit">🔒 Cerrar</button>
+      </div>
+      {% if not open_poll_themes and themes|length >= 2 %}
+      <div class="card" style="margin-top:10px">
+        <div class="card-label">Encuesta de temáticas</div>
+        <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">{{ themes|length }} temáticas · se enviará al grupo de Telegram.</p>
+        <form action="/admin/encuesta/temas/crear" method="post">
+          <button class="btn btn-primary" type="submit" data-tip="Lanza la encuesta de temáticas en Telegram">📨 Lanzar encuesta</button>
         </form>
-    </div>
-    {% endif %}
-
-    <!-- ── LIBROS ── -->
-    <details open>
-        <summary>📚 Libros <span class="det-badge">{{ books|length }}</span>
-            {% if books %}<span class="det-badge green" style="margin-left:4px">{{ books | sum(attribute='votes') }} votos</span>{% endif %}
-            {% if tied_books is defined and tied_books|length > 1 %}<span class="det-badge amber" style="margin-left:4px">⚖️ Empate</span>{% endif %}
-        </summary>
-        <div class="det-body">
-        {% if tied_books is defined and tied_books|length > 1 %}
-        <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:1.2rem">⚖️</span>
-            <div style="flex:1;min-width:180px">
-                <div style="font-weight:700;color:#fde68a">¡Empate! {{ tied_books|length }} libros empatados con {{ tied_books[0].votes }} votos</div>
-                <div style="color:var(--muted);font-size:.83rem;margin-top:2px">Se necesita una encuesta de desempate para determinar el ganador.</div>
+      </div>
+      {% endif %}
+      <div style="margin-top:10px">
+        {% if themes %}
+          {% for t in themes %}
+          <div class="theme-row">
+            <div style="min-width:0;flex:1">
+              <div id="tn{{ t.id }}" class="theme-name">{{ t.name }}</div>
+              <div id="tef{{ t.id }}" class="edit-form">
+                <form action="/admin/theme/{{ t.id }}/edit" method="post" style="display:flex;gap:7px;width:100%;align-items:center">
+                  <input name="name" type="text" value="{{ t.name }}" style="margin:0;padding:7px 10px;font-size:.87rem" required>
+                  <button class="btn btn-success btn-xs" type="submit">✓</button>
+                  <button class="btn btn-soft btn-xs" type="button" onclick="cancelTheme({{ t.id }})">✕</button>
+                </form>
+              </div>
+              <div class="theme-votes">🗳️ {{ t.votes }} voto{{ 's' if t.votes != 1 else '' }} · ciclo {{ t.cycle_key }}</div>
             </div>
-        </div>
+            <div class="theme-acts" id="tbtns{{ t.id }}">
+              <button class="btn btn-soft btn-xs" onclick="editTheme({{ t.id }})" data-tip="Renombrar">✏️</button>
+              <form action="/admin/theme/{{ t.id }}/delete" method="post" onsubmit="return confirm('¿Borrar «{{ t.name }}»?')">
+                <button class="btn btn-danger btn-xs" type="submit" data-tip="Eliminar temática">🗑</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty">Sin temáticas. Añade una arriba o usa /tema en Telegram.</div>
         {% endif %}
-
-            <!-- Añadir libro -->
-            <div class="card">
-                <div class="card-label">Añadir propuesta</div>
-                <form action="/admin/book/add" method="post" class="row">
-                    <div class="field"><label>Título</label><input name="title" type="text" placeholder="Ej. Cien años de soledad" required></div>
-                    <div class="field"><label>Autor (fallback)</label><input name="author" type="text" placeholder="García Márquez"></div>
-                    <button class="btn btn-success" type="submit" data-tip="Busca en Google Books y añade a las propuestas">➕ Añadir</button>
-                </form>
-            </div>
-
-            <!-- Encuesta -->
-            {% if not open_poll_books %}
-            <div class="card" style="margin-top:10px">
-                <div class="card-label">Encuesta de libros</div>
-                {% if books|length >= 2 %}
-                    <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">Se enviarán {{ books|length }} opciones al grupo de Telegram.</p>
-                    <form action="/admin/encuesta/libros/crear" method="post">
-                        <button class="btn btn-primary" type="submit" title="Cierra las propuestas y envía una encuesta a Telegram para que el grupo vote" data-tip="Cierra las propuestas y envía una encuesta a Telegram para que el grupo vote">📨 Lanzar encuesta en Telegram</button>
-                    </form>
-                {% else %}
-                    <div class="empty">Necesitas al menos 2 propuestas para crear una encuesta.</div>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            <!-- Tabla de propuestas -->
-            {% if books %}
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr>
-                            <th>#</th><th>Libro</th>
-                            <th>Por</th><th>Votos</th><th>Acc.</th>
-                        </tr></thead>
-                        <tbody>
-                        {% for b in books %}
-                        <tr>
-                            <td><span class="pos-badge">{{ b.cycle_position }}</span></td>
-                            <td>
-                                <div class="book-cell">
-                                    {% if b.cover %}<img class="book-cover" src="{{ b.cover }}" alt="">
-                                    {% else %}<div class="book-cover-fb">📘</div>{% endif %}
-                                    <div>
-                                        <div class="book-title">{{ b.title }}</div>
-                                        <div class="book-author">{{ b.author or 'Autor desconocido' }}</div>
-                                        {% if b.pages %}<div style="color:var(--muted);font-size:.75rem">{{ b.pages }} págs.</div>{% endif %}
-                                    </div>
-                                </div>
-                            </td>
-                            <td style="color:var(--muted);font-size:.82rem">{{ b.proposed_by }}</td>
-                            <td><span class="vote-badge">{{ b.votes }}</span></td>
-                            <td>
-                                <div style="display:flex;gap:5px">
-                                    <button class="btn btn-soft btn-xs" type="button"
-                                        onclick="toggleEdit('be{{ b.id }}')"
-                                        data-tip="Editar metadatos del libro">✏️</button>
-                                    <form action="/admin/book/{{ b.proposal_id }}/delete" method="post"
-                                          onsubmit="return confirm('¿Quitar «{{ b.title }}»?')">
-                                        <button class="btn btn-danger btn-xs" type="submit" data-tip="Quitar de las propuestas del ciclo">🗑</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr id="be{{ b.id }}-row" style="display:none">
-                            <td colspan="5">
-                                <div class="book-edit-panel" id="be{{ b.id }}" style="display:block">
-                                    <form action="/admin/book/{{ b.id }}/edit" method="post">
-                                        <div class="edit-grid">
-                                            <div class="field"><label>Título</label><input name="title" value="{{ b.title }}"></div>
-                                            <div class="field"><label>Autor</label><input name="author" value="{{ b.author or '' }}"></div>
-                                            <div class="field"><label>Páginas</label><input name="pages" type="number" value="{{ b.pages or '' }}"></div>
-                                            <div class="field"><label>URL portada</label><input name="cover" value="{{ b.cover or '' }}"></div>
-                                        </div>
-                                        <div class="field"><label>Descripción</label><textarea name="description">{{ b.description or '' }}</textarea></div>
-                                        <div style="display:flex;gap:7px">
-                                            <button class="btn btn-success btn-sm" type="submit">✓ Guardar</button>
-                                            <button class="btn btn-soft btn-sm" type="button" onclick="toggleEdit('be{{ b.id }}')">Cancelar</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            {% else %}
-                <div class="empty">📭 Sin propuestas este ciclo — los miembros pueden proponer libros con <span style="color:#a5b4fc;font-weight:700">/proponer</span> en el chat</div>
-            {% endif %}
-        </div>
-    </details>
-
-    <!-- ── TEMÁTICAS ── -->
-    <details>
-        <summary>🏷️ Temáticas <span class="det-badge">{{ themes|length }}</span></summary>
-        <div class="det-body">
-            <div class="card">
-                <div class="card-label">Añadir temática</div>
-                <form action="/admin/theme/add" method="post" class="row">
-                    <div class="field"><label>Nombre</label><input name="name" type="text" placeholder="Ej. Ciencia ficción, Clásicos…" required></div>
-                    <button class="btn btn-success" type="submit">➕ Añadir</button>
-                </form>
-            </div>
-            {% if not open_poll_themes and themes|length >= 2 %}
-            <div class="card" style="margin-top:10px">
-                <div class="card-label">Encuesta de temáticas</div>
-                <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">{{ themes|length }} temáticas · se enviará al grupo de Telegram.</p>
-                <form action="/admin/encuesta/temas/crear" method="post">
-                    <button class="btn btn-primary" type="submit" data-tip="Lanza la encuesta de temáticas en Telegram">📨 Lanzar encuesta</button>
-                </form>
-            </div>
-            {% endif %}
-            <div style="margin-top:10px">
-            {% if themes %}
-                {% for t in themes %}
-                <div class="theme-row">
-                    <div style="min-width:0;flex:1">
-                        <div id="tn{{ t.id }}" class="theme-name">{{ t.name }}</div>
-                        <div id="tef{{ t.id }}" class="edit-form">
-                            <form action="/admin/theme/{{ t.id }}/edit" method="post" style="display:flex;gap:7px;width:100%;align-items:center">
-                                <input name="name" type="text" value="{{ t.name }}" style="margin:0;padding:7px 10px;font-size:.87rem" required>
-                                <button class="btn btn-success btn-xs" type="submit">✓</button>
-                                <button class="btn btn-soft btn-xs" type="button" onclick="cancelTheme({{ t.id }})">✕</button>
-                            </form>
-                        </div>
-                        <div class="theme-votes">🗳️ {{ t.votes }} voto{{ 's' if t.votes != 1 else '' }} · ciclo {{ t.cycle_key }}</div>
-                    </div>
-                    <div class="theme-acts" id="tbtns{{ t.id }}">
-                        <button class="btn btn-soft btn-xs" onclick="editTheme({{ t.id }})" data-tip="Renombrar">✏️</button>
-                        <form action="/admin/theme/{{ t.id }}/delete" method="post"
-                              onsubmit="return confirm('¿Borrar «{{ t.name }}»?')">
-                            <button class="btn btn-danger btn-xs" type="submit" data-tip="Eliminar temática">🗑</button>
-                        </form>
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="empty">Sin temáticas. Añade una arriba o usa /tema en Telegram.</div>
-            {% endif %}
-            </div>
-        </div>
-    </details>
-
-    <!-- ── NUEVA REUNIÓN ── -->
-    <details>
-        <summary>📅 Nueva reunión <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Crea y organiza las reuniones del club</span></summary>
-        <div class="det-body">
-            <form action="/create_meeting" method="post">
-                <div class="row">
-                    <div class="field"><label>Nombre</label><input name="meeting_name" type="text" placeholder="Ej. Reunión de marzo" required></div>
-                    <div class="field"><label>Fecha y hora (opcional)</label><input name="meeting_date" type="datetime-local"></div>
-                    <div class="field"><label>Lugar (opcional)</label><input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..."></div>
-                </div>
-                <button class="btn btn-primary" type="submit">Crear reunión</button>
-                <a class="btn btn-soft" href="/meetings" style="margin-left:8px">Ver todas →</a>
-            </form>
-        </div>
-    </details>
-
-    <!-- ── MENSAJES Y RECORDATORIOS ── -->
-    <details>
-        <summary>📣 Mensajes y recordatorios <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Envía avisos y recordatorios al grupo Telegram</span></summary>
-        <div class="det-body">
-            <div class="reminder-grid">
-                <div class="rem-card">
-                    <div class="rem-icon">📅</div>
-                    <div class="rem-title">Recordatorio de reunión</div>
-                    <div class="rem-desc">Días restantes, libro, ritmo de páginas y asistentes.</div>
-                    <form action="/admin/send/meeting-reminder" method="post">
-                        <button class="btn btn-primary" type="submit" data-tip="Envía el recordatorio semanal ahora sin esperar al lunes">📨 Enviar ahora</button>
-                    </form>
-                </div>
-                <div class="rem-card">
-                    <div class="rem-icon">📖</div>
-                    <div class="rem-title">Recordatorio de lectura</div>
-                    <div class="rem-desc">Recuerda el libro del ciclo y la fecha de reunión.</div>
-                    <form action="/admin/send/reading-reminder" method="post">
-                        <button class="btn btn-warning" type="submit" data-tip="Envía el recordatorio de lectura ahora">📨 Enviar ahora</button>
-                    </form>
-                </div>
-                <div class="rem-card">
-                    <div class="rem-icon">📣</div>
-                    <div class="rem-title">Info de reunión</div>
-                    <div class="rem-desc">Envía los detalles de la próxima reunión con botones de asistencia.</div>
-                    <form action="/admin/send/meeting-info" method="post">
-                        <button class="btn btn-success" type="submit" data-tip="Envía la info de la reunión con botones inline">📨 Enviar ahora</button>
-                    </form>
-                </div>
-                <div class="rem-card">
-                    <div class="rem-icon">📌</div>
-                    <div class="rem-title">Fijar todas las reuniones</div>
-                    <div class="rem-desc">Envía y fija un mensaje combinado con todas las reuniones activas.</div>
-                    <form action="/admin/send/pin-all" method="post">
-                        <button class="btn btn-primary" type="submit" data-tip="Fija un mensaje con todas las reuniones activas">📌 Fijar ahora</button>
-                    </form>
-                </div>
-            </div>
-            <div class="card" style="margin-top:10px">
-                <div class="card-label">Mensaje libre al grupo</div>
-                <form action="/admin/send/custom" method="post" class="row">
-                    <div class="field" style="flex:3;min-width:220px"><label>Texto</label><textarea name="message" rows="2" placeholder="Escribe aquí el mensaje…" required></textarea></div>
-                    <button class="btn btn-primary" type="submit" data-tip="Envía texto libre al grupo de Telegram">📨 Enviar</button>
-                </form>
-            </div>
-        </div>
-    </details>
-
-    <!-- ── CICLO ACTIVO ── -->
-    <details>
-        <summary>🔄 Ciclo activo <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Gestiona el ciclo de lectura mensual</span>
-            <span class="det-badge amber" style="margin-left:6px">{{ books[0].cycle_key if books else '—' }}</span>
-        </summary>
-        <div class="det-body">
-            <p style="color:var(--muted);font-size:.86rem;margin-bottom:12px">
-                El ciclo agrupa propuestas y temáticas. Cambia de ciclo al inicio de cada mes o cuando quieras empezar de nuevo.
-            </p>
-            <a class="btn btn-soft" href="/admin/ciclo">⚙️ Gestionar ciclos →</a>
-        </div>
-    </details>
-
-    <!-- ── INTELIGENCIA ARTIFICIAL ── -->
-    <details>
-        <summary>🤖 Inteligencia Artificial <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Genera contenido con IA para el club</span></summary>
-        <div class="det-body">
-            <p style="color:var(--muted);font-size:.87rem;margin-bottom:12px">Genera contenido para el grupo usando IA. Requiere GROQ_API_KEY.</p>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <a class="btn btn-soft" href="/admin/ai/questions">💬 Generar preguntas de debate</a>
-                <a class="btn btn-soft" href="/admin/ai/quote">✨ Generar cita literaria</a>
-                <a class="btn btn-soft" href="/admin/poster">🖼️ Diseñar cartel</a>
-            </div>
-        </div>
-    </details>
-
-</div>
-
-<script>
-function toggleEdit(id) {
-    const row = document.getElementById(id + '-row');
-    if(row) row.style.display = row.style.display === 'none' ? '' : 'none';
-}
-function editTheme(id) {
-    document.getElementById('tn'+id).style.display='none';
-    document.getElementById('tbtns'+id).style.display='none';
-    const ef = document.getElementById('tef'+id);
-    ef.style.display='flex';
-    ef.querySelector('input').focus();
-}
-function cancelTheme(id) {
-    document.getElementById('tn'+id).style.display='';
-    document.getElementById('tbtns'+id).style.display='flex';
-    document.getElementById('tef'+id).style.display='none';
-}
-// Abre details con error/success en la sección relevante
-document.querySelectorAll('.flash').forEach(f => {
-    const text = f.textContent.toLowerCase();
-    if(text.includes('libro') || text.includes('propuesta'))
-        document.querySelector('details:first-of-type')?.setAttribute('open','');
-});
-
-// ── TOUR OVERLAY ──────────────────────────────────────────
-const TOUR_STEPS = [
-    { selector: '.stats-bar', title: '📊 Estadísticas del ciclo', desc: 'Aquí ves de un vistazo: propuestas, votos, reuniones y asistentes del ciclo actual.' },
-    { selector: 'details:nth-of-type(1)', title: '📚 Gestión de libros', desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
-    { selector: 'details:nth-of-type(2)', title: '🏷️ Temáticas', desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
-    { selector: 'details:nth-of-type(3)', title: '📅 Reuniones', desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
-    { selector: '.header-nav', title: '🧭 Navegación', desc: 'Accede al historial, base de datos, mensajes del bot, programador, cartel y lista de espera.' },
-    { selector: '.reminder-grid', title: '🔔 Recordatorios', desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
-    { selector: '.ai-fab', title: '🤖 Asistente IA', desc: 'El botón morado lanza el asistente de IA contextual. Tiene acceso a todos los datos del club y puede ayudarte a redactar mensajes, analizar votaciones y planificar reuniones.' },
-    { selector: 'details:nth-of-type(5)', title: '🤖 Herramientas de IA', desc: 'Desde esta sección puedes generar preguntas de debate, citas literarias y diseñar carteles del club con inteligencia artificial.' },
-];
-
-let tourStep = 0;
-let tourActive = false;
-
-function startTour() {
-    tourActive = true;
-    tourStep = 0;
-    document.getElementById('tour-overlay').style.display = 'block';
-    showTourStep();
-}
-function endTour() {
-    tourActive = false;
-    document.getElementById('tour-overlay').style.display = 'none';
-    document.getElementById('tour-highlight').style.display = 'none';
-}
-function showTourStep() {
-    const step = TOUR_STEPS[tourStep];
-    if (!step) { endTour(); return; }
-    const el = document.querySelector(step.selector);
-    const tooltip = document.getElementById('tour-tooltip');
-    const hl = document.getElementById('tour-highlight');
-    document.getElementById('tour-title').textContent = step.title;
-    document.getElementById('tour-desc').textContent = step.desc;
-    document.getElementById('tour-counter').textContent = `${tourStep+1} / ${TOUR_STEPS.length}`;
-    document.getElementById('tour-prev').disabled = tourStep === 0;
-    document.getElementById('tour-next').textContent = tourStep === TOUR_STEPS.length-1 ? 'Finalizar' : 'Siguiente →';
-    if (el) {
-        el.scrollIntoView({behavior:'smooth', block:'center'});
-        setTimeout(() => {
-            const rect = el.getBoundingClientRect();
-            const scrollY = window.scrollY;
-            hl.style.cssText = `display:block;position:absolute;top:${rect.top+scrollY-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
-            const ttTop = rect.top+scrollY+rect.height+16;
-            tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${Math.max(8,Math.min(rect.left,window.innerWidth-330))}px;z-index:9999`;
-        }, 300);
-    } else {
-        hl.style.display = 'none';
-        tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
-    }
-}
-document.getElementById('tour-next').addEventListener('click', () => {
-    if (tourStep >= TOUR_STEPS.length-1) { endTour(); return; }
-    tourStep++;
-    showTourStep();
-});
-document.getElementById('tour-prev').addEventListener('click', () => {
-    if (tourStep > 0) { tourStep--; showTourStep(); }
-});
-document.getElementById('tour-close').addEventListener('click', endTour);
-document.getElementById('tour-overlay').addEventListener('click', function(e) {
-    if (e.target === this) endTour();
-});
-if (new URLSearchParams(location.search).has('tour')) startTour();
-
-// ── AI ASSISTANT ──────────────────────────────────
-function openAI(){document.getElementById('ai-modal').classList.add('open');document.getElementById('ai-backdrop').classList.add('open');document.getElementById('ai-input').focus()}
-function closeAI(){document.getElementById('ai-modal').classList.remove('open');document.getElementById('ai-backdrop').classList.remove('open')}
-function askAI(question){document.getElementById('ai-input').value=question;sendAI()}
-async function sendAI(){
-    const input=document.getElementById('ai-input');
-    const q=input.value.trim();
-    if(!q)return;
-    const msgs=document.getElementById('ai-messages');
-    const btn=document.getElementById('ai-send-btn');
-    document.getElementById('ai-suggestions').style.display='none';
-    const userDiv=document.createElement('div');
-    userDiv.className='ai-message ai-message-user';
-    userDiv.textContent=q;
-    msgs.appendChild(userDiv);
-    const thinkDiv=document.createElement('div');
-    thinkDiv.className='ai-message ai-message-bot ai-thinking';
-    thinkDiv.textContent='⏳ Pensando…';
-    msgs.appendChild(thinkDiv);
-    msgs.scrollTop=msgs.scrollHeight;
-    input.value='';
-    btn.disabled=true;
-    try{
-        const resp=await fetch('/admin/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
-        const data=await resp.json();
-        thinkDiv.remove();
-        const botDiv=document.createElement('div');
-        if(data.error){botDiv.className='ai-message ai-message-error';botDiv.textContent='⚠️ '+data.error}
-        else{botDiv.className='ai-message ai-message-bot';botDiv.textContent=data.answer}
-        msgs.appendChild(botDiv);
-    }catch(e){
-        thinkDiv.remove();
-        const errDiv=document.createElement('div');
-        errDiv.className='ai-message ai-message-error';
-        errDiv.textContent='⚠️ Error de conexión. Inténtalo de nuevo.';
-        msgs.appendChild(errDiv);
-    }
-    btn.disabled=false;
-    msgs.scrollTop=msgs.scrollHeight;
-}
-</script>
-
-<!-- AI Assistant -->
-<button class="ai-fab" onclick="openAI()" title="Asistente IA">🤖</button>
-<div class="ai-backdrop" id="ai-backdrop" onclick="closeAI()"></div>
-<div class="ai-modal" id="ai-modal">
-    <div class="ai-modal-header">
-        <div class="ai-modal-title">🤖 Asistente IA del Club</div>
-        <button class="ai-close" onclick="closeAI()">✕</button>
+      </div>
     </div>
-    <div class="ai-messages" id="ai-messages">
-        <div class="ai-message ai-message-bot">Hola, soy tu asistente para el Club de Lectura. Tengo contexto completo: libro actual, votaciones, reuniones y asistentes. ¿En qué te ayudo?</div>
-    </div>
-    <div class="ai-suggestions" id="ai-suggestions">
-        <button onclick="askAI('¿Qué libro deberíamos elegir según los votos actuales?')">📊 ¿Qué libro elegir?</button>
-        <button onclick="askAI('Resume la situación del ciclo actual')">📋 Resumen del ciclo</button>
-        <button onclick="askAI('Sugiere un plan detallado para la próxima reunión')">📅 Plan de reunión</button>
-        <button onclick="askAI('Dame ideas para aumentar la participación del club')">💡 Ideas participación</button>
-        <button onclick="askAI('Analiza los libros propuestos y dime cuál recomendarías leer')">📚 Análisis propuestas</button>
-        <button onclick="askAI('Redacta un mensaje motivador y atractivo para enviar al grupo Telegram del club')">✍️ Mensaje motivador</button>
-        <button onclick="askAI('¿Cómo podríamos gestionar un empate en la votación de forma justa?')">⚖️ Gestionar empate</button>
-        <button onclick="askAI('Sugiere 3 actividades dinámicas para hacer durante la reunión')">🎯 Actividades reunión</button>
-        <button onclick="askAI('Dame una sinopsis atractiva y motivadora del libro del ciclo actual para compartir en redes')">📣 Sinopsis para compartir</button>
-        <button onclick="askAI('¿Qué temática propones para el próximo ciclo y por qué?')">🏷️ Temática próximo ciclo</button>
-        <button onclick="askAI('¿Cómo podemos hacer que los miembros que no vienen a reuniones se animen a participar?')">👥 Retener miembros</button>
-        <button onclick="askAI('Crea un anuncio atractivo para el libro ganador del ciclo')">🏆 Anuncio ganador</button>
-    </div>
-    <div class="ai-input-row">
-        <textarea class="ai-input" id="ai-input" placeholder="Escribe tu pregunta…" rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI()}"></textarea>
-        <button class="ai-send" onclick="sendAI()" id="ai-send-btn">➤</button>
-    </div>
-</div>
+  </details>
 
+  <!-- ── NUEVA REUNIÓN ── -->
+  <details>
+    <summary>📅 Nueva reunión <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Crea y organiza las reuniones del club</span></summary>
+    <div class="det-body">
+      <form action="/create_meeting" method="post">
+        <div class="row">
+          <div class="field"><label>Nombre</label><input name="meeting_name" type="text" placeholder="Ej. Reunión de marzo" required></div>
+          <div class="field"><label>Fecha y hora (opcional)</label><input name="meeting_date" type="datetime-local"></div>
+          <div class="field"><label>Lugar (opcional)</label><input name="location" type="text" placeholder="Ej. Casa de Ana, Biblioteca..."></div>
+        </div>
+        <button class="btn btn-primary" type="submit">Crear reunión</button>
+        <a class="btn btn-soft" href="/meetings" style="margin-left:8px">Ver todas →</a>
+      </form>
+    </div>
+  </details>
+
+  <!-- ── MENSAJES Y RECORDATORIOS ── -->
+  <details>
+    <summary>📣 Mensajes y recordatorios <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Envía avisos y recordatorios al grupo Telegram</span></summary>
+    <div class="det-body">
+      <div class="reminder-grid">
+        <div class="rem-card">
+          <div class="rem-icon">📅</div>
+          <div class="rem-title">Recordatorio de reunión</div>
+          <div class="rem-desc">Días restantes, libro, ritmo de páginas y asistentes.</div>
+          <form action="/admin/send/meeting-reminder" method="post">
+            <button class="btn btn-primary" type="submit" data-tip="Envía el recordatorio semanal ahora sin esperar al lunes">📨 Enviar ahora</button>
+          </form>
+        </div>
+        <div class="rem-card">
+          <div class="rem-icon">📖</div>
+          <div class="rem-title">Recordatorio de lectura</div>
+          <div class="rem-desc">Recuerda el libro del ciclo y la fecha de reunión.</div>
+          <form action="/admin/send/reading-reminder" method="post">
+            <button class="btn btn-warning" type="submit" data-tip="Envía el recordatorio de lectura ahora">📨 Enviar ahora</button>
+          </form>
+        </div>
+        <div class="rem-card">
+          <div class="rem-icon">📣</div>
+          <div class="rem-title">Info de reunión</div>
+          <div class="rem-desc">Envía los detalles de la próxima reunión con botones de asistencia.</div>
+          <form action="/admin/send/meeting-info" method="post">
+            <button class="btn btn-success" type="submit" data-tip="Envía la info de la reunión con botones inline">📨 Enviar ahora</button>
+          </form>
+        </div>
+        <div class="rem-card">
+          <div class="rem-icon">📌</div>
+          <div class="rem-title">Fijar todas las reuniones</div>
+          <div class="rem-desc">Envía y fija un mensaje combinado con todas las reuniones activas.</div>
+          <form action="/admin/send/pin-all" method="post">
+            <button class="btn btn-primary" type="submit" data-tip="Fija un mensaje con todas las reuniones activas">📌 Fijar ahora</button>
+          </form>
+        </div>
+      </div>
+      <div class="card" style="margin-top:10px">
+        <div class="card-label">Mensaje libre al grupo</div>
+        <form action="/admin/send/custom" method="post" class="row">
+          <div class="field" style="flex:3;min-width:220px"><label>Texto</label><textarea name="message" rows="2" placeholder="Escribe aquí el mensaje…" required></textarea></div>
+          <button class="btn btn-primary" type="submit" data-tip="Envía texto libre al grupo de Telegram">📨 Enviar</button>
+        </form>
+      </div>
+    </div>
+  </details>
+
+  <!-- ── CICLO ACTIVO ── -->
+  <details>
+    <summary>🔄 Ciclo activo <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Gestiona el ciclo de lectura mensual</span>
+      <span class="det-badge amber" style="margin-left:6px">{{ books[0].cycle_key if books else '—' }}</span>
+    </summary>
+    <div class="det-body">
+      <p style="color:var(--muted);font-size:.86rem;margin-bottom:12px">
+        El ciclo agrupa propuestas y temáticas. Cambia de ciclo al inicio de cada mes o cuando quieras empezar de nuevo.
+      </p>
+      <a class="btn btn-soft" href="/admin/ciclo">⚙️ Gestionar ciclos →</a>
+    </div>
+  </details>
+
+  <!-- ── INTELIGENCIA ARTIFICIAL ── -->
+  <details>
+    <summary>🤖 Inteligencia Artificial <span style="color:var(--muted);font-size:.78rem;font-weight:400;margin-left:6px">Genera contenido con IA para el club</span></summary>
+    <div class="det-body">
+      <p style="color:var(--muted);font-size:.87rem;margin-bottom:12px">Genera contenido para el grupo usando IA. Requiere GROQ_API_KEY.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn btn-soft" href="/admin/ai/questions">💬 Generar preguntas de debate</a>
+        <a class="btn btn-soft" href="/admin/ai/quote">✨ Generar cita literaria</a>
+        <a class="btn btn-soft" href="/admin/poster">🖼️ Diseñar cartel</a>
+      </div>
+    </div>
+  </details>
+
+{% endblock %}
+
+{% block extra_modals %}
 <!-- Tour overlay -->
 <div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:9997;pointer-events:auto" aria-modal="true"></div>
 <div id="tour-highlight" style="display:none"></div>
 <div id="tour-tooltip" style="display:none;width:320px;background:rgba(15,23,42,.97);border:2px solid #6366f1;border-radius:16px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,.5)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span id="tour-counter" style="font-size:.75rem;color:#a5b4fc;font-weight:700"></span>
-        <button id="tour-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Cerrar</button>
-    </div>
-    <div id="tour-title" style="font-size:1rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
-    <div id="tour-desc" style="font-size:.88rem;color:#94a3b8;line-height:1.55;margin-bottom:16px"></div>
-    <div style="display:flex;gap:8px">
-        <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
-        <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
-    </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span id="tour-counter" style="font-size:.75rem;color:#a5b4fc;font-weight:700"></span>
+    <button id="tour-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Cerrar</button>
+  </div>
+  <div id="tour-title" style="font-size:1rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
+  <div id="tour-desc" style="font-size:.88rem;color:#94a3b8;line-height:1.55;margin-bottom:16px"></div>
+  <div style="display:flex;gap:8px">
+    <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
+    <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
+  </div>
 </div>
-</body>
-</html>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── BOOK / THEME EDIT ─────────────────────────────────
+function toggleEdit(id) {
+  const row = document.getElementById(id + '-row');
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+function editTheme(id) {
+  document.getElementById('tn'+id).style.display = 'none';
+  document.getElementById('tbtns'+id).style.display = 'none';
+  const ef = document.getElementById('tef'+id);
+  ef.style.display = 'flex';
+  ef.querySelector('input').focus();
+}
+function cancelTheme(id) {
+  document.getElementById('tn'+id).style.display = '';
+  document.getElementById('tbtns'+id).style.display = 'flex';
+  document.getElementById('tef'+id).style.display = 'none';
+}
+
+// Auto-open details section when there's a flash about books
+document.querySelectorAll('.flash').forEach(f => {
+  const text = f.textContent.toLowerCase();
+  if (text.includes('libro') || text.includes('propuesta'))
+    document.querySelector('details:first-of-type')?.setAttribute('open', '');
+});
+
+// ── TOUR ─────────────────────────────────────────────
+const TOUR_STEPS = [
+  { selector: '.stats-bar',           title: '📊 Estadísticas del ciclo', desc: 'Aquí ves de un vistazo: propuestas, votos, reuniones y asistentes del ciclo actual.' },
+  { selector: 'details:nth-of-type(1)',title: '📚 Gestión de libros',     desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
+  { selector: 'details:nth-of-type(2)',title: '🏷️ Temáticas',            desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
+  { selector: 'details:nth-of-type(3)',title: '📅 Reuniones',             desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
+  { selector: '.header-nav',           title: '🧭 Navegación',            desc: 'Accede al historial, base de datos, mensajes del bot, programador, cartel y lista de espera.' },
+  { selector: '.reminder-grid',        title: '🔔 Recordatorios',         desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
+  { selector: '.ai-fab',               title: '🤖 Asistente IA',          desc: 'El botón morado lanza el asistente de IA contextual. Tiene acceso a todos los datos del club y puede ayudarte a redactar mensajes, analizar votaciones y planificar reuniones.' },
+  { selector: 'details:nth-of-type(5)',title: '🤖 Herramientas de IA',    desc: 'Desde esta sección puedes generar preguntas de debate, citas literarias y diseñar carteles del club con inteligencia artificial.' },
+];
+let tourStep = 0;
+
+function startTour() {
+  tourStep = 0;
+  document.getElementById('tour-overlay').style.display = 'block';
+  showTourStep();
+}
+function endTour() {
+  document.getElementById('tour-overlay').style.display = 'none';
+  document.getElementById('tour-highlight').style.display = 'none';
+  document.getElementById('tour-tooltip').style.display = 'none';
+}
+function showTourStep() {
+  const step = TOUR_STEPS[tourStep];
+  if (!step) { endTour(); return; }
+  const el = document.querySelector(step.selector);
+  const tooltip = document.getElementById('tour-tooltip');
+  const hl = document.getElementById('tour-highlight');
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-desc').textContent = step.desc;
+  document.getElementById('tour-counter').textContent = `${tourStep+1} / ${TOUR_STEPS.length}`;
+  document.getElementById('tour-prev').disabled = tourStep === 0;
+  document.getElementById('tour-next').textContent = tourStep === TOUR_STEPS.length-1 ? 'Finalizar' : 'Siguiente →';
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+      const rect = el.getBoundingClientRect();
+      const scrollY = window.scrollY;
+      hl.style.cssText = `display:block;position:absolute;top:${rect.top+scrollY-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
+      const ttTop = rect.top + scrollY + rect.height + 16;
+      tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${Math.max(8, Math.min(rect.left, window.innerWidth-330))}px;z-index:9999`;
+    }, 300);
+  } else {
+    hl.style.display = 'none';
+    tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+  }
+}
+document.getElementById('tour-next').addEventListener('click', () => {
+  if (tourStep >= TOUR_STEPS.length-1) { endTour(); return; }
+  tourStep++;
+  showTourStep();
+});
+document.getElementById('tour-prev').addEventListener('click', () => {
+  if (tourStep > 0) { tourStep--; showTourStep(); }
+});
+document.getElementById('tour-close').addEventListener('click', endTour);
+document.getElementById('tour-overlay').addEventListener('click', function(e) {
+  if (e.target === this) endTour();
+});
+if (new URLSearchParams(location.search).has('tour')) startTour();
+</script>
+{% endblock %}

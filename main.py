@@ -441,6 +441,7 @@ async def proponer(update, context):
             return
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         db.insert_book(book, user)
+        db.log_event("bot", f"Libro propuesto: «{book['title']}»", category="book", actor=user)
         await wait_msg.delete()
 
         lines = [f"✅ {bold('¡Libro propuesto!')} por {italic(user)}\n"]
@@ -666,6 +667,7 @@ async def asistir(update, context):
         if len(meetings) == 1:
             meeting = meetings[0]
             db.add_attendance(meeting["id"], user)
+            db.log_event("bot", f"{user} se apuntó a «{meeting['name']}»", category="meeting", actor=user)
             asistentes = db.get_attendance(meeting["id"])
             names = "\n".join(f"  ✅ {a}" for a in asistentes)
             await update.message.reply_text(
@@ -1571,6 +1573,8 @@ async def preguntas_cmd(update, context):
             winner["title"], winner.get("author", ""), winner.get("description", "")
         )
         await wait.delete()
+        user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        db.log_event("bot", f"/preguntas solicitado para «{winner['title']}»", category="ai", actor=user)
         await update.message.reply_text(
             f"💬 Preguntas de debate — {winner['title']}\n\n{questions}",
             parse_mode=None
@@ -1684,6 +1688,45 @@ async def cita_cmd(update, context):
         await update.message.reply_text("⚠️ Error generando cita.", parse_mode=None)
 
 
+async def bug_cmd(update, context):
+    """Permite a los usuarios reportar un bug o problema."""
+    if not await _allowed(update): return
+    if not _check_cooldown(update.effective_user.id, "bug", 60):
+        await update.message.reply_text("⏳ Espera un momento antes de enviar otro reporte.", parse_mode=None)
+        return
+    description = " ".join(context.args).strip() if context.args else ""
+    if not description:
+        await update.message.reply_text(
+            "🐛 Usa /bug seguido de la descripción del problema.\n"
+            "Ejemplo: /bug El comando /votar no responde",
+            parse_mode=None
+        )
+        return
+    user = update.effective_user
+    username = user.username or user.first_name or str(user.id)
+    try:
+        report_id = db.create_bug_report(user.id, username, description)
+        db.log_event("bot", f"Bug reportado por {username}: {description[:80]}", category="bug", actor=username)
+        await update.message.reply_text(
+            f"✅ Reporte #{report_id} recibido. ¡Gracias por avisar!\n"
+            f"El equipo lo revisará pronto.",
+            parse_mode=None
+        )
+        # Notificar al admin por DM si está configurado
+        for admin_id in ADMIN_TELEGRAM_IDS:
+            try:
+                await telegram_app.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🐛 Nuevo bug #{report_id}\n👤 {username}\n\n{description}",
+                    parse_mode=None
+                )
+            except Exception:
+                pass
+    except Exception:
+        logger.exception("Error en /bug")
+        await update.message.reply_text("⚠️ Error enviando el reporte.", parse_mode=None)
+
+
 async def private_text_handler(update, context):
     """Responde a mensajes de texto libre en chats privados guiando al usuario."""
     if update.effective_chat.type != "private":
@@ -1753,6 +1796,7 @@ telegram_app.add_handler(CommandHandler("preguntas",        preguntas_cmd))
 telegram_app.add_handler(CommandHandler("cita",             cita_cmd))
 telegram_app.add_handler(CommandHandler("lista_espera",     lista_espera_cmd))
 telegram_app.add_handler(CommandHandler("proponer_fecha",   proponer_fecha_cmd))
+telegram_app.add_handler(CommandHandler("bug",              bug_cmd))
 telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
 telegram_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND, private_text_handler))
@@ -1783,10 +1827,12 @@ def admin_login_post():
     if secret != ADMIN_SECRET:
         return render_template("admin_login.html", error="Secreto incorrecto"), 403
     session["admin_logged"] = True
+    db.log_event("admin", "Inicio de sesión en el panel", category="auth", actor="admin")
     return redirect(url_for("admin_dashboard"))
 
 @flask_app.get("/admin/logout")
 def admin_logout():
+    db.log_event("admin", "Cierre de sesión del panel", category="auth", actor="admin")
     session.clear()
     return redirect(url_for("admin_login"))
 
@@ -2232,6 +2278,7 @@ async def admin_send_meeting_reminder():
     if auth: return auth
     try:
         await send_meeting_reminder()
+        db.log_event("admin", "Recordatorio de reunión enviado manualmente", category="meeting", actor="admin")
     except Exception:
         logger.exception("Error enviando recordatorio de reunión manual")
     return redirect(url_for("admin_dashboard"))
@@ -2645,6 +2692,7 @@ async def admin_ai_questions_send():
         return redirect(url_for("admin_dashboard"))
     try:
         await send_to_group(content, parse_mode=None, message_type="ai_questions")
+        db.log_event("admin", "Preguntas de debate IA enviadas al grupo", category="ai", actor="admin")
         flash("Preguntas de debate enviadas al grupo", "success")
     except Exception:
         logger.exception("Error enviando preguntas AI")
@@ -2797,6 +2845,7 @@ def admin_ciclo_nuevo():
         return redirect(url_for("admin_ciclo"))
     db.set_config("active_cycle_key", name)
     db.set_config("proposals_locked_for", "")  # unlock proposals for new cycle
+    db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
     flash(f"Ciclo «{name}» activado correctamente", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -2811,6 +2860,7 @@ def admin_ciclo_cerrar():
         db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
     except Exception:
         logger.exception("Error añadiendo runners-up a la lista de espera")
+    db.log_event("admin", f"Ciclo «{cycle}» cerrado", category="cycle", actor="admin")
     flash(f"Ciclo «{cycle}» cerrado. Propuestas y temáticas desactivadas.", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -3058,6 +3108,59 @@ def admin_demo_clear():
     return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
+# FLASK — EVENT LOG
+# --------------------------------------------------
+
+@flask_app.get("/admin/logs")
+def admin_logs():
+    auth = require_admin()
+    if auth: return auth
+    event_type = request.args.get("type", "")
+    category   = request.args.get("category", "")
+    events = db.get_events(
+        limit=300,
+        event_type=event_type or None,
+        category=category or None,
+    )
+    return render_template("admin_logs.html",
+                           events=events,
+                           event_type=event_type,
+                           category=category)
+
+
+# --------------------------------------------------
+# FLASK — BUG REPORTS
+# --------------------------------------------------
+
+@flask_app.get("/admin/bugs")
+def admin_bugs():
+    auth = require_admin()
+    if auth: return auth
+    status_filter = request.args.get("status", "")
+    reports = db.get_bug_reports(status=status_filter or None)
+    counts = {
+        "open":     sum(1 for r in db.get_bug_reports() if r["status"] == "open"),
+        "resolved": sum(1 for r in db.get_bug_reports() if r["status"] == "resolved"),
+        "wontfix":  sum(1 for r in db.get_bug_reports() if r["status"] == "wontfix"),
+    }
+    return render_template("admin_bugs.html",
+                           reports=reports,
+                           status_filter=status_filter,
+                           counts=counts)
+
+@flask_app.post("/admin/bugs/<int:report_id>/update")
+def admin_bug_update(report_id):
+    auth = require_admin()
+    if auth: return auth
+    status      = request.form.get("status", "open")
+    admin_notes = request.form.get("admin_notes", "").strip() or None
+    db.update_bug_report(report_id, status, admin_notes)
+    db.log_event("admin", f"Bug #{report_id} actualizado a «{status}»", category="bug", actor="admin")
+    flash(f"Reporte #{report_id} actualizado", "success")
+    return redirect(url_for("admin_bugs"))
+
+
+# --------------------------------------------------
 # WEBHOOK
 # --------------------------------------------------
 
@@ -3113,6 +3216,7 @@ async def startup():
         BotCommand("cita", "Cita literaria del libro actual"),
         BotCommand("recomendar", "Recomendaciones según temática"),
         BotCommand("lista_espera", "Libros en lista de espera"),
+        BotCommand("bug", "Reportar un problema o bug"),
     ]
     try:
         await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())

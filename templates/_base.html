@@ -41,12 +41,19 @@
         <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
         <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
         <a class="drop-item" href="/export">📤 Exportar CSV</a>
+        <div class="drop-sep"></div>
+        <a class="drop-item" href="/admin/demo">🎯 Demo / Tour</a>
       </div>
     </div>
     <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages"><span>✉️ Mensajes</span></a>
     <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler"><span>⏰ Programador</span></a>
-    <a class="nav-link" href="/publico" target="_blank"><span>🌐 Ver pública</span></a>
+    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist"><span>📚 Espera</span></a>
+    <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster"><span>🖼️ Cartel</span></a>
+    <a class="nav-link" href="/publico" target="_blank"><span>🌐 Pública</span></a>
+    <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs"><span>📋 Logs</span></a>
+    <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs"><span>🐛 Bugs</span></a>
     <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help"><span>❓ Ayuda</span></a>
+    {% block nav_extra %}{% endblock %}
     <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
   </nav>
   <!-- Hamburger visible solo en móvil -->
@@ -86,8 +93,13 @@
     <a class="drawer-link" href="/admin/galeria">🏛️ Galería</a>
     <a class="drawer-link" href="/admin/messages">✉️ Mensajes</a>
     <a class="drawer-link" href="/admin/scheduler">⏰ Programador</a>
+    <a class="drawer-link" href="/admin/waitlist">📚 En espera</a>
+    <a class="drawer-link" href="/admin/poster">🖼️ Cartel</a>
     <a class="drawer-link" href="/admin/db">🗄️ Base de datos</a>
+    <a class="drawer-link" href="/admin/demo">🎯 Demo</a>
     <a class="drawer-link" href="/publico" target="_blank">🌐 Ver pública</a>
+    <a class="drawer-link" href="/admin/logs">📋 Logs</a>
+    <a class="drawer-link" href="/admin/bugs">🐛 Bugs</a>
     <a class="drawer-link" href="/admin/help">❓ Ayuda</a>
     <a class="drawer-link" href="/admin/logout" style="color:#fca5a5">🚪 Salir</a>
   </nav>

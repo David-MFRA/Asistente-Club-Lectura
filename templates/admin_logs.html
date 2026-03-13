@@ -1,0 +1,105 @@
+{% extends '_base.html' %}
+{% block title %}Logs{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block head_extra %}
+<style>
+  h1  { margin: 0; font-size: 1.5rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; align-items: center; }
+  .filter-pill {
+    display: inline-flex; align-items: center; padding: 6px 14px;
+    border-radius: 999px; font-size: .82rem; font-weight: 700;
+    text-decoration: none; border: 1px solid var(--border);
+    color: var(--muted); background: var(--panel); transition: .15s ease;
+  }
+  .filter-pill:hover, .filter-pill.active {
+    background: rgba(99,102,241,.2); border-color: rgba(99,102,241,.4); color: #a5b4fc;
+  }
+  .filter-sep { color: var(--border); padding: 0 4px; }
+
+  .event-type-admin  { background: rgba(99,102,241,.15);  color: #a5b4fc; }
+  .event-type-bot    { background: rgba(16,185,129,.15);  color: #6ee7b7; }
+  .event-type-error  { background: rgba(239,68,68,.15);   color: #fca5a5; }
+  .event-type-system { background: rgba(255,255,255,.08); color: var(--muted); }
+  .event-type-ai     { background: rgba(139,92,246,.15);  color: #c4b5fd; }
+
+  .cat-badge {
+    display: inline-flex; padding: 2px 8px; border-radius: 5px;
+    font-size: .72rem; font-weight: 700; background: rgba(255,255,255,.07); color: var(--muted);
+  }
+  .actor { color: var(--muted); font-size: .82rem; }
+  .ts    { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+
+  .empty-log { padding: 40px; text-align: center; color: var(--muted); }
+  .empty-log-icon { font-size: 2.5rem; margin-bottom: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">📋</div>
+  <div>
+    <h1>Registro de eventos</h1>
+    <div class="sub">Últimos 300 eventos del sistema, bot y panel de administración</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span style="color:var(--muted);font-size:.82rem;font-weight:700">Tipo:</span>
+  <a class="filter-pill {% if not event_type %}active{% endif %}" href="/admin/logs{% if category %}?category={{ category }}{% endif %}">Todos</a>
+  <a class="filter-pill {% if event_type == 'admin' %}active{% endif %}" href="/admin/logs?type=admin{% if category %}&category={{ category }}{% endif %}">⚙️ Admin</a>
+  <a class="filter-pill {% if event_type == 'bot' %}active{% endif %}"   href="/admin/logs?type=bot{% if category %}&category={{ category }}{% endif %}">🤖 Bot</a>
+  <a class="filter-pill {% if event_type == 'error' %}active{% endif %}" href="/admin/logs?type=error{% if category %}&category={{ category }}{% endif %}">❌ Error</a>
+  <a class="filter-pill {% if event_type == 'ai' %}active{% endif %}"    href="/admin/logs?type=ai{% if category %}&category={{ category }}{% endif %}">✨ IA</a>
+
+  <span class="filter-sep">|</span>
+  <span style="color:var(--muted);font-size:.82rem;font-weight:700">Categoría:</span>
+  {% for cat in ['auth','cycle','book','meeting','theme','ai','bug'] %}
+    <a class="filter-pill {% if category == cat %}active{% endif %}"
+       href="/admin/logs?category={{ cat }}{% if event_type %}&type={{ event_type }}{% endif %}">{{ cat }}</a>
+  {% endfor %}
+</div>
+
+<div class="card" style="padding:0">
+  {% if events %}
+  <div class="table-wrap" style="max-height:70vh">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tipo</th>
+          <th>Categoría</th>
+          <th>Descripción</th>
+          <th>Actor</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td style="color:var(--muted);font-size:.78rem">{{ e.id }}</td>
+          <td>
+            <span class="pill event-type-{{ e.event_type }}">{{ e.event_type }}</span>
+          </td>
+          <td>
+            {% if e.category %}<span class="cat-badge">{{ e.category }}</span>{% else %}—{% endif %}
+          </td>
+          <td style="max-width:420px;white-space:normal;word-break:break-word">{{ e.description }}</td>
+          <td class="actor">{{ e.actor or '—' }}</td>
+          <td class="ts">{{ (e.created_at | string)[:16] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-log">
+    <div class="empty-log-icon">📭</div>
+    <div>No hay eventos registrados{% if event_type or category %} con estos filtros{% endif %}.</div>
+    <div style="font-size:.83rem;margin-top:6px">Los eventos se generan automáticamente al usar el bot o el panel.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 import os
+import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -106,6 +107,7 @@ def init_db():
             final_date TIMESTAMP NULL,
             summary TEXT,
             notes TEXT,
+            location TEXT,
             created_by TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -157,24 +159,6 @@ def init_db():
             is_closed BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )""")
-        # Migrar columna poll_type si la tabla ya existía sin ella
-        cur.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name='telegram_polls' AND column_name='poll_type'
-            ) THEN
-                ALTER TABLE telegram_polls ADD COLUMN poll_type TEXT NOT NULL DEFAULT 'books';
-            END IF;
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name='telegram_polls' AND column_name='meeting_id'
-            ) THEN
-                ALTER TABLE telegram_polls ADD COLUMN meeting_id INTEGER REFERENCES meetings(id) ON DELETE SET NULL;
-            END IF;
-        END$$;
-        """)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS app_config (
             key TEXT PRIMARY KEY,
@@ -190,18 +174,6 @@ def init_db():
             updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
             UNIQUE(user_name, book_id)
         )""")
-        # Migrar columna location en meetings si no existe
-        cur.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name='meetings' AND column_name='location'
-            ) THEN
-                ALTER TABLE meetings ADD COLUMN location TEXT;
-            END IF;
-        END$$;
-        """)
         # Tabla de plantillas de mensajes editables desde admin
         cur.execute("""
         CREATE TABLE IF NOT EXISTS message_templates (
@@ -245,6 +217,27 @@ def init_db():
             first_name TEXT,
             username TEXT,
             last_seen TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_events (
+            id SERIAL PRIMARY KEY,
+            event_type VARCHAR(30) NOT NULL,
+            category VARCHAR(40),
+            description TEXT NOT NULL,
+            actor TEXT,
+            extra JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bug_reports (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            username TEXT,
+            description TEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            admin_notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""")
 
 
@@ -1078,7 +1071,7 @@ ALLOWED_TABLES = [
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
     "message_templates", "sent_messages", "scheduled_messages",
-    "book_waitlist", "club_members",
+    "book_waitlist", "club_members", "app_events", "bug_reports",
 ]
 
 
@@ -1236,3 +1229,64 @@ def get_galeria_data():
                 row['attendees'] = []
             rows.append(row)
         return rows
+
+
+# =========================================================
+# EVENT LOG
+# =========================================================
+
+def log_event(event_type: str, description: str, category: str = None, actor: str = None, extra: dict = None):
+    """Registra un evento en app_events. Nunca lanza excepción."""
+    try:
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                "INSERT INTO app_events (event_type, category, description, actor, extra) VALUES (%s,%s,%s,%s,%s)",
+                (event_type, category, description, actor,
+                 json.dumps(extra, ensure_ascii=False) if extra else None)
+            )
+    except Exception as e:
+        import logging as _log
+        _log.getLogger(__name__).warning("log_event failed: %s", e)
+
+
+def get_events(limit: int = 300, event_type: str = None, category: str = None):
+    with get_cursor() as cur:
+        conds, params = [], []
+        if event_type:
+            conds.append("event_type = %s"); params.append(event_type)
+        if category:
+            conds.append("category = %s"); params.append(category)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        params.append(limit)
+        cur.execute(f"SELECT * FROM app_events {where} ORDER BY created_at DESC LIMIT %s", params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+# =========================================================
+# BUG REPORTS
+# =========================================================
+
+def create_bug_report(user_id: int, username: str, description: str) -> int:
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "INSERT INTO bug_reports (user_id, username, description) VALUES (%s,%s,%s) RETURNING id",
+            (user_id, username, description)
+        )
+        return cur.fetchone()["id"]
+
+
+def get_bug_reports(status: str = None):
+    with get_cursor() as cur:
+        if status:
+            cur.execute("SELECT * FROM bug_reports WHERE status = %s ORDER BY created_at DESC", (status,))
+        else:
+            cur.execute("SELECT * FROM bug_reports ORDER BY created_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def update_bug_report(report_id: int, status: str, admin_notes: str = None):
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE bug_reports SET status=%s, admin_notes=%s, updated_at=NOW() WHERE id=%s",
+            (status, admin_notes, report_id)
+        )

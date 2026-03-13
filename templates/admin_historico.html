@@ -4,22 +4,12 @@
 
 {% block head_extra %}
 <style>
-  .page-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
   h1  { margin: 0; font-size: 1.5rem; }
   h2  { margin: 0 0 6px; font-size: 1.05rem; }
   .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
-  .count-badge  { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; background: rgba(99,102,241,.15); color: #c7d2fe; font-size: .8rem; font-weight: 700; margin-left: 8px; }
-  .cycle-badge  { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: rgba(99,102,241,.15); color: #c7d2fe; font-size: .8rem; font-weight: 700; }
-  .vote-badge   { display: inline-flex; align-items: center; min-width: 34px; padding: 5px 9px; border-radius: 999px; background: rgba(16,185,129,.16); color: #d1fae5; font-weight: 800; font-size: .88rem; }
-  .book-cell    { display: flex; gap: 10px; align-items: center; }
-  .book-cover   { width: 38px; min-width: 38px; height: 54px; object-fit: cover; border-radius: 7px; border: 1px solid rgba(255,255,255,.08); }
-  .book-cover-fallback { width: 38px; min-width: 38px; height: 54px; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: rgba(99,102,241,.2); border: 1px solid rgba(255,255,255,.08); }
-  .status-pill   { display: inline-flex; padding: 4px 10px; border-radius: 999px; font-size: .8rem; font-weight: 700; }
-  .status-draft  { background: rgba(245,158,11,.15); color: #fde68a; }
-  .status-scheduled { background: rgba(16,185,129,.15); color: #d1fae5; }
-  .status-closed { background: rgba(99,102,241,.15); color: #c7d2fe; }
-  .pill-open     { background: rgba(99,102,241,.15); color: #c7d2fe; }
-  .pill-closed   { background: rgba(255,255,255,.08); color: var(--muted); }
+  .count-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; background: rgba(99,102,241,.15); color: #c7d2fe; font-size: .8rem; font-weight: 700; margin-left: 8px; }
+  /* override: closed polls look grey, not indigo */
+  .pill-closed-muted { background: rgba(255,255,255,.08); color: var(--muted); display: inline-flex; padding: 4px 10px; border-radius: 999px; font-size: .8rem; font-weight: 700; }
   td.wrap { white-space: normal; word-break: break-word; }
   .table-wrap { max-height: 60vh; }
 </style>
@@ -57,7 +47,7 @@
             <td>
               <div class="book-cell">
                 {% if b.cover %}<img class="book-cover" src="{{ b.cover }}" alt="">
-                {% else %}<div class="book-cover-fallback">📘</div>{% endif %}
+                {% else %}<div class="book-cover-fb">📘</div>{% endif %}
                 <div>
                   <div style="font-weight:700">{{ b.title }}</div>
                   <div style="color:var(--muted);font-size:.82rem">{{ b.author or 'Desconocido' }}</div>
@@ -119,7 +109,7 @@
             <td style="color:var(--muted)">{{ m.book_title or '—' }}</td>
             <td style="color:var(--muted);font-size:.83rem">{{ m.final_date or '—' }}</td>
             <td>
-              <span class="status-pill {% if m.status == 'draft' %}status-draft{% elif m.status == 'scheduled' %}status-scheduled{% else %}status-closed{% endif %}">{{ m.status }}</span>
+              <span class="pill {% if m.status == 'draft' %}pill-draft{% elif m.status == 'scheduled' %}pill-scheduled{% else %}pill-closed{% endif %}">{{ m.status }}</span>
             </td>
             <td style="color:var(--muted)">{{ m.attendee_count }}</td>
             <td><a class="btn btn-soft btn-sm" href="/meeting/{{ m.id }}">Ver</a></td>
@@ -149,8 +139,8 @@
             <td style="font-weight:700">{{ p.poll_type }}</td>
             <td style="color:var(--muted)">{{ p.meeting_id or '—' }}</td>
             <td>
-              {% if p.is_closed %}<span class="status-pill pill-closed">Cerrada</span>
-              {% else %}<span class="status-pill pill-open">Abierta</span>{% endif %}
+              {% if p.is_closed %}<span class="pill-closed-muted">Cerrada</span>
+              {% else %}<span class="pill pill-open">Abierta</span>{% endif %}
             </td>
             <td style="color:var(--muted);font-size:.82rem">{{ (p.created_at | string)[:16] if p.created_at else '—' }}</td>
           </tr>

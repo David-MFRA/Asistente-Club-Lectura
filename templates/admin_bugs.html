@@ -1,0 +1,111 @@
+{% extends '_base.html' %}
+{% block title %}Bug Reports{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block head_extra %}
+<style>
+  h1  { margin: 0; font-size: 1.5rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+
+  .counts-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .count-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px; font-size: .84rem; font-weight: 700;
+    text-decoration: none; border: 1px solid var(--border); background: var(--panel);
+    color: var(--muted); transition: .15s ease;
+  }
+  .count-chip:hover, .count-chip.active { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.15); color: #a5b4fc; }
+  .count-num { font-size: .75rem; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.1); }
+
+  .report-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; margin-bottom: 12px;
+  }
+  .report-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .report-id    { color: var(--muted); font-size: .78rem; font-weight: 700; flex-shrink: 0; }
+  .report-user  { font-weight: 700; font-size: .9rem; }
+  .report-date  { color: var(--muted); font-size: .78rem; margin-top: 2px; }
+  .report-desc  { font-size: .9rem; line-height: 1.6; margin-bottom: 12px; padding: 10px 12px; background: rgba(255,255,255,.04); border-radius: 9px; border-left: 3px solid rgba(99,102,241,.4); }
+  .report-notes { font-size: .84rem; color: #6ee7b7; font-style: italic; margin-bottom: 10px; padding: 8px 10px; background: rgba(16,185,129,.07); border-radius: 8px; }
+
+  .status-open     { background: rgba(245,158,11,.15); color: #fde68a; }
+  .status-resolved { background: rgba(16,185,129,.15); color: #6ee7b7; }
+  .status-wontfix  { background: rgba(255,255,255,.08); color: var(--muted); }
+
+  .update-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .update-form .field { margin: 0; }
+
+  .empty-bugs { padding: 40px; text-align: center; color: var(--muted); }
+  .empty-bugs-icon { font-size: 2.5rem; margin-bottom: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">🐛</div>
+  <div>
+    <h1>Bug Reports</h1>
+    <div class="sub">Reportes enviados por usuarios con el comando /bug</div>
+  </div>
+</div>
+
+<div class="counts-bar">
+  <a class="count-chip {% if not status_filter %}active{% endif %}" href="/admin/bugs">
+    Todos <span class="count-num">{{ counts.open + counts.resolved + counts.wontfix }}</span>
+  </a>
+  <a class="count-chip {% if status_filter == 'open' %}active{% endif %}" href="/admin/bugs?status=open">
+    🟡 Abiertos <span class="count-num">{{ counts.open }}</span>
+  </a>
+  <a class="count-chip {% if status_filter == 'resolved' %}active{% endif %}" href="/admin/bugs?status=resolved">
+    🟢 Resueltos <span class="count-num">{{ counts.resolved }}</span>
+  </a>
+  <a class="count-chip {% if status_filter == 'wontfix' %}active{% endif %}" href="/admin/bugs?status=wontfix">
+    ⚪ Won't fix <span class="count-num">{{ counts.wontfix }}</span>
+  </a>
+</div>
+
+{% if reports %}
+  {% for r in reports %}
+  <div class="report-card">
+    <div class="report-header">
+      <span class="pill status-{{ r.status }}">
+        {% if r.status == 'open' %}🟡{% elif r.status == 'resolved' %}🟢{% else %}⚪{% endif %}
+        {{ r.status }}
+      </span>
+      <div>
+        <div class="report-user">👤 {{ r.username or r.user_id }}</div>
+        <div class="report-date">{{ (r.created_at | string)[:16] }} · #{{ r.id }}</div>
+      </div>
+    </div>
+
+    <div class="report-desc">{{ r.description }}</div>
+
+    {% if r.admin_notes %}
+    <div class="report-notes">📝 Nota admin: {{ r.admin_notes }}</div>
+    {% endif %}
+
+    <form class="update-form" method="post" action="/admin/bugs/{{ r.id }}/update">
+      <div class="field" style="min-width:180px;flex:1">
+        <label>Nota (opcional)</label>
+        <input type="text" name="admin_notes" placeholder="Añadir nota..." value="{{ r.admin_notes or '' }}">
+      </div>
+      <div class="field">
+        <label>Estado</label>
+        <select name="status">
+          <option value="open"     {% if r.status == 'open' %}selected{% endif %}>🟡 open</option>
+          <option value="resolved" {% if r.status == 'resolved' %}selected{% endif %}>🟢 resolved</option>
+          <option value="wontfix"  {% if r.status == 'wontfix' %}selected{% endif %}>⚪ wont fix</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Guardar</button>
+    </form>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-bugs">
+    <div class="empty-bugs-icon">🎉</div>
+    <div>No hay reportes{% if status_filter %} con estado «{{ status_filter }}»{% endif %}.</div>
+    <div style="font-size:.83rem;margin-top:6px">Los usuarios reportan bugs con <code>/bug descripción</code> en Telegram.</div>
+  </div>
+{% endif %}
+{% endblock %}

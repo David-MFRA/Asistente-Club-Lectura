@@ -79,6 +79,14 @@
         <div class="actions">
             <a class="btn btn-soft" href="/meetings">Reuniones</a>
             <a class="btn btn-soft" href="/admin">Dashboard</a>
+            <form action="/admin/send/dm-reminders/{{ meeting.id }}" method="post" style="display:inline">
+                <button type="submit" class="btn btn-soft"
+                        style="background:rgba(245,158,11,.14);color:#fde68a;border-color:rgba(245,158,11,.3)"
+                        onclick="return confirm('¿Enviar recordatorio privado a los miembros que aún no han confirmado?')"
+                        title="Solo llega a miembros que hayan hablado con el bot en privado">
+                    💬 DM a no confirmados
+                </button>
+            </form>
         </div>
     </div>
 

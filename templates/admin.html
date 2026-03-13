@@ -265,6 +265,7 @@
             <div class="drop-menu">
                 <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
                 <a class="drop-item" href="/admin/historico">📜 Histórico</a>
+                <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
                 <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
                 <a class="drop-item" href="/export">📤 Exportar CSV</a>
                 <div class="drop-sep"></div>
@@ -276,6 +277,7 @@
         <a class="nav-link" href="/admin/poster"><span>🖼️ Cartel</span></a>
         <a class="nav-link" href="/admin/messages"><span>✉️ Mensajes</span></a>
         <a class="nav-link" href="/admin/scheduler"><span>⏰ Programador</span></a>
+        <a class="nav-link" href="/publico" target="_blank"><span>🌐 Ver pública</span></a>
         <a class="nav-link" href="/admin/help"><span>❓ Ayuda</span></a>
         <a class="nav-link" href="/admin/demo"><span>🎯 Demo</span></a>
         <a class="nav-link" href="/admin/logout" style="color:#fca5a5"><span>Salir</span></a>
@@ -680,6 +682,8 @@ const TOUR_STEPS = [
     { selector: 'details:nth-of-type(3)', title: '📅 Reuniones', desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
     { selector: '.header-nav', title: '🧭 Navegación', desc: 'Accede al historial, base de datos, mensajes del bot, programador, cartel y lista de espera.' },
     { selector: '.reminder-grid', title: '🔔 Recordatorios', desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
+    { selector: '.ai-fab', title: '🤖 Asistente IA', desc: 'El botón morado lanza el asistente de IA contextual. Tiene acceso a todos los datos del club y puede ayudarte a redactar mensajes, analizar votaciones y planificar reuniones.' },
+    { selector: 'details:nth-of-type(5)', title: '🤖 Herramientas de IA', desc: 'Desde esta sección puedes generar preguntas de debate, citas literarias y diseñar carteles del club con inteligencia artificial.' },
 ];
 
 let tourStep = 0;

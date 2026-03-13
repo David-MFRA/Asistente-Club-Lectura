@@ -239,6 +239,13 @@ def init_db():
             added_at TIMESTAMP NOT NULL DEFAULT NOW(),
             UNIQUE(book_id, cycle_key)
         )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS club_members (
+            user_id BIGINT PRIMARY KEY,
+            first_name TEXT,
+            username TEXT,
+            last_seen TIMESTAMP NOT NULL DEFAULT NOW()
+        )""")
 
 
 # =========================================================
@@ -1071,7 +1078,7 @@ ALLOWED_TABLES = [
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
     "message_templates", "sent_messages", "scheduled_messages",
-    "book_waitlist",
+    "book_waitlist", "club_members",
 ]
 
 
@@ -1183,3 +1190,49 @@ def propose_meeting_date(meeting_id, proposed_date, proposed_by):
         """, (meeting_id, proposed_date))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+# =========================================================
+# CLUB MEMBERS
+# =========================================================
+
+def save_member(user_id: int, first_name: str = None, username: str = None):
+    """Guarda o actualiza un miembro del club cuando interactúa con el bot."""
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+        INSERT INTO club_members (user_id, first_name, username, last_seen)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            first_name = EXCLUDED.first_name,
+            username = EXCLUDED.username,
+            last_seen = NOW()
+        """, (user_id, first_name, username))
+
+def get_all_members():
+    """Devuelve todos los miembros registrados."""
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM club_members ORDER BY last_seen DESC")
+        return [dict(r) for r in cur.fetchall()]
+
+def get_galeria_data():
+    """Devuelve reuniones cerradas con su libro, portada, asistentes y notas, ordenadas por fecha desc."""
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT
+            m.id, m.name, m.cycle_key, m.final_date, m.summary, m.notes, m.location,
+            b.id AS book_id, b.title AS book_title, b.author AS book_author,
+            b.cover AS book_cover, b.pages AS book_pages, b.description AS book_description,
+            (SELECT COUNT(*)::int FROM meeting_attendance ma WHERE ma.meeting_id = m.id) AS attendee_count,
+            ARRAY(SELECT ma.user_name FROM meeting_attendance ma WHERE ma.meeting_id = m.id ORDER BY ma.created_at) AS attendees
+        FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        WHERE m.status = 'closed'
+        ORDER BY COALESCE(m.final_date, m.created_at) DESC
+        """)
+        rows = []
+        for r in cur.fetchall():
+            row = dict(r)
+            if row.get('attendees') is None:
+                row['attendees'] = []
+            rows.append(row)
+        return rows

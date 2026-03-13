@@ -4,6 +4,7 @@ import json
 import logging
 import unicodedata
 import time as _time
+import asyncio
 from datetime import datetime
 from http import HTTPStatus
 
@@ -11,8 +12,8 @@ from flask import Flask, request, render_template, redirect, url_for, session, R
 from asgiref.wsgi import WsgiToAsgi
 import uvicorn
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -110,6 +111,7 @@ ALLOWED_CHAT_ID   = os.getenv("ALLOWED_CHAT_ID")
 ADMIN_TELEGRAM_IDS = {
     x.strip() for x in os.getenv("ADMIN_TELEGRAM_ID", "").split(",") if x.strip()
 }
+GROUP_INVITE_LINK = os.getenv("GROUP_INVITE_LINK", "")
 
 if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
@@ -128,6 +130,35 @@ def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
         return False
     _cooldowns[key] = now
     return True
+
+async def _is_group_member(user_id: int) -> bool:
+    """Verifica si el usuario es miembro del grupo autorizado."""
+    if not ALLOWED_CHAT_ID:
+        return True
+    try:
+        member = await telegram_app.bot.get_chat_member(
+            chat_id=int(ALLOWED_CHAT_ID), user_id=user_id
+        )
+        return member.status not in ("left", "kicked", "banned")
+    except Exception:
+        return False
+
+async def _allowed(update) -> bool:
+    """Devuelve True si el update debe procesarse.
+    - Chats de grupo: solo el grupo autorizado
+    - Chats privados: solo si el usuario es miembro del grupo
+    """
+    chat = update.effective_chat
+    if not ALLOWED_CHAT_ID:
+        return True
+    # Admins siempre tienen acceso
+    if update.effective_user and str(update.effective_user.id) in ADMIN_TELEGRAM_IDS:
+        return True
+    if chat.type in ("group", "supergroup"):
+        return str(chat.id) == str(ALLOWED_CHAT_ID)
+    if chat.type == "private":
+        return await _is_group_member(update.effective_user.id)
+    return False
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -310,19 +341,77 @@ async def announce_winner(book):
 # --------------------------------------------------
 
 async def start(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update):
+        if update.effective_chat.type == "private":
+            await update.message.reply_text(
+                "⛔ Este bot es solo para miembros del club de lectura.\n\n"
+                "Si eres miembro del grupo, asegúrate de estar unido a él en Telegram "
+                "y vuelve a intentarlo.",
+                parse_mode=None
+            )
+        return
+
+    if update.effective_chat.type == "private":
+        # Registrar al usuario como miembro conocido
+        try:
+            db.save_member(
+                update.effective_user.id,
+                update.effective_user.first_name,
+                update.effective_user.username
+            )
+        except Exception:
+            pass
+        user = update.effective_user.first_name or update.effective_user.username or "miembro"
+        winner = db.get_winner_book()
+        meeting = db.get_latest_scheduled_meeting()
+
+        libro_line = f"📗 Libro actual: {winner['title']}" + (f" — {winner['author']}" if winner and winner.get('author') else "") if winner else "📗 Aún no hay libro elegido este ciclo"
+        reunion_line = ""
+        if meeting:
+            fecha = str(meeting["final_date"])[:10] if meeting.get("final_date") else "sin fecha"
+            reunion_line = f"\n📅 Próxima reunión: {meeting['name']} ({fecha})"
+
+        text = (
+            f"📚 ¡Hola, {user}! Bienvenid@ al bot del Club de Lectura.\n\n"
+            f"{libro_line}{reunion_line}\n\n"
+            f"Aquí puedes usar todos los comandos del club de forma privada "
+            f"sin molestar al grupo. Pulsa cualquier botón del menú o escribe "
+            f"un comando directamente.\n\n"
+            f"📖 /proponer título — Proponer un libro\n"
+            f"🗳️ /propuestas — Ver y votar propuestas\n"
+            f"📅 /reunion — Info de la próxima reunión\n"
+            f"✅ /asistir · ❌ /noasistir — Gestionar asistencia\n"
+            f"🏷️ /temas — Ver y votar temáticas\n"
+            f"💬 /preguntas — Preguntas de debate con IA\n"
+            f"✨ /cita — Cita literaria del libro actual\n"
+            f"💡 /recomendar — Recomendaciones de libros\n\n"
+            f"Usa /ayuda para la lista completa."
+        )
+        keyboard = ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("📚 /propuestas"), KeyboardButton("📅 /reunion")],
+                [KeyboardButton("✅ /asistir"),    KeyboardButton("🏷️ /temas")],
+                [KeyboardButton("📗 /libro"),      KeyboardButton("💡 /recomendar")],
+                [KeyboardButton("❓ /ayuda")],
+            ],
+            resize_keyboard=True,
+            input_field_placeholder="Elige una opción o escribe un comando…"
+        )
+        await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+        return
+
     raw = get_text("welcome_message")
     await update.message.reply_text(raw, parse_mode=None)
 
 
 async def ayuda_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     raw = get_text("help_message")
     await update.message.reply_text(raw, parse_mode=None)
 
 
 async def proponer(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "proponer", 30):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -378,7 +467,7 @@ async def proponer(update, context):
 
 
 async def propuestas(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         books = db.get_book_proposals()
         if not books:
@@ -410,7 +499,7 @@ async def propuestas(update, context):
 
 
 async def votar(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "votar", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -453,7 +542,7 @@ async def votar(update, context):
 
 
 async def resultados(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         books = db.get_cycle_results()
         if not books:
@@ -513,7 +602,7 @@ def _find_meeting_by_text(query: str):
 
 
 async def reunion(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         if context.args:
             query = " ".join(context.args)
@@ -564,7 +653,7 @@ async def reunion(update, context):
 
 
 async def asistir(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "asistir", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -601,7 +690,7 @@ async def asistir(update, context):
 
 
 async def noasistir(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "noasistir", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -638,7 +727,7 @@ async def noasistir(update, context):
 
 
 async def asistencia(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         meeting = db.get_latest_scheduled_meeting()
         if not meeting:
@@ -656,7 +745,7 @@ async def asistencia(update, context):
 
 
 async def tema(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "tema", 30):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -691,7 +780,7 @@ async def tema(update, context):
 
 
 async def temas(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         rows = db.get_themes()
         if not rows:
@@ -719,7 +808,7 @@ async def temas(update, context):
 
 
 async def votar_tema(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "votar_tema", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -747,7 +836,7 @@ async def votar_tema(update, context):
 
 
 async def trivia_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "trivia", 15):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -760,7 +849,7 @@ async def trivia_cmd(update, context):
 
 
 async def recomendar(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "recomendar", 60):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
         return
@@ -883,7 +972,7 @@ async def button_handler(update, context):
 # --------------------------------------------------
 
 async def libro_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         winner = db.get_winner_book()
         if not winner:
@@ -915,7 +1004,7 @@ async def libro_cmd(update, context):
 
 
 async def acta_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         meetings = db.get_meetings(limit=20)
         meeting = next((m for m in meetings if m.get("status") == "closed" and m.get("summary")), None)
@@ -935,7 +1024,7 @@ async def acta_cmd(update, context):
 
 
 async def progreso_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not context.args:
         await update.message.reply_text(
             f"📖 Usa {code('/progreso páginas')}\n_Ej: /progreso 120_",
@@ -971,7 +1060,7 @@ async def progreso_cmd(update, context):
 
 
 async def estadisticas_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         s = db.get_user_stats(user)
@@ -1468,7 +1557,7 @@ async def desfijar_cmd(update, context):
 
 async def preguntas_cmd(update, context):
     """Genera preguntas de debate para el libro actual."""
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "preguntas", 60):
         await update.message.reply_text("⏳ Espera un momento antes de generar más preguntas.", parse_mode=None)
         return
@@ -1492,7 +1581,7 @@ async def preguntas_cmd(update, context):
 
 
 async def lista_espera_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     try:
         theme = " ".join(context.args).strip() if context.args else None
         books = db.get_waitlist(theme=theme)
@@ -1520,7 +1609,7 @@ async def lista_espera_cmd(update, context):
 
 
 async def proponer_fecha_cmd(update, context):
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "proponer_fecha", 30):
         await update.message.reply_text("⏳ Espera unos segundos.", parse_mode=None)
         return
@@ -1574,7 +1663,7 @@ async def proponer_fecha_cmd(update, context):
 
 async def cita_cmd(update, context):
     """Genera una cita literaria relacionada con el libro actual."""
-    if not _allowed_chat(update): return
+    if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "cita", 30):
         await update.message.reply_text("⏳ Espera un momento.", parse_mode=None)
         return
@@ -1593,6 +1682,36 @@ async def cita_cmd(update, context):
     except Exception:
         logger.exception("Error en /cita")
         await update.message.reply_text("⚠️ Error generando cita.", parse_mode=None)
+
+
+async def private_text_handler(update, context):
+    """Responde a mensajes de texto libre en chats privados guiando al usuario."""
+    if update.effective_chat.type != "private":
+        return
+    if not await _allowed(update):
+        await update.message.reply_text(
+            "⛔ Este bot es solo para miembros del club de lectura.",
+            parse_mode=None
+        )
+        return
+
+    text_lower = (update.message.text or "").lower().strip()
+    # Saludos
+    if any(w in text_lower for w in ("hola", "hi", "hello", "buenas", "hey", "ola")):
+        await start(update, context)
+        return
+
+    # Guía genérica
+    await update.message.reply_text(
+        "👋 Usa los comandos del menú para interactuar con el club.\n\n"
+        "Pulsa el icono / en el teclado para ver todos los comandos, "
+        "o escribe /ayuda para la lista completa.\n\n"
+        "Algunos comandos rápidos:\n"
+        "📚 /propuestas — ver y votar libros\n"
+        "📅 /reunion — próxima reunión\n"
+        "✅ /asistir — apuntarte",
+        parse_mode=None
+    )
 
 
 # --------------------------------------------------
@@ -1636,6 +1755,7 @@ telegram_app.add_handler(CommandHandler("lista_espera",     lista_espera_cmd))
 telegram_app.add_handler(CommandHandler("proponer_fecha",   proponer_fecha_cmd))
 telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 telegram_app.add_handler(CallbackQueryHandler(button_handler))
+telegram_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND, private_text_handler))
 
 # --------------------------------------------------
 # FLASK — AUTH
@@ -2138,6 +2258,42 @@ async def admin_send_meeting_info():
         flash("Error enviando la información", "danger")
     return redirect(url_for("admin_dashboard"))
 
+@flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
+async def admin_send_dm_reminders(meeting_id):
+    auth = require_admin()
+    if auth: return auth
+    meeting = db.get_meeting(meeting_id)
+    if not meeting:
+        flash("Reunión no encontrada", "danger")
+        return redirect(url_for("admin_dashboard"))
+    members = db.get_all_members()
+    confirmed = set(db.get_attendance(meeting_id))
+    fecha = str(meeting["final_date"])[:16] if meeting.get("final_date") else "sin fecha"
+    sent = 0
+    failed = 0
+    for m in members:
+        name = m.get("first_name") or m.get("username") or "miembro"
+        if name in confirmed:
+            continue  # ya confirmó
+        try:
+            await telegram_app.bot.send_message(
+                chat_id=m["user_id"],
+                text=(
+                    f"📅 ¡Hola {name}! Te escribimos del Club de Lectura.\n\n"
+                    f"La próxima reunión es:\n"
+                    f"📌 {meeting['name']}\n"
+                    f"🗓️ {fecha}\n"
+                    + (f"📍 {meeting['location']}\n" if meeting.get("location") else "")
+                    + f"\n¿Vas a venir? Usa /asistir o /noasistir para confirmarlo. 🙋"
+                ),
+                parse_mode=None
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+    flash(f"Recordatorios enviados: {sent} enviados, {failed} no alcanzados (no han hablado con el bot previamente).", "success" if sent > 0 else "warning")
+    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
 @flask_app.post("/admin/send/pin-all")
 async def admin_send_pin_all():
     """Envía y fija un mensaje combinado con todas las reuniones activas."""
@@ -2196,6 +2352,50 @@ def admin_historico():
         themes_history=themes_history,
         polls_history=polls_history,
         meetings_history=meetings_history,
+    )
+
+# --------------------------------------------------
+# FLASK — GALERÍA
+# --------------------------------------------------
+
+@flask_app.get("/admin/galeria")
+def admin_galeria():
+    auth = require_admin()
+    if auth: return auth
+    meetings = db.get_galeria_data()
+    return render_template("admin_galeria.html", meetings=meetings)
+
+@flask_app.post("/admin/galeria/<int:meeting_id>/notes")
+def admin_galeria_notes(meeting_id):
+    auth = require_admin()
+    if auth: return auth
+    notes = request.form.get("notes", "").strip() or None
+    summary = request.form.get("summary", "").strip() or None
+    db.update_meeting(meeting_id=meeting_id, notes=notes, summary=summary)
+    flash("Notas guardadas", "success")
+    return redirect(url_for("admin_galeria"))
+
+# --------------------------------------------------
+# FLASK — PÁGINA PÚBLICA
+# --------------------------------------------------
+
+@flask_app.get("/publico")
+def public_page():
+    winner = db.get_winner_book()
+    meeting = db.get_latest_scheduled_meeting()
+    proposals = db.get_book_proposals()
+    top_theme = db.get_top_theme()
+    attendees = db.get_attendance(meeting["id"]) if meeting else []
+    galeria = db.get_galeria_data()[:3]  # últimos 3 libros leídos
+    return render_template(
+        "public.html",
+        winner=winner,
+        meeting=meeting,
+        proposals=proposals[:5],
+        top_theme=top_theme,
+        attendees=attendees,
+        galeria=galeria,
+        group_invite_link=GROUP_INVITE_LINK,
     )
 
 # --------------------------------------------------
@@ -2876,10 +3076,74 @@ async def webhook():
 # STARTUP / SHUTDOWN
 # --------------------------------------------------
 
+async def _keep_alive_ping():
+    """Hace ping a /health para mantener el servicio activo en Render."""
+    import urllib.request
+    url = f"{WEBHOOK_URL}/health"
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, urllib.request.urlopen, url)
+        logger.info("Keep-alive ping OK → %s", url)
+    except Exception:
+        logger.warning("Keep-alive ping falló → %s", url)
+
+
 async def startup():
     await telegram_app.initialize()
     await telegram_app.start()
     await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+
+    # Registrar comandos del bot en Telegram
+    user_commands = [
+        BotCommand("start", "Bienvenida y menú de comandos"),
+        BotCommand("ayuda", "Ver todos los comandos disponibles"),
+        BotCommand("proponer", "Proponer un libro para el ciclo"),
+        BotCommand("propuestas", "Ver propuestas y votar"),
+        BotCommand("votar", "Votar una propuesta por número"),
+        BotCommand("resultados", "Ver ranking de votos"),
+        BotCommand("libro", "Ver el libro del ciclo actual"),
+        BotCommand("tema", "Proponer una temática"),
+        BotCommand("temas", "Ver temáticas y votar"),
+        BotCommand("reunion", "Info de la próxima reunión"),
+        BotCommand("asistir", "Apuntarse a la reunión"),
+        BotCommand("noasistir", "Quitarse de la reunión"),
+        BotCommand("asistencia", "Ver lista de asistentes"),
+        BotCommand("acta", "Acta de la última reunión"),
+        BotCommand("preguntas", "Preguntas de debate con IA"),
+        BotCommand("cita", "Cita literaria del libro actual"),
+        BotCommand("recomendar", "Recomendaciones según temática"),
+        BotCommand("lista_espera", "Libros en lista de espera"),
+    ]
+    try:
+        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
+        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
+        logger.info("Comandos del bot registrados en Telegram")
+    except Exception:
+        logger.warning("No se pudieron registrar los comandos del bot")
+
+    # Comandos extra para admins (con scope por chat individual)
+    admin_extra = [
+        BotCommand("admin_ayuda", "Ayuda de administrador"),
+        BotCommand("ciclo", "Ver ciclo activo"),
+        BotCommand("nuevo_ciclo", "Crear nuevo ciclo"),
+        BotCommand("cerrar_ciclo", "Cerrar ciclo actual"),
+        BotCommand("anuncio", "Enviar mensaje al grupo"),
+        BotCommand("anunciar_ganador", "Anunciar libro ganador"),
+        BotCommand("encuesta_libros", "Lanzar encuesta de libros"),
+        BotCommand("encuesta_temas", "Lanzar encuesta de temáticas"),
+        BotCommand("enviar_recordatorio", "Enviar recordatorio de reunión"),
+        BotCommand("enviar_lectura", "Enviar recordatorio de lectura"),
+        BotCommand("fijar", "Fijar mensaje en el grupo"),
+        BotCommand("desfijar", "Desfijar mensaje actual"),
+    ]
+    for _admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await telegram_app.bot.set_my_commands(
+                user_commands + admin_extra,
+                scope=BotCommandScopeChat(chat_id=int(_admin_id))
+            )
+        except Exception:
+            logger.warning("No se pudieron registrar comandos admin para %s", _admin_id)
 
     # Recordatorio semanal — lunes 10:00
     scheduler.add_job(
@@ -2902,6 +3166,11 @@ async def startup():
     scheduler.add_job(
         send_scheduled_messages, "interval",
         minutes=5, id="scheduled_messages", replace_existing=True
+    )
+    # Keep-alive ping — cada 10 minutos
+    scheduler.add_job(
+        _keep_alive_ping, "interval",
+        minutes=10, id="keep_alive", replace_existing=True
     )
     scheduler.start()
 
@@ -2926,5 +3195,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

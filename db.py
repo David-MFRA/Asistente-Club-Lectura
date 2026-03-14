@@ -896,7 +896,7 @@ def get_pending_scheduled_messages():
     with get_cursor() as cur:
         cur.execute("""
         SELECT * FROM scheduled_messages
-        WHERE sent = FALSE AND send_at <= NOW()
+        WHERE sent = FALSE AND send_at <= NOW() AT TIME ZONE 'Europe/Madrid'
         ORDER BY send_at ASC
         """)
         return [dict(r) for r in cur.fetchall()]
@@ -934,10 +934,19 @@ def get_upcoming_meetings(limit=5):
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_cycle_dashboard_state():
+def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
     """Detecta en qué paso del ciclo estamos para el wizard del dashboard."""
-    cycle = get_current_cycle_key()
-    proposals_locked = get_config("proposals_locked_for") == cycle
+    if cycle is None or _proposals_locked_for is None:
+        with get_cursor() as cur:
+            cur.execute(
+                "SELECT key, value FROM app_config WHERE key IN ('active_cycle_key', 'proposals_locked_for')"
+            )
+            cfg = {r["key"]: r["value"] for r in cur.fetchall()}
+        if cycle is None:
+            cycle = cfg.get("active_cycle_key") or current_cycle_key()
+        if _proposals_locked_for is None:
+            _proposals_locked_for = cfg.get("proposals_locked_for", "")
+    proposals_locked = _proposals_locked_for == cycle
     books = get_book_proposals(cycle)
     open_book_poll = get_open_poll(poll_type="books")
     winner = get_winner_book(cycle)
@@ -1009,6 +1018,34 @@ def get_cycle_dashboard_state():
         "winner": winner,
         "next_meeting": next_meeting,
     }
+
+
+def get_active_cycle_states():
+    """Devuelve el estado del wizard para todos los ciclos con propuestas activas + el ciclo por defecto."""
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT key, value FROM app_config WHERE key IN ('active_cycle_key', 'proposals_locked_for')"
+        )
+        cfg = {r["key"]: r["value"] for r in cur.fetchall()}
+        cur.execute("""
+            SELECT DISTINCT cycle_key FROM book_proposals
+            WHERE is_active = TRUE
+            ORDER BY cycle_key DESC
+        """)
+        active_keys = [r["cycle_key"] for r in cur.fetchall()]
+
+    default_cycle = cfg.get("active_cycle_key") or current_cycle_key()
+    locked_for = cfg.get("proposals_locked_for", "")
+
+    if default_cycle not in active_keys:
+        active_keys.insert(0, default_cycle)
+
+    states = []
+    for ck in active_keys:
+        state = get_cycle_dashboard_state(cycle=ck, _proposals_locked_for=locked_for)
+        state["is_default"] = (ck == default_cycle)
+        states.append(state)
+    return states
 
 
 # =========================================================
@@ -1207,21 +1244,27 @@ def get_all_members():
         cur.execute("SELECT * FROM club_members ORDER BY last_seen DESC")
         return [dict(r) for r in cur.fetchall()]
 
-def get_galeria_data():
+def get_galeria_data(limit: int = None):
     """Devuelve reuniones cerradas con su libro, portada, asistentes y notas, ordenadas por fecha desc."""
     with get_cursor() as cur:
-        cur.execute("""
+        sql = """
         SELECT
             m.id, m.name, m.cycle_key, m.final_date, m.summary, m.notes, m.location,
             b.id AS book_id, b.title AS book_title, b.author AS book_author,
             b.cover AS book_cover, b.pages AS book_pages, b.description AS book_description,
-            (SELECT COUNT(*)::int FROM meeting_attendance ma WHERE ma.meeting_id = m.id) AS attendee_count,
-            ARRAY(SELECT ma.user_name FROM meeting_attendance ma WHERE ma.meeting_id = m.id ORDER BY ma.created_at) AS attendees
+            COUNT(ma.id)::int AS attendee_count,
+            ARRAY_AGG(ma.user_name ORDER BY ma.created_at)
+                FILTER (WHERE ma.user_name IS NOT NULL) AS attendees
         FROM meetings m
         LEFT JOIN books b ON b.id = m.book_id
+        LEFT JOIN meeting_attendance ma ON ma.meeting_id = m.id
         WHERE m.status = 'closed'
+        GROUP BY m.id, b.id
         ORDER BY COALESCE(m.final_date, m.created_at) DESC
-        """)
+        """
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        cur.execute(sql)
         rows = []
         for r in cur.fetchall():
             row = dict(r)

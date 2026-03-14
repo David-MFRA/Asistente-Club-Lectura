@@ -14,6 +14,10 @@
   .preview-box { margin-top: 12px; background: rgba(0,0,0,.35); border: 1px solid rgba(99,102,241,.25); border-radius: 10px; padding: 12px 14px; font-size: .82rem; white-space: pre-wrap; display: none; color: #d1d5db; line-height: 1.7; }
   .preview-label { font-size: .72rem; color: var(--primary); font-weight: 700; margin-bottom: 6px; }
   .default-val   { font-size: .75rem; color: var(--muted); margin-top: 8px; font-style: italic; }
+  .fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .fmt-btn { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: .8rem; color: var(--text); cursor: pointer; line-height: 1; transition: background .15s; }
+  .fmt-btn:hover { background: rgba(99,102,241,.25); border-color: var(--primary); }
+  .fmt-hint { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
 </style>
 {% endblock %}
 
@@ -35,6 +39,14 @@
   </div>
   <div class="card-body">
     <form method="post" action="/admin/messages/{{ t.key }}/edit" id="form-{{ t.key }}">
+      <div class="fmt-bar">
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<b>','</b>')" title="Negrita"><b>B</b></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<i>','</i>')" title="Cursiva"><i>I</i></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<u>','</u>')" title="Subrayado"><u>U</u></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<s>','</s>')" title="Tachado"><s>S</s></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<code>','</code>')" title="Código" style="font-family:monospace">&lt;/&gt;</button>
+        <button type="button" class="fmt-btn" onclick="fmtBullet('ta-{{ t.key }}')" title="Punto de lista">• lista</button>
+      </div>
       <textarea name="value" id="ta-{{ t.key }}" rows="4">{{ t.value }}</textarea>
       <div class="placeholders">Placeholders: {user_name} {book_title} {author} {meeting_name} {meeting_date} {location} {attendee_count} {count} {names}</div>
       <div class="actions">
@@ -61,6 +73,20 @@
 
 {% block extra_js %}
 <script>
+function fmtWrap(id, pre, suf) {
+  const ta = document.getElementById(id);
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e) || 'texto';
+  ta.setRangeText(pre + sel + suf, s, e, 'select');
+  ta.focus();
+}
+function fmtBullet(id) {
+  const ta = document.getElementById(id);
+  const s = ta.selectionStart;
+  const lineStart = ta.value.lastIndexOf('\n', s - 1) + 1;
+  ta.setRangeText('• ', lineStart, lineStart, 'end');
+  ta.focus();
+}
 async function previewMsg(key) {
   const ta = document.getElementById('ta-' + key);
   const box = document.getElementById('preview-' + key);

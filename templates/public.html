@@ -3,8 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Club de Lectura · Leyendo juntos</title>
-<meta name="description" content="Club de lectura — vota el próximo libro, apúntate a las reuniones y sigue nuestras lecturas.">
+<title>{{ club_name }} · Leyendo juntos</title>
+<meta name="description" content="{{ club_name }} — vota el próximo libro, apúntate a las reuniones y sigue nuestras lecturas.">{# ── Theme color override ────────────────────── #}
+{% if pub_theme == 'teal' %}
+<style>:root{--amber:#4ecdc4;--amber2:#7de8e2;--border:rgba(78,205,196,.14)}</style>
+{% elif pub_theme == 'indigo' %}
+<style>:root{--amber:#6366f1;--amber2:#a5b4fc;--border:rgba(99,102,241,.14)}</style>
+{% elif pub_theme == 'coral' %}
+<style>:root{--amber:#f87171;--amber2:#fca5a5;--border:rgba(248,113,113,.14)}</style>
+{% elif pub_theme == 'emerald' %}
+<style>:root{--amber:#34d399;--amber2:#6ee7b7;--border:rgba(52,211,153,.14)}</style>
+{% endif %}
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -159,6 +168,11 @@ nav{
   box-shadow:0 4px 20px rgba(232,184,109,.35);transition:.18s ease;
 }
 .btn-amber:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(232,184,109,.5)}
+.btn-amber--lg{padding:16px 30px;font-size:1rem;border-radius:13px;animation:pulse 2.5s ease-in-out infinite}
+.hero-qr{display:flex;flex-direction:column;align-items:center;gap:8px;margin-left:4px}
+.hero-qr img{border-radius:10px;border:2px solid rgba(232,184,109,.25);background:#fff;padding:6px}
+.hero-qr span{font-size:.68rem;color:var(--muted);font-family:var(--font-mono);letter-spacing:.05em}
+@media(max-width:768px){.hero-qr{display:none}}
 .btn-ghost{
   display:inline-flex;align-items:center;gap:7px;
   padding:13px 22px;border-radius:11px;font-size:.9rem;font-weight:700;
@@ -448,6 +462,7 @@ nav{
 }
 .tg-btn:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(34,158,217,.5)}
 .tg-btn svg{flex-shrink:0}
+.tg-btn--xl{padding:18px 36px;font-size:1.1rem;border-radius:14px;animation:pulse 2.5s ease-in-out infinite;letter-spacing:.01em}
 
 /* ── FOOTER ──────────────────────────────────── */
 footer{
@@ -514,18 +529,18 @@ footer a:hover{color:var(--amber)}
   <div class="hero-bg"></div>
   <div class="hero-inner">
     <div class="hero-text">
-      <div class="hero-eyebrow">📖 &nbsp; Club de Lectura</div>
+      <div class="hero-eyebrow">📖 &nbsp; {{ club_name }}{% if city %} &nbsp;·&nbsp; {{ city }}{% endif %}</div>
       <h1 class="hero-h1">
         Leemos,<br><em>debatimos</em><br>y crecemos.
       </h1>
       <p class="hero-sub">
-        Un club de lectura íntimo gestionado en Telegram. Votamos juntos el libro, quedamos para debatirlo y dejamos huella de cada encuentro.
+        {{ description or "Un club de lectura íntimo gestionado en Telegram. Votamos juntos el libro, quedamos para debatirlo y dejamos huella de cada encuentro." }}
       </p>
       <div class="hero-actions">
         {% if group_invite_link %}
-        <a class="btn-amber" href="{{ group_invite_link }}" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
-          Unirte al club
+        <a class="btn-amber btn-amber--lg" href="{{ group_invite_link }}" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
+          Unirte a {{ club_name }}
         </a>
         {% else %}
         <a class="btn-amber" href="#bot">
@@ -533,6 +548,12 @@ footer a:hover{color:var(--amber)}
         </a>
         {% endif %}
         <a class="btn-ghost" href="#libro">Ver lectura actual</a>
+        {% if group_invite_link %}
+        <div class="hero-qr">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=4" alt="QR Unirse" width="80" height="80" loading="lazy">
+          <span>Escanea para unirte</span>
+        </div>
+        {% endif %}
       </div>
     </div>
     <div class="hero-book">
@@ -795,9 +816,9 @@ footer a:hover{color:var(--amber)}
       {% endif %}
     </p>
     {% if group_invite_link %}
-    <a class="tg-btn" href="{{ group_invite_link }}" target="_blank" rel="noopener">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
-      Unirse al grupo de Telegram
+    <a class="tg-btn tg-btn--xl" href="{{ group_invite_link }}" target="_blank" rel="noopener">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
+      Unirme a {{ club_name }}
     </a>
     {% else %}
     <div style="font-family:var(--font-mono);font-size:.82rem;color:var(--muted);margin-top:8px">
@@ -809,7 +830,7 @@ footer a:hover{color:var(--amber)}
 
 <footer>
   <div class="footer-inner">
-    <div>📚 &nbsp; Club de Lectura &nbsp;·&nbsp; Gestionado con Telegram Bot</div>
+    <div>📚 &nbsp; {{ club_name }}{% if city %} &nbsp;·&nbsp; {{ city }}{% endif %} &nbsp;·&nbsp; Gestionado con Telegram Bot</div>
     <div>
       {% if group_invite_link %}
       <a href="{{ group_invite_link }}" target="_blank" rel="noopener">Únete al grupo</a>

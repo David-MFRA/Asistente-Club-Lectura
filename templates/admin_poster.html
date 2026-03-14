@@ -95,6 +95,18 @@
 .toggle-btn.active { background:rgba(99,102,241,.25); color:#a5b4fc; border-color:rgba(99,102,241,.4); }
 .no-selection { color:var(--muted); font-size:.8rem; text-align:center; padding:20px 0; line-height:1.6; }
 
+/* ── GLOBAL OVERRIDE — admin.css aplica font-size:16px/padding a todos los input ── */
+.poster-field input[type=range]    { padding:0; min-height:0; font-size:.85rem; }
+.poster-field input[type=color]    { padding:2px; min-height:0; }
+.poster-field input[type=checkbox] { width:15px; height:15px; padding:0; min-height:0; }
+.poster-field input[type=file]     { padding:0; background:none; border:none; min-height:0; font-size:.78rem; color:var(--muted); }
+.poster-field input[type=text],
+.poster-field input[type=url],
+.poster-field input[type=number],
+.poster-field textarea,
+.poster-field select               { padding:8px 10px; font-size:.85rem; min-height:0; }
+.poster-field textarea             { min-height:54px; }
+
 /* ── SCROLLBAR ──────────────────────────────────────── */
 ::-webkit-scrollbar { width:5px; height:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -530,7 +542,7 @@ function drawDecoColorful(t) {
   const grd2 = ctx.createLinearGradient(0,0,W*.44,H);
   grd2.addColorStop(0, hexToRgba(t.accent1, 0.82)); grd2.addColorStop(1, hexToRgba(t.accent2, 0.28));
   ctx.fillStyle = grd2;
-  roundRectPath(ctx, 0, 0, W*.43, H, 0, 0, 22, 22); ctx.fill();
+  roundRectPath(ctx, 0, 0, W*.43, H, 22); ctx.fill();
   ctx.font = '54px serif'; ctx.textAlign = 'center'; ctx.fillText('📚', W*.215, H/2+20); ctx.textAlign = 'left';
   ctx.strokeStyle = hexToRgba(t.accent1, 0.3); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(W*.455, 30); ctx.lineTo(W*.455, H-30); ctx.stroke();

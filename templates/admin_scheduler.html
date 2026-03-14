@@ -13,6 +13,10 @@
   .msg-text { font-size: .82rem; color: var(--text); opacity: .8; white-space: pre-wrap; max-height: 60px; overflow: hidden; }
   .badge-sent    { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgba(16,185,129,.15); color: var(--success); border: 1px solid rgba(16,185,129,.3); }
   .badge-pending { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
+  .fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .fmt-btn { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: .8rem; color: var(--text); cursor: pointer; line-height: 1; transition: background .15s; }
+  .fmt-btn:hover { background: rgba(99,102,241,.25); border-color: var(--primary); }
+  .fmt-hint { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
 </style>
 {% endblock %}
 
@@ -31,7 +35,16 @@
   <form method="post" action="/admin/scheduler/add">
     <div class="field">
       <label>Mensaje</label>
-      <textarea name="text" placeholder="Escribe el mensaje que se enviará al grupo..." required></textarea>
+      <div class="fmt-bar" data-target="sched-text">
+        <button type="button" class="fmt-btn" onclick="fmtWrap('sched-text','<b>','</b>')" title="Negrita"><b>B</b></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('sched-text','<i>','</i>')" title="Cursiva"><i>I</i></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('sched-text','<u>','</u>')" title="Subrayado"><u>U</u></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('sched-text','<s>','</s>')" title="Tachado"><s>S</s></button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('sched-text','<code>','</code>')" title="Código" style="font-family:monospace">&lt;/&gt;</button>
+        <button type="button" class="fmt-btn" onclick="fmtBullet('sched-text')" title="Punto de lista">• lista</button>
+      </div>
+      <div class="fmt-hint">Usa HTML: &lt;b&gt;negrita&lt;/b&gt; · &lt;i&gt;cursiva&lt;/i&gt; · &lt;u&gt;subrayado&lt;/u&gt; · &lt;s&gt;tachado&lt;/s&gt; · &lt;code&gt;código&lt;/code&gt;</div>
+      <textarea id="sched-text" name="text" placeholder="Escribe el mensaje que se enviará al grupo..." required></textarea>
     </div>
     <div class="field">
       <label>Enviar el</label>
@@ -70,6 +83,20 @@
 
 {% block extra_js %}
 <script>
+function fmtWrap(id, pre, suf) {
+  const ta = document.getElementById(id);
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e) || 'texto';
+  ta.setRangeText(pre + sel + suf, s, e, 'select');
+  ta.focus();
+}
+function fmtBullet(id) {
+  const ta = document.getElementById(id);
+  const s = ta.selectionStart;
+  const lineStart = ta.value.lastIndexOf('\n', s - 1) + 1;
+  ta.setRangeText('• ', lineStart, lineStart, 'end');
+  ta.focus();
+}
 window.PAGE_TOUR = [
   { selector: '.page-head',  title: '⏰ Programador de mensajes', desc: 'Programa mensajes para que se envíen automáticamente al grupo en una fecha y hora específica.' },
   { selector: '.card:first-of-type', title: '➕ Programar mensaje', desc: 'Escribe el mensaje, elige la fecha/hora y pulsa Programar. El bot lo enviará automáticamente.' },

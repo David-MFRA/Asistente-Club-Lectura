@@ -103,7 +103,15 @@ BOT_TOKEN         = os.getenv("BOT_TOKEN")
 WEBHOOK_URL       = os.getenv("WEBHOOK_URL")
 PORT              = int(os.environ.get("PORT", "10000"))
 ADMIN_SECRET      = os.getenv("ADMIN_SECRET", "")
-FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY", "cambia-esto-en-render")
+FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY")
+if not FLASK_SECRET_KEY:
+    import secrets as _secrets
+    FLASK_SECRET_KEY = _secrets.token_hex(32)
+    import logging as _log
+    _log.getLogger(__name__).warning(
+        "FLASK_SECRET_KEY no configurada — sesión no persistirá entre reinicios. "
+        "Define la variable de entorno para producción."
+    )
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
 ALLOWED_CHAT_ID   = os.getenv("ALLOWED_CHAT_ID")
@@ -212,6 +220,32 @@ def require_admin():
     if not is_admin_logged():
         return redirect(url_for("admin_login"))
     return None
+
+def get_csrf_token():
+    """Genera (o devuelve) el token CSRF de la sesión actual."""
+    import secrets as _s
+    if "csrf_token" not in session:
+        session["csrf_token"] = _s.token_hex(16)
+    return session["csrf_token"]
+
+flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
+
+@flask_app.before_request
+def csrf_protect():
+    """Valida el token CSRF en todos los POST de rutas /admin/* (excepto login)."""
+    if request.method != "POST":
+        return
+    if not request.path.startswith("/admin"):
+        return
+    if request.path in ("/admin/login",):
+        return
+    if not is_admin_logged():
+        return  # require_admin() ya maneja esto
+    token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
+    if not token or token != session.get("csrf_token"):
+        logger.warning("CSRF inválido en %s desde %s", request.path, request.remote_addr)
+        from flask import abort
+        abort(403)
 
 # --------------------------------------------------
 # BOT / GROUP HELPERS
@@ -401,13 +435,13 @@ async def start(update, context):
         return
 
     raw = get_text("welcome_message")
-    await update.message.reply_text(raw, parse_mode=None)
+    await update.message.reply_text(raw, parse_mode="HTML")
 
 
 async def ayuda_cmd(update, context):
     if not await _allowed(update): return
     raw = get_text("help_message")
-    await update.message.reply_text(raw, parse_mode=None)
+    await update.message.reply_text(raw, parse_mode="HTML")
 
 
 async def proponer(update, context):
@@ -884,7 +918,10 @@ async def recomendar(update, context):
 
 async def button_handler(update, context):
     query = update.callback_query
-    await query.answer()
+    # Security: only allow group members (same check as bot commands)
+    if not await _allowed(update):
+        await query.answer("⛔ No tienes permiso para usar esta función.", show_alert=True)
+        return
     data = query.data
     user = query.from_user.first_name or query.from_user.username or "alguien"
     try:
@@ -1467,7 +1504,7 @@ async def send_scheduled_messages():
     try:
         pending = db.get_pending_scheduled_messages()
         for msg in pending:
-            await send_to_group(msg["text"], parse_mode=None, message_type="scheduled")
+            await send_to_group(msg["text"], parse_mode="HTML", message_type="scheduled")
             db.mark_scheduled_message_sent(msg["id"])
             logger.info("Mensaje programado #%s enviado", msg["id"])
     except Exception:
@@ -1850,14 +1887,14 @@ def admin_dashboard():
     ranking          = db.get_book_ranking()
     open_poll_books  = db.get_open_poll(poll_type="books")
     open_poll_themes = db.get_open_poll(poll_type="themes")
-    cycle_state      = db.get_cycle_dashboard_state()
+    cycle_states     = db.get_active_cycle_states()
     tied_books       = db.get_tied_books()
     return render_template(
         "admin.html",
         books=books, meetings=meetings, themes=themes, ranking=ranking,
         open_poll_books=open_poll_books, open_poll_themes=open_poll_themes,
-        cycle_state=cycle_state, tied_books=tied_books,
-        tied_count=len(tied_books),
+        cycle_states=cycle_states, cycle_state=cycle_states[0] if cycle_states else None,
+        tied_books=tied_books, tied_count=len(tied_books),
     )
 
 # --------------------------------------------------
@@ -2433,7 +2470,8 @@ def public_page():
     proposals = db.get_book_proposals()
     top_theme = db.get_top_theme()
     attendees = db.get_attendance(meeting["id"]) if meeting else []
-    galeria = db.get_galeria_data()[:3]  # últimos 3 libros leídos
+    galeria = db.get_galeria_data(limit=3)
+    invite_link = db.get_config("public_invite_link", "") or GROUP_INVITE_LINK
     return render_template(
         "public.html",
         winner=winner,
@@ -2442,8 +2480,33 @@ def public_page():
         top_theme=top_theme,
         attendees=attendees,
         galeria=galeria,
-        group_invite_link=GROUP_INVITE_LINK,
+        group_invite_link=invite_link,
+        club_name=db.get_config("public_club_name", "Tribu de Libros"),
+        city=db.get_config("public_city", "León, España"),
+        description=db.get_config("public_description", ""),
+        pub_theme=db.get_config("public_theme", "amber"),
     )
+
+@flask_app.route("/admin/public-settings", methods=["GET", "POST"])
+def admin_public_settings():
+    auth = require_admin()
+    if auth: return auth
+    if request.method == "POST":
+        db.set_config("public_club_name", request.form.get("club_name", "").strip() or "Tribu de Libros")
+        db.set_config("public_city", request.form.get("city", "").strip() or "León, España")
+        db.set_config("public_description", request.form.get("description", "").strip())
+        db.set_config("public_invite_link", request.form.get("invite_link", "").strip())
+        db.set_config("public_theme", request.form.get("theme", "amber"))
+        flash("Configuración de la página pública guardada", "success")
+        return redirect(url_for("admin_public_settings"))
+    settings = {
+        "club_name": db.get_config("public_club_name", "Tribu de Libros"),
+        "city": db.get_config("public_city", "León, España"),
+        "description": db.get_config("public_description", ""),
+        "invite_link": db.get_config("public_invite_link", "") or GROUP_INVITE_LINK,
+        "pub_theme": db.get_config("public_theme", "amber"),
+    }
+    return render_template("admin_public_settings.html", **settings)
 
 # --------------------------------------------------
 # FLASK — VISOR DE BASE DE DATOS
@@ -2647,8 +2710,12 @@ def admin_scheduler_add():
 def admin_scheduler_delete(msg_id):
     auth = require_admin()
     if auth: return auth
-    db.delete_scheduled_message(msg_id)
-    flash("Mensaje eliminado", "success")
+    try:
+        db.delete_scheduled_message(msg_id)
+        flash("Mensaje eliminado", "success")
+    except Exception:
+        logger.exception("Error eliminando mensaje programado #%s", msg_id)
+        flash("No se pudo eliminar el mensaje", "danger")
     return redirect(url_for("admin_scheduler"))
 
 # --------------------------------------------------
@@ -3278,25 +3345,25 @@ async def startup():
 
     # Registrar comandos del bot en Telegram
     user_commands = [
-        BotCommand("start", "Bienvenida y menú de comandos"),
-        BotCommand("ayuda", "Ver todos los comandos disponibles"),
-        BotCommand("proponer", "Proponer un libro para el ciclo"),
-        BotCommand("propuestas", "Ver propuestas y votar"),
-        BotCommand("votar", "Votar una propuesta por número"),
-        BotCommand("resultados", "Ver ranking de votos"),
-        BotCommand("libro", "Ver el libro del ciclo actual"),
-        BotCommand("tema", "Proponer una temática"),
-        BotCommand("temas", "Ver temáticas y votar"),
-        BotCommand("reunion", "Info de la próxima reunión"),
-        BotCommand("asistir", "Apuntarse a la reunión"),
-        BotCommand("noasistir", "Quitarse de la reunión"),
-        BotCommand("asistencia", "Ver lista de asistentes"),
-        BotCommand("acta", "Acta de la última reunión"),
-        BotCommand("preguntas", "Preguntas de debate con IA"),
-        BotCommand("cita", "Cita literaria del libro actual"),
-        BotCommand("recomendar", "Recomendaciones según temática"),
-        BotCommand("lista_espera", "Libros en lista de espera"),
-        BotCommand("bug", "Reportar un problema o bug"),
+        BotCommand("start", "👋 Bienvenida y menú de comandos"),
+        BotCommand("ayuda", "❓ Ver todos los comandos disponibles"),
+        BotCommand("proponer", "📚 Proponer un libro para el ciclo"),
+        BotCommand("propuestas", "📋 Ver propuestas y votar"),
+        BotCommand("votar", "🗳️ Votar una propuesta por número"),
+        BotCommand("resultados", "🏆 Ver ranking de votos"),
+        BotCommand("libro", "📖 Ver el libro del ciclo actual"),
+        BotCommand("tema", "🎭 Proponer una temática"),
+        BotCommand("temas", "🎨 Ver temáticas y votar"),
+        BotCommand("reunion", "📅 Info de la próxima reunión"),
+        BotCommand("asistir", "✅ Apuntarse a la reunión"),
+        BotCommand("noasistir", "❌ Quitarse de la reunión"),
+        BotCommand("asistencia", "👥 Ver lista de asistentes"),
+        BotCommand("acta", "📝 Acta de la última reunión"),
+        BotCommand("preguntas", "🤖 Preguntas de debate con IA"),
+        BotCommand("cita", "✨ Cita literaria del libro actual"),
+        BotCommand("recomendar", "💡 Recomendaciones según temática"),
+        BotCommand("lista_espera", "⏳ Libros en lista de espera"),
+        BotCommand("bug", "🐛 Reportar un problema o bug"),
     ]
     try:
         await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
@@ -3307,18 +3374,18 @@ async def startup():
 
     # Comandos extra para admins (con scope por chat individual)
     admin_extra = [
-        BotCommand("admin_ayuda", "Ayuda de administrador"),
-        BotCommand("ciclo", "Ver ciclo activo"),
-        BotCommand("nuevo_ciclo", "Crear nuevo ciclo"),
-        BotCommand("cerrar_ciclo", "Cerrar ciclo actual"),
-        BotCommand("anuncio", "Enviar mensaje al grupo"),
-        BotCommand("anunciar_ganador", "Anunciar libro ganador"),
-        BotCommand("encuesta_libros", "Lanzar encuesta de libros"),
-        BotCommand("encuesta_temas", "Lanzar encuesta de temáticas"),
-        BotCommand("enviar_recordatorio", "Enviar recordatorio de reunión"),
-        BotCommand("enviar_lectura", "Enviar recordatorio de lectura"),
-        BotCommand("fijar", "Fijar mensaje en el grupo"),
-        BotCommand("desfijar", "Desfijar mensaje actual"),
+        BotCommand("admin_ayuda", "🛠️ Ayuda de administrador"),
+        BotCommand("ciclo", "🔄 Ver ciclo activo"),
+        BotCommand("nuevo_ciclo", "🆕 Crear nuevo ciclo"),
+        BotCommand("cerrar_ciclo", "🔒 Cerrar ciclo actual"),
+        BotCommand("anuncio", "📢 Enviar mensaje al grupo"),
+        BotCommand("anunciar_ganador", "🎉 Anunciar libro ganador"),
+        BotCommand("encuesta_libros", "📊 Lanzar encuesta de libros"),
+        BotCommand("encuesta_temas", "📊 Lanzar encuesta de temáticas"),
+        BotCommand("enviar_recordatorio", "🔔 Enviar recordatorio de reunión"),
+        BotCommand("enviar_lectura", "📖 Enviar recordatorio de lectura"),
+        BotCommand("fijar", "📌 Fijar mensaje en el grupo"),
+        BotCommand("desfijar", "📍 Desfijar mensaje actual"),
     ]
     for _admin_id in ADMIN_TELEGRAM_IDS:
         try:

@@ -52,6 +52,7 @@
     <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster">🖼️ Cartel</a>
     <div class="nav-sep"></div>
     <a class="nav-link" href="/publico" target="_blank">🌐 Pública</a>
+    <a class="nav-link {% if request.path == '/admin/public-settings' %}active{% endif %}" href="/admin/public-settings">⚙️ Config</a>
     <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">📋 Logs</a>
     <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs">🐛 Bugs</a>
     <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓</a>
@@ -153,5 +154,27 @@
 
 <script src="/static/js/admin.js"></script>
 {% block extra_js %}{% endblock %}
+<script>
+// ── CSRF: inyectar token en todos los formularios POST del panel ──
+(function() {
+  const token = "{{ csrf_token() }}";
+  document.querySelectorAll('form').forEach(function(f) {
+    if ((f.method || '').toLowerCase() !== 'post') return;
+    if (f.querySelector('input[name="csrf_token"]')) return;
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'csrf_token'; inp.value = token;
+    f.appendChild(inp);
+  });
+  // Para peticiones fetch/AJAX al admin
+  var origFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    if (opts.method && opts.method.toUpperCase() === 'POST' && typeof url === 'string' && url.startsWith('/admin')) {
+      opts.headers = Object.assign({}, opts.headers, { 'X-CSRF-Token': token });
+    }
+    return origFetch(url, opts);
+  };
+})();
+</script>
 </body>
 </html>

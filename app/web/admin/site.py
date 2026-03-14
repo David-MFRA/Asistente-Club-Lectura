@@ -99,40 +99,17 @@ def render_admin_cycle(require_admin):
     auth = require_admin()
     if auth:
         return auth
-    current_cycle = db.get_current_cycle_key()
+
+    active_keys = db.get_active_cycle_keys()
+    cycles = [db.get_cycle_state(k) for k in active_keys]
+
     all_cycles = db.get_all_cycle_keys()
-    books = db.get_book_proposals()
-    themes = db.get_themes()
-    winner = db.get_winner_book()
-    phase = _get_phase()
-
-    proposals_locked_for = db.get_config("proposals_locked_for") or ""
-    locked_cycles = {c.strip() for c in proposals_locked_for.split(",") if c.strip()}
-    is_locked = current_cycle in locked_cycles
-    active_theme = db.get_config("active_theme") or ""
-
-    open_theme_poll = db.get_open_poll(poll_type="themes")
-    open_book_poll = db.get_open_poll(poll_type="books")
-    meeting = db.get_latest_scheduled_meeting()
-    tied_themes = db.get_tied_themes()
-    tied_books = db.get_tied_books()
     suggested_name = _suggested_cycle_name()
 
     return render_template(
         "admin_ciclo.html",
-        current_cycle=current_cycle,
+        cycles=cycles,
         all_cycles=all_cycles,
-        books=books,
-        themes=themes,
-        winner=winner,
-        phase=phase,
-        is_locked=is_locked,
-        active_theme=active_theme,
-        open_theme_poll=open_theme_poll,
-        open_book_poll=open_book_poll,
-        meeting=meeting,
-        tied_themes=tied_themes,
-        tied_books=tied_books,
         suggested_name=suggested_name,
     )
 
@@ -145,10 +122,7 @@ async def activate_cycle(require_admin, send_to_group, logger):
     if not name:
         name = _suggested_cycle_name()
 
-    db.set_config("active_cycle_key", name)
-    db.set_config("proposals_locked_for", "")
-    db.set_config("active_theme", "")
-    _set_phase("setup")
+    db.add_active_cycle(name)
 
     # Create predefined themes if provided
     raw_themes = request.form.get("themes", "")
@@ -188,15 +162,13 @@ async def activate_cycle(require_admin, send_to_group, logger):
     return redirect(url_for("admin_ciclo"))
 
 
-def close_cycle(require_admin, logger):
+def close_cycle(require_admin, logger, cycle_key=None):
     auth = require_admin()
     if auth:
         return auth
-    cycle = db.get_current_cycle_key()
-    cycle_theme = db.get_config("active_theme") or None
-    db.close_cycle(cycle)
-    db.set_config("proposals_locked_for", "")
-    _set_phase("closed")
+    cycle = cycle_key or request.form.get("cycle_key") or db.get_current_cycle_key()
+    cycle_theme = db.get_config(f"active_theme:{cycle}") or db.get_config("active_theme") or None
+    db.close_cycle(cycle)  # also calls remove_active_cycle internally
     try:
         db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
     except Exception:

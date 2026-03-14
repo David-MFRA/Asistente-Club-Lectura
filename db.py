@@ -800,11 +800,96 @@ def get_all_meetings_history():
 # CONFIG & CYCLE MANAGEMENT
 # =========================================================
 
+def get_active_cycle_keys():
+    """Lista de ciclos actualmente abiertos (no cerrados)."""
+    raw = get_config("active_cycles") or ""
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if not keys:
+        # Backward compat: si la lista nueva no existe, usar el key individual
+        ck = get_config("active_cycle_key")
+        if ck:
+            keys = [ck]
+    return keys
+
+
+def add_active_cycle(key):
+    keys = get_active_cycle_keys()
+    if key not in keys:
+        keys.insert(0, key)
+    set_config("active_cycles", ",".join(keys))
+    set_config("active_cycle_key", keys[0])  # el más reciente como primario
+
+
+def remove_active_cycle(key):
+    keys = [k for k in get_active_cycle_keys() if k != key]
+    set_config("active_cycles", ",".join(keys))
+    if keys:
+        set_config("active_cycle_key", keys[0])
+
+
+def get_cycle_state(cycle_key):
+    """Estado completo de un ciclo para la página de gestión."""
+    books = get_books(cycle_key)
+    themes = get_themes(cycle_key)
+    winner = get_winner_book(cycle_key)
+
+    proposals_locked_for = get_config("proposals_locked_for") or ""
+    locked_cycles = {c.strip() for c in proposals_locked_for.split(",") if c.strip()}
+    is_locked = cycle_key in locked_cycles
+
+    active_theme = (
+        get_config(f"active_theme:{cycle_key}") or
+        get_config("active_theme") or ""
+    )
+
+    open_theme_poll = get_open_poll("themes", cycle_key=cycle_key)
+    open_book_poll = get_open_poll("books", cycle_key=cycle_key)
+
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT m.*, b.title AS book_title FROM meetings m
+        LEFT JOIN books b ON b.id = m.book_id
+        WHERE m.cycle_key = %s
+        ORDER BY COALESCE(m.final_date, m.created_at) DESC LIMIT 1
+        """, (cycle_key,))
+        row = cur.fetchone()
+        meeting = dict(row) if row else None
+
+    # Infer phase from DB state
+    if winner:
+        phase = "reading" if (meeting and meeting.get("final_date")) else "date_voting"
+    elif is_locked or open_book_poll:
+        phase = "book_voting"
+    elif books:
+        phase = "books"
+    elif open_theme_poll:
+        phase = "theme_voting"
+    elif themes:
+        phase = "theme_voting"
+    else:
+        phase = "setup"
+
+    return {
+        "cycle_key": cycle_key,
+        "books": books,
+        "themes": themes,
+        "winner": winner,
+        "is_locked": is_locked,
+        "active_theme": active_theme,
+        "phase": phase,
+        "open_theme_poll": open_theme_poll,
+        "open_book_poll": open_book_poll,
+        "meeting": meeting,
+    }
+
+
 def close_cycle(cycle_key=None):
     cycle_key = cycle_key or get_current_cycle_key()
     with get_cursor(commit=True) as cur:
         cur.execute("UPDATE book_proposals SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
         cur.execute("UPDATE themes SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
+    remove_active_cycle(cycle_key)
+
 
 def get_all_cycle_keys():
     with get_cursor() as cur:

@@ -13,24 +13,25 @@ async def wizard_new_cycle(require_admin, send_to_group, utcnow, logger):
 
     cycle_name = request.form.get("cycle_name", "").strip()
     if not cycle_name:
-        cycle_name = utcnow().strftime("%Y-%m")
-    cycle_name = cycle_name.upper()
+        from app.web.admin.site import _suggested_cycle_name
+        cycle_name = _suggested_cycle_name()
     db.set_config("active_cycle_key", cycle_name)
+    db.set_config("proposals_locked_for", "")
+    db.set_config("active_theme", "")
+    db.set_config("cycle_phase", "setup")
 
     try:
         text = (
-            f"📚 <b>Nuevo ciclo de lectura: {hesc(cycle_name)}</b>\n\n"
+            f"🔄 <b>¡Nuevo ciclo: {hesc(cycle_name)}!</b>\n\n"
             f"✨ Arranca una nueva ronda del club.\n"
-            f"Es momento de proponer lecturas para elegir el siguiente libro.\n\n"
-            f"📝 Propón con el comando:\n"
-            f"<code>/proponer título del libro</code>\n\n"
-            f"💡 Cuantas más propuestas tengamos, mejor saldrá la votación. ¡Anímate!"
+            f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas de libros.\n\n"
+            f"📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
         )
         await send_to_group(text, parse_mode="HTML", message_type="new_cycle")
-        flash(f"Ciclo {cycle_name} iniciado. Mensaje enviado al grupo.", "success")
+        flash(f"Ciclo «{cycle_name}» iniciado. Mensaje enviado al grupo.", "success")
     except Exception:
         logger.exception("Error en wizard new-cycle")
-        flash(f"Ciclo {cycle_name} creado pero no se pudo enviar el mensaje al grupo.", "warning")
+        flash(f"Ciclo «{cycle_name}» creado pero no se pudo enviar el mensaje al grupo.", "warning")
     return redirect(url_for("admin_dashboard"))
 
 

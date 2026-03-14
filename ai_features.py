@@ -12,11 +12,11 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
 GROQ_MODELS = [
-    "openai/gpt-oss-120b",
-    "moonshotai/kimi-k2-instruct",
     "llama-3.3-70b-versatile",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "qwen/qwen3-32b",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768",
 ]
 
 

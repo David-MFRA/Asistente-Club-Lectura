@@ -2143,80 +2143,6 @@ async def admin_crear_encuesta_temas():
 @flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/crear")
 async def admin_crear_encuesta_fechas(meeting_id):
     return await create_dates_poll(require_admin, meeting_id, telegram_app, TELEGRAM_CHAT_ID, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        meeting = db.get_meeting(meeting_id)
-        if not meeting:
-            return "Reunión no encontrada", 404
-        date_options = db.get_meeting_date_options(meeting_id)
-        if len(date_options) < 2:
-            return "Añade al menos 2 opciones de fecha primero", 400
-        if not TELEGRAM_CHAT_ID:
-            return "TELEGRAM_CHAT_ID no configurado", 500
-
-        poll_options = [str(o["option_date"])[:20] for o in date_options[:10]]
-        msg = await telegram_app.bot.send_poll(
-            chat_id=TELEGRAM_CHAT_ID,
-            question=f"📅 ¿Cuándo nos reunimos? — {meeting['name']}",
-            options=poll_options,
-            is_anonymous=False,
-            allows_multiple_answers=False,
-        )
-        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="dates", meeting_id=meeting_id)
-    except Exception:
-        logger.exception("Error creando encuesta fechas")
-        return "Error creando encuesta fechas", 500
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
-
-@flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/cerrar/<int:poll_db_id>")
-async def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
-    return await close_dates_poll(
-        require_admin,
-        meeting_id,
-        poll_db_id,
-        telegram_app,
-        send_to_group,
-        {"bold": bold, "italic": italic, "esc": esc},
-        logger,
-    )
-    auth = require_admin()
-    if auth: return auth
-    try:
-        poll = db.get_poll_by_id(poll_db_id)
-        if not poll:
-            return "Encuesta no encontrada", 404
-
-        tg_poll = await telegram_app.bot.stop_poll(
-            chat_id=poll["chat_id"],
-            message_id=poll["message_id"]
-        )
-        db.close_poll(poll_db_id)
-
-        # Asignar fecha ganadora a la reunión
-        if tg_poll.options:
-            winner_text = max(tg_poll.options, key=lambda o: o.voter_count).text
-            date_opts   = db.get_meeting_date_options(meeting_id)
-            for opt in date_opts:
-                opt_str = str(opt["option_date"])
-                if winner_text[:16] in opt_str[:20] or opt_str[:16] in winner_text[:20]:
-                    db.set_meeting_final_date(meeting_id, opt["option_date"])
-                    meeting_name = db.get_meeting(meeting_id)["name"]
-                    await send_to_group(
-                        f"📅 {bold('¡Fecha de reunión decidida!')}\n\n"
-                        f"La reunión {italic(meeting_name)} será el "
-                        f"{bold(esc(opt_str))}\\.\n\n"
-                        f"_Usa /asistir para apuntarte\\. ¡Os esperamos\\! 🎉_"
-                    )
-                    break
-    except Exception:
-        logger.exception("Error cerrando encuesta fechas")
-        return "Error cerrando encuesta fechas", 500
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
-
-# --------------------------------------------------
-# FLASK — REUNIONES
 # --------------------------------------------------
 
 @flask_app.route("/meetings", methods=["GET", "POST"])
@@ -2270,23 +2196,10 @@ def export():
 @flask_app.get("/close_voting")
 def close_voting():
     return render_close_voting(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    winner = db.get_winner_book()
-    if not winner:
-        return "No hay libros propuestos", 404
-    return f"Libro ganador actual: {winner['title']} ({winner['votes']} votos)"
 
 @flask_app.get("/attendance")
 def attendance():
     return render_attendance(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    latest_meeting = db.get_latest_meeting()
-    if not latest_meeting:
-        return render_template("attendance.html", meeting=None, attendees=[])
-    attendees = db.get_attendance(latest_meeting["id"])
-    return render_template("attendance.html", meeting=latest_meeting, attendees=attendees)
 
 # --------------------------------------------------
 # FLASK — TEMÁTICAS (admin CRUD)
@@ -2324,100 +2237,21 @@ def admin_theme_delete(theme_id):
 @flask_app.post("/admin/send/meeting-reminder")
 async def admin_send_meeting_reminder():
     return await send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        await send_meeting_reminder()
-        db.log_event("admin", "Recordatorio de reunión enviado manualmente", category="meeting", actor="admin")
-    except Exception:
-        logger.exception("Error enviando recordatorio de reunión manual")
-    return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/send/reading-reminder")
 async def admin_send_reading_reminder():
     return await send_manual_reading_reminder(require_admin, send_reading_reminder, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        await send_reading_reminder()
-    except Exception:
-        logger.exception("Error enviando recordatorio de lectura manual")
-    return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/send/meeting-info")
 async def admin_send_meeting_info():
     return await send_manual_meeting_info(require_admin, send_meeting_reminder, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        await send_meeting_reminder()
-        flash("Información de reunión enviada al grupo", "success")
-    except Exception:
-        logger.exception("Error enviando info de reunión")
-        flash("Error enviando la información", "danger")
-    return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
 async def admin_send_dm_reminders(meeting_id):
     return await send_dm_reminders(require_admin, meeting_id, telegram_app, logger)
-    auth = require_admin()
-    if auth: return auth
-    meeting = db.get_meeting(meeting_id)
-    if not meeting:
-        flash("Reunión no encontrada", "danger")
-        return redirect(url_for("admin_dashboard"))
-    members = db.get_all_members()
-    confirmed = set(db.get_attendance(meeting_id))
-    fecha = str(meeting["final_date"])[:16] if meeting.get("final_date") else "sin fecha"
-    sent = 0
-    failed = 0
-    for m in members:
-        name = m.get("first_name") or m.get("username") or "miembro"
-        if name in confirmed:
-            continue  # ya confirmó
-        try:
-            await telegram_app.bot.send_message(
-                chat_id=m["user_id"],
-                text=(
-                    f"📅 ¡Hola {name}! Te escribimos del Club de Lectura.\n\n"
-                    f"La próxima reunión es:\n"
-                    f"📌 {meeting['name']}\n"
-                    f"🗓️ {fecha}\n"
-                    + (f"📍 {meeting['location']}\n" if meeting.get("location") else "")
-                    + f"\n¿Vas a venir? Usa /asistir o /noasistir para confirmarlo. 🙋"
-                ),
-                parse_mode=None
-            )
-            sent += 1
-        except Exception:
-            failed += 1
-    flash(f"Recordatorios enviados: {sent} enviados, {failed} no alcanzados (no han hablado con el bot previamente).", "success" if sent > 0 else "warning")
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
-
-@flask_app.post("/admin/send/pin-all")
-async def admin_send_pin_all():
-    return await send_pin_all(require_admin, send_and_pin, logger)
-
-# --------------------------------------------------
-# FLASK — HISTÓRICO DE CICLOS
-# --------------------------------------------------
-
 @flask_app.get("/admin/historico")
 def admin_historico():
     return render_history(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    books_history  = db.get_all_books_history()
-    themes_history = db.get_all_themes_history()
-    polls_history  = db.get_all_polls_history()
-    meetings_history = db.get_all_meetings_history()
-    return render_template(
-        "admin_historico.html",
-        books_history=books_history,
-        themes_history=themes_history,
-        polls_history=polls_history,
-        meetings_history=meetings_history,
-    )
 
 # --------------------------------------------------
 # FLASK — GALERÍA
@@ -2426,21 +2260,10 @@ def admin_historico():
 @flask_app.get("/admin/galeria")
 def admin_galeria():
     return render_gallery(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    meetings = db.get_galeria_data()
-    return render_template("admin_galeria.html", meetings=meetings)
 
 @flask_app.post("/admin/galeria/<int:meeting_id>/notes")
 def admin_galeria_notes(meeting_id):
     return save_gallery_notes(require_admin, meeting_id)
-    auth = require_admin()
-    if auth: return auth
-    notes = request.form.get("notes", "").strip() or None
-    summary = request.form.get("summary", "").strip() or None
-    db.update_meeting(meeting_id=meeting_id, notes=notes, summary=summary)
-    flash("Notas guardadas", "success")
-    return redirect(url_for("admin_galeria"))
 
 # --------------------------------------------------
 # FLASK — PÁGINA PÚBLICA
@@ -2449,27 +2272,6 @@ def admin_galeria_notes(meeting_id):
 @flask_app.get("/publico")
 def public_page():
     return render_public_page(GROUP_INVITE_LINK)
-    winner = db.get_winner_book()
-    meeting = db.get_latest_scheduled_meeting()
-    proposals = db.get_book_proposals()
-    top_theme = db.get_top_theme()
-    attendees = db.get_attendance(meeting["id"]) if meeting else []
-    galeria = db.get_galeria_data(limit=3)
-    invite_link = db.get_config("public_invite_link", "") or GROUP_INVITE_LINK
-    return render_template(
-        "public.html",
-        winner=winner,
-        meeting=meeting,
-        proposals=proposals[:5],
-        top_theme=top_theme,
-        attendees=attendees,
-        galeria=galeria,
-        group_invite_link=invite_link,
-        club_name=db.get_config("public_club_name", "Tribu de Libros"),
-        city=db.get_config("public_city", "León, España"),
-        description=db.get_config("public_description", ""),
-        pub_theme=db.get_config("public_theme", "amber"),
-    )
 
 @flask_app.route("/admin/public-settings", methods=["GET", "POST"])
 def admin_public_settings():
@@ -2522,11 +2324,6 @@ def admin_message_edit(key):
 @flask_app.post("/admin/messages/<key>/reset")
 def admin_message_reset(key):
     return reset_admin_message(require_admin, key)
-    try:
-        rendered = template.format(**example_vars)
-    except (KeyError, ValueError):
-        rendered = template
-    return jsonify({"rendered": rendered})
 
 # --------------------------------------------------
 # FLASK — SENT MESSAGES HISTORY
@@ -2559,30 +2356,6 @@ def admin_scheduler_delete(msg_id):
 @flask_app.get("/admin/ai/questions")
 def admin_ai_questions():
     return render_ai_questions(require_admin, logger)
-    auth = require_admin()
-    if auth: return auth
-    winner = db.get_winner_book()
-    if not winner:
-        flash("No hay libro del ciclo activo", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        questions = ai_features.generate_discussion_questions(
-            winner["title"], winner.get("author", ""), winner.get("description", "")
-        )
-        content = f"💬 Preguntas de debate — {winner['title']}\n\n{questions}"
-        return render_template(
-            "admin_ai_preview.html",
-            content=content,
-            winner=winner,
-            content_type="questions",
-            send_url="/admin/ai/questions/send",
-            regen_url="/admin/ai/questions",
-            title="Preguntas de debate",
-        )
-    except Exception:
-        logger.exception("Error generando preguntas AI")
-        flash("Error generando preguntas", "danger")
-        return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/ai/questions/send")
 async def admin_ai_questions_send():
@@ -2591,45 +2364,10 @@ async def admin_ai_questions_send():
 @flask_app.get("/admin/ai/quote")
 def admin_ai_quote():
     return render_ai_quote(require_admin, logger)
-    auth = require_admin()
-    if auth: return auth
-    winner = db.get_winner_book()
-    if not winner:
-        flash("No hay libro del ciclo activo", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
-        content = f"✨ {quote}\n\n— Sobre «{winner['title']}»"
-        return render_template(
-            "admin_ai_preview.html",
-            content=content,
-            winner=winner,
-            content_type="quote",
-            send_url="/admin/ai/quote/send",
-            regen_url="/admin/ai/quote",
-            title="Cita literaria",
-        )
-    except Exception:
-        logger.exception("Error generando cita AI")
-        flash("Error generando cita", "danger")
-        return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/ai/quote/send")
 async def admin_ai_quote_send():
     return await send_ai_quote(require_admin, logger, send_to_group)
-    auth = require_admin()
-    if auth: return auth
-    content = request.form.get("content", "").strip()
-    if not content:
-        flash("Contenido vacío", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        await send_to_group(content, parse_mode=None, message_type="ai_quote")
-        flash("Cita enviada al grupo", "success")
-    except Exception:
-        logger.exception("Error enviando cita AI")
-        flash("Error enviando cita", "danger")
-    return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
 # FLASK — AI ASSISTANT (contextual)
@@ -2692,17 +2430,18 @@ def meeting_set_book(meeting_id):
 @flask_app.get("/admin/waitlist")
 def admin_waitlist():
     return render_waitlist(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    theme_filter = request.args.get('theme', '')
-    waitlist = db.get_waitlist(theme=theme_filter if theme_filter else None)
-    themes = db.get_waitlist_themes()
-    winner = db.get_winner_book()
-    books = db.get_book_proposals()
-    return render_template('admin_waitlist.html', waitlist=waitlist, themes=themes,
-                           theme_filter=theme_filter, winner=winner, books=books)
 
 @flask_app.post("/admin/waitlist/add")
+def admin_waitlist_add():
+    return add_waitlist_entry(require_admin)
+
+@flask_app.post("/admin/waitlist/<int:wl_id>/delete")
+def admin_waitlist_delete(wl_id):
+    return delete_waitlist_entry(require_admin, wl_id)
+
+@flask_app.post("/admin/waitlist/suggest")
+async def admin_waitlist_suggest():
+    return await suggest_waitlist_to_group(require_admin, send_to_group)
 
 # --------------------------------------------------
 # FLASK — DEMO / TOUR

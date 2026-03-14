@@ -16,8 +16,11 @@
   .danger-title { color: #fca5a5; font-weight: 700; margin-bottom: 4px; font-size: .95rem; }
   .danger-desc  { color: var(--muted); font-size: .85rem; margin-bottom: 12px; }
   .table-wrap   { overflow: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); max-height: 65vh; }
-  td { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table { min-width: 500px; }
+  th { z-index: 1; backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,.08); }
+  td { font-size: .88rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   td.wrap { white-space: normal; word-break: break-word; }
+  td form { display: contents; }
 </style>
 {% endblock %}
 

@@ -22,6 +22,9 @@ import trivia
 import recommendations
 import db
 import ai_features
+from app.bootstrap import serve
+from app.config import create_scheduler
+from app.telegram.registry import register_handlers
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
@@ -97,7 +100,7 @@ def get_text(key, **kwargs):
 # CONFIG
 # --------------------------------------------------
 
-scheduler = AsyncIOScheduler(timezone="Europe/Madrid")
+scheduler = create_scheduler()
 
 BOT_TOKEN         = os.getenv("BOT_TOKEN")
 WEBHOOK_URL       = os.getenv("WEBHOOK_URL")
@@ -105,12 +108,13 @@ PORT              = int(os.environ.get("PORT", "10000"))
 ADMIN_SECRET      = os.getenv("ADMIN_SECRET", "")
 FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY")
 if not FLASK_SECRET_KEY:
-    import secrets as _secrets
-    FLASK_SECRET_KEY = _secrets.token_hex(32)
+    import hashlib as _hashlib
+    _bot_token = os.getenv("BOT_TOKEN", "")
+    FLASK_SECRET_KEY = _hashlib.sha256(f"flask-{_bot_token}-secret".encode()).hexdigest()
     import logging as _log
     _log.getLogger(__name__).warning(
-        "FLASK_SECRET_KEY no configurada — sesión no persistirá entre reinicios. "
-        "Define la variable de entorno para producción."
+        "FLASK_SECRET_KEY no configurada — derivando de BOT_TOKEN. "
+        "Define la variable de entorno para mayor seguridad."
     )
 TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
@@ -284,9 +288,9 @@ async def send_to_group(text, parse_mode="MarkdownV2", reply_markup=None, messag
         return False
 
 async def send_and_pin(text, parse_mode=None, reply_markup=None):
-    """Envía un mensaje al grupo y lo fija. Guarda el message_id en app_config (soporte multi-pin con coma)."""
+    """Envía un mensaje al grupo y lo fija. Devuelve (sent, pinned)."""
     if not TELEGRAM_CHAT_ID:
-        return False
+        return False, False
     try:
         msg = await telegram_app.bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -300,18 +304,18 @@ async def send_and_pin(text, parse_mode=None, reply_markup=None):
                 message_id=msg.message_id,
                 disable_notification=True
             )
-            # Acumular IDs de mensajes fijados (coma-separado) y también guardar el último
             existing = db.get_config("pinned_message_ids") or ""
             ids = [x for x in existing.split(",") if x.strip()]
             ids.append(str(msg.message_id))
             db.set_config("pinned_message_ids", ",".join(ids))
             db.set_config("pinned_message_id", str(msg.message_id))
-        except Exception:
-            logger.warning("No se pudo fijar el mensaje (¿el bot es admin?)")
-        return True
+            return True, True
+        except Exception as e:
+            logger.warning("No se pudo fijar el mensaje: %s", e)
+            return True, False
     except Exception:
         logger.exception("Error en send_and_pin")
-        return False
+        return False, False
 
 async def unpin_group_message():
     """Desfija el mensaje actual del grupo."""
@@ -446,9 +450,6 @@ async def ayuda_cmd(update, context):
 
 async def proponer(update, context):
     if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "proponer", 30):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
     if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
         await update.message.reply_text(
             "❌ Las propuestas para este ciclo están cerradas. ¡Espera al siguiente ciclo!",
@@ -1580,11 +1581,17 @@ async def fijar_cmd(update, context):
         InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
         InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
     ]]
-    ok = await send_and_pin("\n".join(lines), reply_markup=InlineKeyboardMarkup(keyboard))
-    if ok:
-        await update.message.reply_text("📌 Mensaje fijado en el grupo.", parse_mode=None)
-    else:
+    sent, pinned = await send_and_pin("\n".join(lines), reply_markup=InlineKeyboardMarkup(keyboard))
+    if not sent:
         await update.message.reply_text("❌ Error enviando el mensaje.", parse_mode=None)
+    elif pinned:
+        await update.message.reply_text("📌 Mensaje enviado y fijado en el grupo.", parse_mode=None)
+    else:
+        await update.message.reply_text(
+            "✅ Mensaje enviado al grupo, pero no se ha podido fijar.\n"
+            "⚠️ Para fijar mensajes el bot debe ser administrador del grupo con permiso de «Fijar mensajes».",
+            parse_mode=None
+        )
 
 
 async def desfijar_cmd(update, context):
@@ -1798,45 +1805,47 @@ async def private_text_handler(update, context):
 # REGISTER HANDLERS
 # --------------------------------------------------
 
-telegram_app.add_handler(CommandHandler("start",      start))
-telegram_app.add_handler(CommandHandler("proponer",   proponer))
-telegram_app.add_handler(CommandHandler("propuestas", propuestas))
-telegram_app.add_handler(CommandHandler("votar",      votar))
-telegram_app.add_handler(CommandHandler("resultados", resultados))
-telegram_app.add_handler(CommandHandler("reunion",    reunion))
-telegram_app.add_handler(CommandHandler("asistir",    asistir))
-telegram_app.add_handler(CommandHandler("noasistir",  noasistir))
-telegram_app.add_handler(CommandHandler("asistencia", asistencia))
-telegram_app.add_handler(CommandHandler("tema",       tema))
-telegram_app.add_handler(CommandHandler("temas",      temas))
-telegram_app.add_handler(CommandHandler("votar_tema", votar_tema))
-telegram_app.add_handler(CommandHandler("trivia",     trivia_cmd))
-telegram_app.add_handler(CommandHandler("recomendar", recomendar))
-telegram_app.add_handler(CommandHandler("libro",            libro_cmd))
-telegram_app.add_handler(CommandHandler("acta",             acta_cmd))
-telegram_app.add_handler(CommandHandler("progreso",         progreso_cmd))
-telegram_app.add_handler(CommandHandler("estadisticas",     estadisticas_cmd))
-telegram_app.add_handler(CommandHandler("admin_ayuda",      admin_ayuda_cmd))
-telegram_app.add_handler(CommandHandler("ciclo",            ciclo_cmd))
-telegram_app.add_handler(CommandHandler("nuevo_ciclo",      nuevo_ciclo_cmd))
-telegram_app.add_handler(CommandHandler("cerrar_ciclo",     cerrar_ciclo_cmd))
-telegram_app.add_handler(CommandHandler("anuncio",          anuncio_cmd))
-telegram_app.add_handler(CommandHandler("anunciar_ganador", anunciar_ganador_cmd))
-telegram_app.add_handler(CommandHandler("enviar_recordatorio", enviar_recordatorio_cmd))
-telegram_app.add_handler(CommandHandler("enviar_lectura",   enviar_lectura_cmd))
-telegram_app.add_handler(CommandHandler("ayuda",            ayuda_cmd))
-telegram_app.add_handler(CommandHandler("encuesta_libros",  encuesta_libros_cmd))
-telegram_app.add_handler(CommandHandler("encuesta_temas",   encuesta_temas_cmd))
-telegram_app.add_handler(CommandHandler("fijar",            fijar_cmd))
-telegram_app.add_handler(CommandHandler("desfijar",         desfijar_cmd))
-telegram_app.add_handler(CommandHandler("preguntas",        preguntas_cmd))
-telegram_app.add_handler(CommandHandler("cita",             cita_cmd))
-telegram_app.add_handler(CommandHandler("lista_espera",     lista_espera_cmd))
-telegram_app.add_handler(CommandHandler("proponer_fecha",   proponer_fecha_cmd))
-telegram_app.add_handler(CommandHandler("bug",              bug_cmd))
-telegram_app.add_handler(ChatMemberHandler(handle_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
-telegram_app.add_handler(CallbackQueryHandler(button_handler))
-telegram_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND, private_text_handler))
+register_handlers(telegram_app, {
+    "start": start,
+    "proponer": proponer,
+    "propuestas": propuestas,
+    "votar": votar,
+    "resultados": resultados,
+    "reunion": reunion,
+    "asistir": asistir,
+    "noasistir": noasistir,
+    "asistencia": asistencia,
+    "tema": tema,
+    "temas": temas,
+    "votar_tema": votar_tema,
+    "trivia_cmd": trivia_cmd,
+    "recomendar": recomendar,
+    "libro_cmd": libro_cmd,
+    "acta_cmd": acta_cmd,
+    "progreso_cmd": progreso_cmd,
+    "estadisticas_cmd": estadisticas_cmd,
+    "admin_ayuda_cmd": admin_ayuda_cmd,
+    "ciclo_cmd": ciclo_cmd,
+    "nuevo_ciclo_cmd": nuevo_ciclo_cmd,
+    "cerrar_ciclo_cmd": cerrar_ciclo_cmd,
+    "anuncio_cmd": anuncio_cmd,
+    "anunciar_ganador_cmd": anunciar_ganador_cmd,
+    "enviar_recordatorio_cmd": enviar_recordatorio_cmd,
+    "enviar_lectura_cmd": enviar_lectura_cmd,
+    "ayuda_cmd": ayuda_cmd,
+    "encuesta_libros_cmd": encuesta_libros_cmd,
+    "encuesta_temas_cmd": encuesta_temas_cmd,
+    "fijar_cmd": fijar_cmd,
+    "desfijar_cmd": desfijar_cmd,
+    "preguntas_cmd": preguntas_cmd,
+    "cita_cmd": cita_cmd,
+    "lista_espera_cmd": lista_espera_cmd,
+    "proponer_fecha_cmd": proponer_fecha_cmd,
+    "bug_cmd": bug_cmd,
+    "handle_my_chat_member": handle_my_chat_member,
+    "button_handler": button_handler,
+    "private_text_handler": private_text_handler,
+})
 
 # --------------------------------------------------
 # FLASK — AUTH
@@ -2407,12 +2416,17 @@ async def admin_send_pin_all():
                 InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
             ])
         lines.append("\nUsa /asistir para apuntarte a una reunión concreta 📖")
-        await send_and_pin(
+        sent, pinned = await send_and_pin(
             "\n".join(lines),
             parse_mode=None,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        flash("Mensaje de reuniones fijado en el grupo", "success")
+        if pinned:
+            flash("Mensaje de reuniones enviado y fijado en el grupo", "success")
+        elif sent:
+            flash("Mensaje enviado al grupo, pero no se pudo fijar (¿el bot es admin con permisos de fijar?)", "warning")
+        else:
+            flash("Error enviando mensaje al grupo", "danger")
     except Exception:
         logger.exception("Error en pin-all")
         flash("Error fijando mensaje", "danger")
@@ -2942,9 +2956,12 @@ async def admin_wizard_new_cycle():
     auth = require_admin()
     if auth: return auth
     from datetime import timezone as _tz
-    cycle_name = datetime.now(_tz.utc).strftime("%Y-%m")
+    cycle_name = request.form.get("cycle_name", "").strip()
+    if not cycle_name:
+        cycle_name = datetime.now(_tz.utc).strftime("%Y-%m")
+    cycle_name = cycle_name.upper()
     db.set_config("active_cycle_key", cycle_name)
-    db.set_config("proposals_locked_for", "")
+    # No borrar proposals_locked_for: puede haber otros ciclos bloqueados
     try:
         text = (
             f"📚 ¡Nuevo ciclo de lectura — {cycle_name}!\n\n"
@@ -2966,7 +2983,7 @@ async def admin_wizard_lock_and_poll():
     """Cierra las propuestas y lanza la encuesta de libros."""
     auth = require_admin()
     if auth: return auth
-    cycle = db.get_current_cycle_key()
+    cycle = request.form.get("cycle") or db.get_current_cycle_key()
     books = db.get_book_proposals(cycle)
     if len(books) < 2:
         flash("Necesitas al menos 2 propuestas para lanzar la encuesta.", "danger")
@@ -2975,8 +2992,11 @@ async def admin_wizard_lock_and_poll():
         flash("TELEGRAM_CHAT_ID no configurado.", "danger")
         return redirect(url_for("admin_dashboard"))
     try:
-        # Bloquear propuestas
-        db.set_config("proposals_locked_for", cycle)
+        # Bloquear propuestas (acumulativo: soporte multi-ciclo)
+        _locked_now = db.get_config("proposals_locked_for") or ""
+        _locked_set = {x.strip() for x in _locked_now.split(",") if x.strip()}
+        _locked_set.add(cycle)
+        db.set_config("proposals_locked_for", ",".join(sorted(_locked_set)))
         # Crear encuesta de libros
         options = []
         for b in books[:10]:
@@ -2992,7 +3012,7 @@ async def admin_wizard_lock_and_poll():
             allows_multiple_answers=False,
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="books")
+                     poll_id=msg.poll.id, poll_type="books", cycle_key=cycle)
         flash("Propuestas cerradas y encuesta de libros lanzada en Telegram.", "success")
     except Exception:
         logger.exception("Error en wizard lock-and-poll")
@@ -3011,7 +3031,8 @@ async def admin_wizard_announce_date():
         return redirect(url_for("admin_dashboard"))
     try:
         fecha = str(meeting["final_date"])[:16]
-        winner = db.get_winner_book()
+        cycle = request.form.get("cycle") or db.get_current_cycle_key()
+        winner = db.get_winner_book(cycle)
         book_line = f"\n📗 Libro: {winner['title']}" if winner else ""
         location_line = f"\n📍 Lugar: {meeting['location']}" if meeting.get("location") else ""
         text = (
@@ -3434,15 +3455,17 @@ async def shutdown():
 
 
 async def main():
-    await startup()
-    asgi_app = WsgiToAsgi(flask_app)
-    server   = uvicorn.Server(
-        uvicorn.Config(asgi_app, host="0.0.0.0", port=PORT, log_level="info")
+    await serve(
+        flask_app,
+        telegram_app,
+        scheduler,
+        (
+            send_meeting_reminder,
+            send_reading_reminder,
+            send_day_before_reminder,
+            send_scheduled_messages,
+        ),
     )
-    try:
-        await server.serve()
-    finally:
-        await shutdown()
 
 
 if __name__ == "__main__":

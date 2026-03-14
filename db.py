@@ -946,9 +946,10 @@ def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
             cycle = cfg.get("active_cycle_key") or current_cycle_key()
         if _proposals_locked_for is None:
             _proposals_locked_for = cfg.get("proposals_locked_for", "")
-    proposals_locked = _proposals_locked_for == cycle
+    _locked_set = {x.strip() for x in (_proposals_locked_for or "").split(",") if x.strip()}
+    proposals_locked = cycle in _locked_set
     books = get_book_proposals(cycle)
-    open_book_poll = get_open_poll(poll_type="books")
+    open_book_poll = get_open_poll(poll_type="books", cycle_key=cycle)
     winner = get_winner_book(cycle)
     next_meeting = get_latest_scheduled_meeting()
     open_dates_poll = None

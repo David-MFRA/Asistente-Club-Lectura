@@ -2222,30 +2222,6 @@ async def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
 @flask_app.route("/meetings", methods=["GET", "POST"])
 def meetings_admin():
     return render_meetings(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    if request.method == "POST":
-        name         = request.form.get("meeting_name", "").strip()
-        meeting_date = request.form.get("meeting_date", "").strip() or None
-        location     = request.form.get("location", "").strip() or None
-        if not name:
-            meetings_list = db.get_meetings()
-            meetings_json = json.dumps([{'id': m['id'], 'name': m['name'], 'final_date': str(m['final_date'])[:10] if m.get('final_date') else None, 'status': m.get('status', 'draft')} for m in meetings_list])
-            return render_template("meetings.html", meetings=meetings_list, meetings_json=meetings_json, error="Falta el nombre")
-        try:
-            m = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
-            if location:
-                db.update_meeting(meeting_id=m["id"], location=location)
-        except Exception:
-            logger.exception("Error creando reunión")
-        return redirect(url_for("meetings_admin"))
-    meetings_list = db.get_meetings()
-    meetings_json = json.dumps([{
-        'id': m['id'], 'name': m['name'],
-        'final_date': str(m['final_date'])[:10] if m.get('final_date') else None,
-        'status': m.get('status', 'draft')
-    } for m in meetings_list])
-    return render_template("meetings.html", meetings=meetings_list, meetings_json=meetings_json)
 
 @flask_app.get("/themes")
 def themes_admin():
@@ -2255,47 +2231,13 @@ def themes_admin():
 def ranking_admin():
     return render_ranking(require_admin)
 
-@flask_app.get("/meeting/<int:meeting_id>")
-def meeting_detail_admin(meeting_id):
-    return render_meeting_detail(require_admin, meeting_id)
-    auth = require_admin()
-    if auth: return auth
-    meeting = db.get_meeting(meeting_id)
-    if not meeting:
-        return "Reunión no encontrada", 404
-    attendees    = db.get_attendance(meeting_id)
-    date_options = db.get_meeting_date_options(meeting_id)
-    open_poll    = db.get_open_poll(poll_type="dates", meeting_id=meeting_id)
-    return render_template(
-        "meeting_detail.html",
-        meeting=meeting,
-        attendees=attendees,
-        date_options=date_options,
-        open_poll=open_poll,
-    )
-
 @flask_app.post("/meeting/<int:meeting_id>/edit")
 def meeting_edit_admin(meeting_id):
     return update_meeting_page(require_admin, meeting_id)
-    auth = require_admin()
-    if auth: return auth
-    name       = request.form.get("name", "").strip()
-    final_date = request.form.get("final_date", "").strip() or None
-    summary    = request.form.get("summary", "").strip() or None
-    status     = request.form.get("status", "").strip() or None
-    location   = request.form.get("location", "").strip() or None
-    notes      = request.form.get("notes", "").strip() or None
-    db.update_meeting(meeting_id=meeting_id, name=name or None, final_date=final_date,
-                      summary=summary, status=status, location=location, notes=notes)
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
 @flask_app.post("/meeting/<int:meeting_id>/delete")
 def meeting_delete_admin(meeting_id):
     return delete_meeting_page(require_admin, meeting_id)
-    auth = require_admin()
-    if auth: return auth
-    db.delete_meeting(meeting_id)
-    return redirect(url_for("meetings_admin"))
 
 @flask_app.post("/meeting/<int:meeting_id>/date-option")
 def meeting_add_date_option_admin(meeting_id):
@@ -2532,24 +2474,6 @@ def public_page():
 @flask_app.route("/admin/public-settings", methods=["GET", "POST"])
 def admin_public_settings():
     return handle_public_settings(require_admin, GROUP_INVITE_LINK)
-    auth = require_admin()
-    if auth: return auth
-    if request.method == "POST":
-        db.set_config("public_club_name", request.form.get("club_name", "").strip() or "Tribu de Libros")
-        db.set_config("public_city", request.form.get("city", "").strip() or "León, España")
-        db.set_config("public_description", request.form.get("description", "").strip())
-        db.set_config("public_invite_link", request.form.get("invite_link", "").strip())
-        db.set_config("public_theme", request.form.get("theme", "amber"))
-        flash("Configuración de la página pública guardada", "success")
-        return redirect(url_for("admin_public_settings"))
-    settings = {
-        "club_name": db.get_config("public_club_name", "Tribu de Libros"),
-        "city": db.get_config("public_city", "León, España"),
-        "description": db.get_config("public_description", ""),
-        "invite_link": db.get_config("public_invite_link", "") or GROUP_INVITE_LINK,
-        "pub_theme": db.get_config("public_theme", "amber"),
-    }
-    return render_template("admin_public_settings.html", **settings)
 
 # --------------------------------------------------
 # FLASK — VISOR DE BASE DE DATOS
@@ -2558,40 +2482,14 @@ def admin_public_settings():
 @flask_app.get("/admin/db")
 def admin_db():
     return render_admin_db(require_admin, logger)
-    auth = require_admin()
-    if auth: return auth
-    tables = db.get_table_names()
-    table  = request.args.get("table", "books")
-    if table not in tables:
-        table = tables[0]
-    try:
-        cols, rows = db.get_table_rows(table)
-    except Exception:
-        logger.exception("Error cargando tabla")
-        cols, rows = [], []
-    return render_template("admin_db.html", tables=tables, table=table, cols=cols, rows=rows)
 
 @flask_app.post("/admin/db/<table>/delete/<int:row_id>")
 def admin_db_delete_row(table, row_id):
     return delete_db_row(require_admin, logger, table, row_id)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        db.delete_table_row(table, row_id)
-    except Exception:
-        logger.exception("Error borrando fila en tabla %s", table)
-    return redirect(url_for("admin_db", table=table))
 
 @flask_app.post("/admin/db/<table>/truncate")
 def admin_db_truncate(table):
     return truncate_db_table(require_admin, logger, table)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        db.truncate_table(table)
-    except Exception:
-        logger.exception("Error vaciando tabla %s", table)
-    return redirect(url_for("admin_db", table=table))
 
 # --------------------------------------------------
 # FLASK — BOOK EDIT (admin)
@@ -2600,20 +2498,6 @@ def admin_db_truncate(table):
 @flask_app.post("/admin/book/<int:book_id>/edit")
 def admin_book_edit(book_id):
     return edit_book_page(require_admin, logger, book_id)
-    auth = require_admin()
-    if auth: return auth
-    title       = request.form.get("title", "").strip() or None
-    author      = request.form.get("author", "").strip() or None
-    description = request.form.get("description", "").strip() or None
-    pages       = request.form.get("pages", "").strip() or None
-    cover       = request.form.get("cover", "").strip() or None
-    try:
-        db.update_book(book_id, title=title, author=author, description=description, pages=pages, cover=cover)
-        flash("Libro actualizado correctamente", "success")
-    except Exception:
-        logger.exception("Error editando libro")
-        flash("Error actualizando el libro", "danger")
-    return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
 # FLASK — SEND CUSTOM MESSAGE (admin)
@@ -2622,22 +2506,6 @@ def admin_book_edit(book_id):
 @flask_app.post("/admin/send/custom")
 async def admin_send_custom():
     return await send_custom_message(require_admin, logger, send_to_group)
-    auth = require_admin()
-    if auth: return auth
-    text = request.form.get("message", "").strip()
-    if not text:
-        flash("El mensaje no puede estar vacío", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        ok = await send_to_group(text, parse_mode=None)
-        if ok:
-            flash("Mensaje enviado al grupo", "success")
-        else:
-            flash("Error enviando el mensaje (¿TELEGRAM_CHAT_ID configurado?)", "danger")
-    except Exception:
-        logger.exception("Error enviando mensaje custom")
-        flash("Error enviando el mensaje", "danger")
-    return redirect(url_for("admin_dashboard"))
 
 # --------------------------------------------------
 # FLASK — MESSAGE TEMPLATES (admin)
@@ -2650,45 +2518,10 @@ def admin_messages():
 @flask_app.post("/admin/messages/<key>/edit")
 def admin_message_edit(key):
     return update_admin_message(require_admin, DEFAULT_MESSAGES, key)
-    auth = require_admin()
-    if auth: return auth
-    if key not in DEFAULT_MESSAGES:
-        return "Clave no válida", 400
-    value = request.form.get("value", "").strip()
-    if value:
-        db.set_message_template(key, value)
-        flash("Mensaje actualizado", "success")
-    return redirect(url_for("admin_messages"))
 
 @flask_app.post("/admin/messages/<key>/reset")
 def admin_message_reset(key):
     return reset_admin_message(require_admin, key)
-    auth = require_admin()
-    if auth: return auth
-    db.delete_message_template(key)
-    flash("Mensaje restablecido al valor por defecto", "success")
-    return redirect(url_for("admin_messages"))
-
-@flask_app.post("/admin/messages/preview")
-def admin_message_preview():
-    return preview_admin_message(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    from flask import jsonify
-    template = request.form.get("template", "")
-    example_vars = {
-        "user_name": "María García",
-        "book_title": "El nombre del viento",
-        "author": "Patrick Rothfuss",
-        "meeting_name": "Reunión de Abril",
-        "meeting_date": "2026-04-15 19:00",
-        "location": "Casa de Ana",
-        "attendee_count": "7",
-        "count": "7",
-        "names": "María, Carlos, Ana",
-        "location_line": "📍 Casa de Ana\n",
-        "author_line": "✍️ Patrick Rothfuss\n",
-    }
     try:
         rendered = template.format(**example_vars)
     except (KeyError, ValueError):
@@ -2714,33 +2547,10 @@ def admin_scheduler():
 @flask_app.post("/admin/scheduler/add")
 def admin_scheduler_add():
     return add_scheduled_message(require_admin, logger)
-    auth = require_admin()
-    if auth: return auth
-    text = request.form.get("text", "").strip()
-    send_at = request.form.get("send_at", "").strip()
-    if not text or not send_at:
-        flash("Texto y fecha son obligatorios", "danger")
-        return redirect(url_for("admin_scheduler"))
-    try:
-        db.schedule_message(text, send_at)
-        flash("Mensaje programado correctamente", "success")
-    except Exception:
-        logger.exception("Error programando mensaje")
-        flash("Error programando el mensaje", "danger")
-    return redirect(url_for("admin_scheduler"))
 
 @flask_app.post("/admin/scheduler/<int:msg_id>/delete")
 def admin_scheduler_delete(msg_id):
     return delete_scheduled_message(require_admin, logger, msg_id)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        db.delete_scheduled_message(msg_id)
-        flash("Mensaje eliminado", "success")
-    except Exception:
-        logger.exception("Error eliminando mensaje programado #%s", msg_id)
-        flash("No se pudo eliminar el mensaje", "danger")
-    return redirect(url_for("admin_scheduler"))
 
 # --------------------------------------------------
 # FLASK — AI FEATURES
@@ -2777,20 +2587,6 @@ def admin_ai_questions():
 @flask_app.post("/admin/ai/questions/send")
 async def admin_ai_questions_send():
     return await send_ai_questions(require_admin, logger, send_to_group)
-    auth = require_admin()
-    if auth: return auth
-    content = request.form.get("content", "").strip()
-    if not content:
-        flash("Contenido vacío", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        await send_to_group(content, parse_mode=None, message_type="ai_questions")
-        db.log_event("admin", "Preguntas de debate IA enviadas al grupo", category="ai", actor="admin")
-        flash("Preguntas de debate enviadas al grupo", "success")
-    except Exception:
-        logger.exception("Error enviando preguntas AI")
-        flash("Error enviando preguntas", "danger")
-    return redirect(url_for("admin_dashboard"))
 
 @flask_app.get("/admin/ai/quote")
 def admin_ai_quote():
@@ -2842,52 +2638,6 @@ async def admin_ai_quote_send():
 @flask_app.post("/admin/ai/ask")
 async def admin_ai_ask():
     return await ask_admin_ai(require_admin, _utcnow, logger)
-    auth = require_admin()
-    if auth: return jsonify({"error": "No autorizado"}), 401
-
-    question = request.json.get("question", "").strip() if request.is_json else request.form.get("question", "").strip()
-    if not question:
-        return jsonify({"error": "Pregunta vacía"}), 400
-
-    # Build context
-    cycle_key = db.get_current_cycle_key()
-    winner = db.get_winner_book()
-    proposals = db.get_book_proposals(cycle_key)
-    meeting = db.get_latest_scheduled_meeting()
-    attendees = db.get_attendance(meeting["id"]) if meeting else []
-    themes = db.get_themes(cycle_key)
-
-    context_lines = [
-        "Eres el asistente del Club de Lectura. Responde siempre en español.",
-        f"Fecha actual: {_utcnow().strftime('%d/%m/%Y')}",
-        f"Ciclo actual: {cycle_key}",
-    ]
-    if winner:
-        context_lines.append(f"Libro del ciclo: «{winner['title']}»" + (f" de {winner['author']}" if winner.get('author') else "") + f" ({winner.get('votes', 0)} votos)")
-        if winner.get('description'):
-            context_lines.append(f"Sinopsis: {winner['description'][:200]}")
-    if proposals:
-        tops = proposals[:5]
-        prop_str = ", ".join(f"«{b['title']}» ({b['votes']} votos)" for b in tops)
-        context_lines.append(f"Propuestas actuales (top 5): {prop_str}")
-    if meeting:
-        fecha = str(meeting['final_date'])[:16] if meeting.get('final_date') else 'Sin fecha'
-        context_lines.append(f"Próxima reunión: {meeting['name']} — {fecha}")
-        if meeting.get('location'):
-            context_lines.append(f"Lugar: {meeting['location']}")
-        if attendees:
-            context_lines.append(f"Asistentes ({len(attendees)}): {', '.join(attendees[:10])}")
-
-    full_prompt = "\n".join(context_lines) + f"\n\nPregunta del administrador: {question}"
-
-    try:
-        answer = ai_features._groq_chat(full_prompt)
-        if not answer:
-            return jsonify({"error": "No hay respuesta de la IA (¿está configurado GROQ_API_KEY?)"}), 503
-        return jsonify({"answer": answer})
-    except Exception as e:
-        logger.exception("Error en AI ask")
-        return jsonify({"error": str(e)}), 500
 
 # --------------------------------------------------
 # FLASK — POSTER DESIGNER
@@ -2916,42 +2666,6 @@ def admin_ciclo():
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
     return activate_cycle(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    name = request.form.get("cycle_name", "").strip()
-    if not name:
-        flash("El nombre del ciclo no puede estar vacío", "danger")
-        return redirect(url_for("admin_ciclo"))
-    db.set_config("active_cycle_key", name)
-    db.set_config("proposals_locked_for", "")  # unlock proposals for new cycle
-    db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
-    flash(f"Ciclo «{name}» activado correctamente", "success")
-    return redirect(url_for("admin_ciclo"))
-
-@flask_app.post("/admin/ciclo/cerrar")
-def admin_ciclo_cerrar():
-    return close_cycle(require_admin, logger)
-    auth = require_admin()
-    if auth: return auth
-    cycle = db.get_current_cycle_key()
-    cycle_theme = db.get_config("active_theme") or None
-    db.close_cycle(cycle)
-    db.set_config("proposals_locked_for", "")
-    try:
-        db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
-    except Exception:
-        logger.exception("Error añadiendo runners-up a la lista de espera")
-    db.log_event("admin", f"Ciclo «{cycle}» cerrado", category="cycle", actor="admin")
-    flash(f"Ciclo «{cycle}» cerrado. Propuestas y temáticas desactivadas.", "success")
-    return redirect(url_for("admin_ciclo"))
-
-# --------------------------------------------------
-# FLASK — CYCLE WIZARD
-# --------------------------------------------------
-
-@flask_app.post("/admin/wizard/new-cycle")
-async def admin_wizard_new_cycle():
-    return await wizard_new_cycle(require_admin, send_to_group, _utcnow, logger)
 
 
 @flask_app.post("/admin/wizard/lock-and-poll")
@@ -2989,52 +2703,6 @@ def admin_waitlist():
                            theme_filter=theme_filter, winner=winner, books=books)
 
 @flask_app.post("/admin/waitlist/add")
-def admin_waitlist_add():
-    return add_waitlist_entry(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    book_id = request.form.get('book_id', type=int)
-    cycle_theme = request.form.get('cycle_theme', '').strip() or None
-    notes = request.form.get('notes', '').strip() or None
-    if not book_id:
-        flash("Falta el ID del libro", "danger")
-        return redirect(url_for('admin_waitlist'))
-    cycle_key = db.get_current_cycle_key()
-    db.add_to_waitlist(book_id=book_id, cycle_key=cycle_key, cycle_theme=cycle_theme,
-                       added_by='admin', notes=notes)
-    flash("Libro añadido a la lista de espera", "success")
-    return redirect(url_for('admin_waitlist'))
-
-@flask_app.post("/admin/waitlist/<int:wl_id>/delete")
-def admin_waitlist_delete(wl_id):
-    return delete_waitlist_entry(require_admin, wl_id)
-    auth = require_admin()
-    if auth: return auth
-    db.remove_from_waitlist(wl_id)
-    flash("Eliminado de la lista de espera", "success")
-    return redirect(url_for('admin_waitlist'))
-
-@flask_app.post("/admin/waitlist/suggest")
-async def admin_waitlist_suggest():
-    return await suggest_waitlist_to_group(require_admin, send_to_group)
-    auth = require_admin()
-    if auth: return auth
-    theme = request.form.get('theme', '').strip()
-    books = db.get_waitlist(theme=theme if theme else None)
-    if not books:
-        flash("No hay libros en la lista de espera para esa temática", "warning")
-        return redirect(url_for('admin_waitlist'))
-    lines = ["📚 *Lista de espera — libros pendientes*\n"]
-    if theme:
-        lines[0] = f"📚 *Lista de espera — temática: {theme}*\n"
-    for i, b in enumerate(books[:10], 1):
-        lines.append(f"{i}. {b['title']}" + (f" — {b['author']}" if b.get('author') else ""))
-        if b.get('votes_at_time'):
-            lines[-1] += f" ({b['votes_at_time']} votos en su ciclo)"
-    lines.append("\n_¿Alguno de estos te apetece releer o proponer?_")
-    await send_to_group("\n".join(lines), parse_mode=None)
-    flash("Sugerencias enviadas al grupo", "success")
-    return redirect(url_for('admin_waitlist'))
 
 # --------------------------------------------------
 # FLASK — DEMO / TOUR

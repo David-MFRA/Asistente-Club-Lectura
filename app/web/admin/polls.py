@@ -307,23 +307,21 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
             max_votes = max(o.voter_count for o in tg_poll.options)
             tied_opts = [o for o in tg_poll.options if o.voter_count == max_votes and max_votes > 0]
             if len(tied_opts) > 1:
-                # Tiebreaker for dates
-                if len(tied_opts) >= 2:
-                    opts = [o.text for o in tied_opts[:10]]
-                    tie_poll = await telegram_app.bot.send_poll(
-                        chat_id=poll["chat_id"],
-                        question="⚖️ Desempate de fechas: ¿cuándo quedamos?",
-                        options=opts,
-                        is_anonymous=False,
-                        allows_multiple_answers=False,
-                    )
-                    db.save_poll(
-                        chat_id=tie_poll.chat_id,
-                        message_id=tie_poll.message_id,
-                        poll_id=tie_poll.poll.id,
-                        poll_type="dates",
-                        meeting_id=meeting_id,
-                    )
+                opts = [o.text for o in tied_opts[:10]]
+                tie_poll = await telegram_app.bot.send_poll(
+                    chat_id=poll["chat_id"],
+                    question="⚖️ Desempate de fechas: ¿cuándo quedamos?",
+                    options=opts,
+                    is_anonymous=False,
+                    allows_multiple_answers=False,
+                )
+                db.save_poll(
+                    chat_id=tie_poll.chat_id,
+                    message_id=tie_poll.message_id,
+                    poll_id=tie_poll.poll.id,
+                    poll_type="dates",
+                    meeting_id=meeting_id,
+                )
                 flash(f"Empate entre {len(tied_opts)} fechas. Encuesta de desempate lanzada.", "warning")
                 return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 

@@ -16,6 +16,15 @@ class BookHandlers:
     async def proponer(self, update, context):
         if not await self.allowed(update):
             return
+        if not self.check_cooldown(update.effective_user.id, "proponer", 30):
+            await update.message.reply_text("⏳ Espera unos segundos antes de volver a proponer.", parse_mode=None)
+            return
+        if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
+            await update.message.reply_text(
+                "❌ Las propuestas para este ciclo están cerradas. ¡Espera al siguiente ciclo!",
+                parse_mode=None,
+            )
+            return
         title = " ".join(context.args).strip()
         if not title:
             await update.message.reply_text(

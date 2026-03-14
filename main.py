@@ -516,57 +516,6 @@ async def ayuda_cmd(update, context):
 
 async def proponer(update, context):
     return await book_handlers.proponer(update, context)
-    if not await _allowed(update): return
-    if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
-        await update.message.reply_text(
-            "❌ Las propuestas para este ciclo están cerradas. ¡Espera al siguiente ciclo!",
-            parse_mode=None
-        )
-        return
-    title = " ".join(context.args).strip()
-    if not title:
-        await update.message.reply_text(
-            f"📖 Usa {code('/proponer título del libro')}", parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        wait_msg = await update.message.reply_text(
-            f"🔍 Buscando _{esc(title)}_\\.\\.\\.", parse_mode="MarkdownV2"
-        )
-        book = books_api.google_books(title)
-        if not book:
-            await wait_msg.delete()
-            await update.message.reply_text(
-                "❌ No encontré ese libro\\. Prueba con un título más completo\\.",
-                parse_mode="MarkdownV2"
-            )
-            return
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.insert_book(book, user)
-        db.log_event("bot", f"Libro propuesto: «{book['title']}»", category="book", actor=user)
-        await wait_msg.delete()
-
-        lines = [f"✅ {bold('¡Libro propuesto!')} por {italic(user)}\n"]
-        lines.append(f"📗 {bold(book['title'])}")
-        if book.get("author"):
-            lines.append(f"✍️ {italic(book['author'])}")
-        if book.get("pages"):
-            lines.append(f"📄 {esc(str(book['pages']))} páginas")
-        if book.get("description"):
-            desc = book["description"]
-            if len(desc) > 300:
-                desc = desc[:297] + "…"
-            lines.append(f"\n💬 _{esc(desc)}_")
-        lines.append(f"\n_Usa /propuestas y /votar para votar\\._")
-        caption = "\n".join(lines)
-
-        if book.get("cover"):
-            await update.message.reply_photo(photo=book["cover"], caption=caption, parse_mode="MarkdownV2")
-        else:
-            await update.message.reply_text(caption, parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /proponer")
-        await update.message.reply_text("⚠️ Error añadiendo el libro\\.", parse_mode="MarkdownV2")
 
 
 async def propuestas(update, context):
@@ -2464,7 +2413,7 @@ def admin_ciclo():
 
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
-    return _run_async(activate_cycle(require_admin, send_to_group, logger))
+    return _run_async(activate_cycle(require_admin, send_to_group, logger, telegram_app, TELEGRAM_CHAT_ID))
 
 @flask_app.post("/admin/ciclo/cerrar")
 def admin_ciclo_cerrar():

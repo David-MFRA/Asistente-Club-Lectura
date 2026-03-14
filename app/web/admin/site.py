@@ -114,7 +114,7 @@ def render_admin_cycle(require_admin):
     )
 
 
-async def activate_cycle(require_admin, send_to_group, logger):
+async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None, telegram_chat_id=None):
     auth = require_admin()
     if auth:
         return auth
@@ -122,21 +122,44 @@ async def activate_cycle(require_admin, send_to_group, logger):
     if not name:
         name = _suggested_cycle_name()
 
+    # Validate themes before creating anything
+    raw_themes = request.form.get("themes", "")
+    candidate_themes = [t.strip() for t in raw_themes.split(",") if t.strip()]
+    if len(candidate_themes) < 2:
+        flash("Añade al menos 2 temáticas para crear el ciclo.", "danger")
+        return redirect(url_for("admin_ciclo"))
+
     db.add_active_cycle(name)
 
-    # Create predefined themes if provided
-    raw_themes = request.form.get("themes", "")
+    # Create predefined themes
     created_themes = []
-    for t in raw_themes.split(","):
-        t = t.strip()
-        if t:
-            try:
-                db.create_theme(t, created_by="admin", cycle_key=name)
-                created_themes.append(t)
-            except Exception:
-                pass
+    for t in candidate_themes:
+        try:
+            db.create_theme(t, created_by="admin", cycle_key=name)
+            created_themes.append(t)
+        except Exception:
+            pass
 
     db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
+
+    # Launch theme poll automatically if >= 2 themes were created
+    poll_launched = False
+    if len(created_themes) >= 2 and telegram_app and telegram_chat_id:
+        try:
+            options = [t[:100] for t in created_themes[:10]]
+            msg_poll = await telegram_app.bot.send_poll(
+                chat_id=telegram_chat_id,
+                question="🏷️ ¿Qué temática elegimos para este ciclo?",
+                options=options,
+                is_anonymous=False,
+                allows_multiple_answers=False,
+            )
+            db.save_poll(chat_id=msg_poll.chat_id, message_id=msg_poll.message_id,
+                         poll_id=msg_poll.poll.id, poll_type="themes", cycle_key=name)
+            db.set_config("cycle_phase", "theme_voting")
+            poll_launched = True
+        except Exception:
+            logger.exception("Error lanzando encuesta de temas automáticamente")
 
     # Announce in group
     try:
@@ -146,19 +169,21 @@ async def activate_cycle(require_admin, send_to_group, logger):
                 "\n\n🏷️ <b>Temáticas propuestas:</b>\n"
                 + "\n".join(f"  • {hesc(t)}" for t in created_themes)
             )
+        poll_note = "" if poll_launched else "\n\n📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
         msg = (
             f"🔄 <b>¡Nuevo ciclo: {hesc(name)}!</b>\n\n"
             f"Comienza un nuevo ciclo de lectura. "
             f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
             + themes_line
-            + "\n\n📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
+            + poll_note
         )
         await send_to_group(msg, parse_mode="HTML", message_type="new_cycle")
     except Exception:
         logger.exception("Error enviando mensaje de nuevo ciclo al grupo")
 
     themes_msg = f" con {len(created_themes)} temática{'s' if len(created_themes) != 1 else ''}" if created_themes else ""
-    flash(f"Ciclo «{name}» activado{themes_msg}. Mensaje enviado al grupo.", "success")
+    poll_msg = " y encuesta lanzada" if poll_launched else ""
+    flash(f"Ciclo «{name}» activado{themes_msg}{poll_msg}. Mensaje enviado al grupo.", "success")
     return redirect(url_for("admin_ciclo"))
 
 

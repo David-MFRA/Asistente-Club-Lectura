@@ -264,7 +264,8 @@
 
         <!-- Wizard temáticas -->
         <div style="margin-bottom:12px">
-          <div style="font-size:.82rem;font-weight:700;margin-bottom:6px">🏷️ Temáticas (opcional)</div>
+          <div style="font-size:.82rem;font-weight:700;margin-bottom:4px">🏷️ Temáticas de la encuesta <span style="color:#f87171;font-weight:400">(mínimo 2)</span></div>
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Se lanzará la encuesta al grupo justo después del mensaje de inicio.</div>
           <div class="theme-suggestions" id="theme-suggestions">
             {% for t in ["Novela negra","Ciencia ficción","Terror","Romance","Fantasía","Histórica","Contemporánea","Thriller","Autobiografía","Clásicos"] %}
             <button type="button" class="btn btn-soft" style="font-size:.72rem;padding:3px 8px" onclick="addTheme('{{ t }}')">+{{ t }}</button>
@@ -275,10 +276,11 @@
             <button type="button" class="btn btn-soft" style="font-size:.78rem" onclick="addCustomTheme()">+</button>
           </div>
           <div id="theme-tags" style="display:flex;flex-wrap:wrap;gap:5px;min-height:28px"></div>
+          <div id="themes-error" style="display:none;color:#f87171;font-size:.78rem;margin-top:4px">Añade al menos 2 temáticas para poder lanzar la encuesta.</div>
           <input type="hidden" name="themes" id="themes-hidden">
         </div>
 
-        <button class="btn btn-primary" type="submit" onclick="packThemes()" style="width:100%">✅ Crear ciclo</button>
+        <button class="btn btn-primary" type="submit" id="submit-cycle-btn" onclick="return submitCycle()" style="width:100%">✅ Crear ciclo</button>
       </form>
     </div>
 
@@ -327,10 +329,26 @@ function renderTags() {
     container.appendChild(chip);
   });
 }
-function addTheme(t) { if (t.trim()) { _themes.add(t.trim()); renderTags(); } }
+function addTheme(t) { if (t.trim()) { _themes.add(t.trim()); renderTags(); updateSubmitBtn(); } }
 function addCustomTheme() { const i = document.getElementById('theme-custom-input'); addTheme(i.value); i.value = ''; }
-function packThemes() { document.getElementById('themes-hidden').value = [..._themes].join(','); }
+function updateSubmitBtn() {
+  const btn = document.getElementById('submit-cycle-btn');
+  const ok = _themes.size >= 2;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '' : '0.5';
+  btn.style.cursor = ok ? '' : 'not-allowed';
+  document.getElementById('themes-error').style.display = (!ok && _themes.size > 0) ? '' : 'none';
+}
+function submitCycle() {
+  if (_themes.size < 2) {
+    document.getElementById('themes-error').style.display = '';
+    return false;
+  }
+  document.getElementById('themes-hidden').value = [..._themes].join(',');
+  return true;
+}
 document.getElementById('theme-custom-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTheme(); } });
+updateSubmitBtn();
 
 // ── Page tour ──────────────────────────────────────────
 window.PAGE_TOUR = [

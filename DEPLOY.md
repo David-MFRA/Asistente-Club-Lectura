@@ -106,6 +106,8 @@ En Render, ve a **Environment → Environment Variables** y añade:
 > ⚠️ Asegúrate de que `WEBHOOK_URL` NO tiene barra final y es exactamente la URL pública de Render.
 
 > ℹ️ Si el grupo migra a supergrupo, el bot intentará detectar el nuevo `chat_id` automáticamente al enviar mensajes. Aun así, conviene mantener `TELEGRAM_CHAT_ID` y `ALLOWED_CHAT_ID` alineados con el valor definitivo en Render.
+>
+> ℹ️ La app ya no se sirve con `WsgiToAsgi` sobre Uvicorn. Ahora usa Flask en modo threaded para evitar el error `Single thread executor already being used, would deadlock` al disparar acciones admin y cargar CSS/JS en paralelo.
 
 ### 3.3 Primer despliegue
 

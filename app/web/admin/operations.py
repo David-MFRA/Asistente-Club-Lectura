@@ -44,15 +44,18 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
     auth = require_admin()
     if auth:
         return auth
+
     meeting = db.get_meeting(meeting_id)
     if not meeting:
         flash("Reunion no encontrada", "danger")
         return redirect(url_for("admin_dashboard"))
+
     members = db.get_all_members()
     confirmed = set(db.get_attendance(meeting_id))
     date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "sin fecha"
     sent = 0
     failed = 0
+
     for member in members:
         name = member.get("first_name") or member.get("username") or "miembro"
         if name in confirmed:
@@ -61,18 +64,19 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
             await telegram_app.bot.send_message(
                 chat_id=member["user_id"],
                 text=(
-                    f"Hola {name}.\n\n"
-                    f"La proxima reunion es:\n"
-                    f"{meeting['name']}\n"
-                    f"{date_text}\n"
-                    + (f"{meeting['location']}\n" if meeting.get("location") else "")
-                    + "\nUsa /asistir o /noasistir para confirmarlo."
+                    f"📚 Hola, {name}.\n\n"
+                    f"Te recuerdo la proxima reunion del club:\n"
+                    f"🫶 {meeting['name']}\n"
+                    f"🕒 {date_text}\n"
+                    + (f"📍 {meeting['location']}\n" if meeting.get("location") else "")
+                    + "\nResponde en el grupo con /asistir o /noasistir para confirmar."
                 ),
                 parse_mode=None,
             )
             sent += 1
         except Exception:
             failed += 1
+
     flash(
         f"Recordatorios enviados: {sent} enviados, {failed} no alcanzados.",
         "success" if sent > 0 else "warning",
@@ -90,25 +94,44 @@ async def send_pin_all(require_admin, send_and_pin, logger):
         if not upcoming:
             flash("No hay reuniones activas para fijar", "danger")
             return redirect(url_for("admin_dashboard"))
-        lines = ["REUNIONES ACTIVAS\n"]
+
+        lines = [
+            "📌 Proximas reuniones del club",
+            "",
+            "Aqui tienes el resumen rapido para no perderte ninguna quedada:",
+        ]
         keyboard = []
+
         for index, meeting in enumerate(upcoming[:5], 1):
             attendees = db.get_attendance(meeting["id"])
-            date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-            lines.append(f"Reunion {index}: {meeting['name']}")
-            lines.append(f"   Fecha: {date_text}")
+            date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha cerrada"
+
+            lines.extend(
+                [
+                    "",
+                    f"📚 Reunion {index}: {meeting['name']}",
+                    f"🕒 Fecha: {date_text}",
+                ]
+            )
             if meeting.get("location"):
-                lines.append(f"   Lugar: {meeting['location']}")
-            lines.append(f"   Apuntados: {len(attendees)}")
-            if index < len(upcoming[:5]):
-                lines.append("")
+                lines.append(f"📍 Lugar: {meeting['location']}")
+            lines.append(f"👥 Confirmados: {len(attendees)}")
+
             short_name = meeting["name"][:20]
             keyboard.append(
                 [
-                    InlineKeyboardButton(f"{short_name}", callback_data=f"attend:{meeting['id']}"),
-                    InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
+                    InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
+                    InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
                 ]
             )
+
+        lines.extend(
+            [
+                "",
+                "✨ Usa los botones para apuntarte o avisar si no vienes.",
+            ]
+        )
+
         sent, pinned = await send_and_pin(
             "\n".join(lines),
             parse_mode=None,
@@ -130,6 +153,7 @@ def assign_book_to_meeting(require_admin, meeting_id):
     auth = require_admin()
     if auth:
         return auth
+
     book_id = request.form.get("book_id", "").strip()
     if not book_id:
         db.update_meeting(meeting_id=meeting_id, book_id=None)

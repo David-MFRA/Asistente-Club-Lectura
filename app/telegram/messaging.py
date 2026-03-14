@@ -12,7 +12,7 @@ class TelegramMessagingService:
         self.chat_id = chat_id
         self.logger = logger
 
-    async def send_to_group(self, text, parse_mode="MarkdownV2", reply_markup=None, message_type="custom"):
+    async def send_to_group(self, text, parse_mode=None, reply_markup=None, message_type="custom"):
         if not self.chat_id:
             self.logger.warning("TELEGRAM_CHAT_ID no configurado")
             return False

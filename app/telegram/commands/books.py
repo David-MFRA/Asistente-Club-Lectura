@@ -16,9 +16,6 @@ class BookHandlers:
     async def proponer(self, update, context):
         if not await self.allowed(update):
             return
-        if not self.check_cooldown(update.effective_user.id, "proponer", 30):
-            await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-            return
         title = " ".join(context.args).strip()
         if not title:
             await update.message.reply_text(

@@ -1,10 +1,10 @@
 import asyncio
 import logging
+import threading
 import urllib.request
 
-from asgiref.wsgi import WsgiToAsgi
 from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat
-import uvicorn
+from werkzeug.serving import make_server
 
 from app.config import ADMIN_TELEGRAM_IDS, PORT, WEBHOOK_URL
 
@@ -140,13 +140,27 @@ async def shutdown(telegram_app, scheduler):
     await telegram_app.shutdown()
 
 
+class _FlaskServerThread(threading.Thread):
+    def __init__(self, flask_app):
+        super().__init__(daemon=True, name="flask-server")
+        self.server = make_server("0.0.0.0", PORT, flask_app, threaded=True)
+
+    def run(self):
+        logger.info("Flask server running on http://0.0.0.0:%s", PORT)
+        self.server.serve_forever()
+
+    def stop(self):
+        self.server.shutdown()
+
+
 async def serve(flask_app, telegram_app, scheduler, scheduler_jobs):
     await startup(telegram_app, scheduler, scheduler_jobs)
-    asgi_app = WsgiToAsgi(flask_app)
-    server = uvicorn.Server(
-        uvicorn.Config(asgi_app, host="0.0.0.0", port=PORT, log_level="info")
-    )
+    server_thread = _FlaskServerThread(flask_app)
+    server_thread.start()
     try:
-        await server.serve()
+        while server_thread.is_alive():
+            await asyncio.sleep(0.5)
     finally:
+        server_thread.stop()
+        server_thread.join(timeout=5)
         await shutdown(telegram_app, scheduler)

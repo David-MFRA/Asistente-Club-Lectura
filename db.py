@@ -1121,7 +1121,27 @@ def get_table_rows(table_name, limit=200):
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Tabla no permitida: {table_name}")
     with get_cursor() as cur:
-        cur.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT %s", (limit,))
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+            """,
+            (table_name,),
+        )
+        column_names = {row["column_name"] for row in cur.fetchall()}
+        order_column = None
+        for candidate in ("id", "created_at", "updated_at"):
+            if candidate in column_names:
+                order_column = candidate
+                break
+
+        query = f"SELECT * FROM {table_name}"
+        if order_column:
+            query += f" ORDER BY {order_column} DESC"
+        query += " LIMIT %s"
+
+        cur.execute(query, (limit,))
         rows = cur.fetchall()
         if not rows:
             return [], []

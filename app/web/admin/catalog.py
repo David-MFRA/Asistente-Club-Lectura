@@ -336,9 +336,9 @@ async def suggest_waitlist_to_group(require_admin, send_to_group):
     if not books:
         flash("No hay libros en la lista de espera para esa tematica", "warning")
         return redirect(url_for("admin_waitlist"))
-    lines = ["Lista de espera - libros pendientes\n"]
+    lines = ["📚 Lista de espera del club\n"]
     if theme:
-        lines[0] = f"Lista de espera - tematica: {theme}\n"
+        lines[0] = f"📚 Lista de espera - tematica: {theme}\n"
     for index, book in enumerate(books[:10], 1):
         line = f"{index}. {book['title']}" + (f" - {book['author']}" if book.get("author") else "")
         if book.get("votes_at_time"):

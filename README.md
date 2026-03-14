@@ -43,7 +43,7 @@ El dashboard incluye un wizard que guía al administrador paso a paso:
 | Componente | Tecnología |
 |---|---|
 | Lenguaje | Python 3.10+ |
-| Web framework | Flask + ASGI (asgiref + uvicorn) |
+| Web framework | Flask (servido en modo WSGI threaded) |
 | Bot Telegram | python-telegram-bot 20.x (webhook) |
 | Base de datos | PostgreSQL (Supabase como backend gestionado) |
 | Scheduler | APScheduler (AsyncIOScheduler) |
@@ -72,7 +72,8 @@ El dashboard incluye un wizard que guía al administrador paso a paso:
 
 ## Notas de ejecución
 
-- Las rutas web que necesitan llamar a lógica async del bot usan un bridge interno (`_run_async`) para ejecutarse sobre el mismo event loop del bot y evitar bloqueos/errores de concurrencia en Flask.
+- El panel web se sirve con Flask en modo WSGI threaded para evitar los deadlocks que aparecían al mezclar `WsgiToAsgi` con acciones admin que llamaban a Telegram.
+- Las rutas web que necesitan llamar a lógica async del bot usan un bridge interno (`_run_async`) para ejecutarse sobre el mismo event loop del bot sin bloquear la carga de CSS/JS.
 - Si Telegram migra el grupo a supergrupo, el servicio intenta reenviar al nuevo `chat_id` automáticamente y guarda el valor detectado en `app_config` (`migrated_chat_id`) para diagnóstico.
 
 ## Comandos del bot

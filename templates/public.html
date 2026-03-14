@@ -1,19 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ club_name }} · Leyendo juntos</title>
-<meta name="description" content="{{ club_name }} — vota el próximo libro, apúntate a las reuniones y sigue nuestras lecturas.">{# ── Theme color override ────────────────────── #}
-{% if pub_theme == 'teal' %}
-<style>:root{--amber:#4ecdc4;--amber2:#7de8e2;--border:rgba(78,205,196,.14)}</style>
-{% elif pub_theme == 'indigo' %}
-<style>:root{--amber:#6366f1;--amber2:#a5b4fc;--border:rgba(99,102,241,.14)}</style>
-{% elif pub_theme == 'coral' %}
-<style>:root{--amber:#f87171;--amber2:#fca5a5;--border:rgba(248,113,113,.14)}</style>
-{% elif pub_theme == 'emerald' %}
-<style>:root{--amber:#34d399;--amber2:#6ee7b7;--border:rgba(52,211,153,.14)}</style>
-{% endif %}
+<meta name="description" content="{{ club_name }} — vota el próximo libro, apúntate a las reuniones y sigue nuestras lecturas.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -169,10 +160,45 @@ nav{
 }
 .btn-amber:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(232,184,109,.5)}
 .btn-amber--lg{padding:16px 30px;font-size:1rem;border-radius:13px;animation:pulse 2.5s ease-in-out infinite}
-.hero-qr{display:flex;flex-direction:column;align-items:center;gap:8px;margin-left:4px}
-.hero-qr img{border-radius:10px;border:2px solid rgba(232,184,109,.25);background:#fff;padding:6px}
-.hero-qr span{font-size:.68rem;color:var(--muted);font-family:var(--font-mono);letter-spacing:.05em}
-@media(max-width:768px){.hero-qr{display:none}}
+.hero-qr{
+  position:relative;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  min-width:180px;margin-left:6px;padding:16px 16px 14px;
+  border-radius:22px;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));
+  border:1px solid var(--border);
+  box-shadow:0 18px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+  overflow:hidden;
+}
+.hero-qr::before{
+  content:'ESCANEA';
+  position:absolute;top:12px;left:12px;
+  font-family:var(--font-mono);font-size:.62rem;font-weight:700;
+  letter-spacing:.12em;color:var(--amber);
+}
+.hero-qr::after{
+  content:'';
+  position:absolute;inset:auto -20px -28px auto;
+  width:96px;height:96px;border-radius:50%;
+  background:radial-gradient(circle, rgba(232,184,109,.22), transparent 70%);
+  pointer-events:none;
+}
+.hero-qr img{
+  margin-top:18px;
+  border-radius:18px;border:8px solid #fff;background:#fff;padding:10px;
+  width:132px;height:132px;
+  box-shadow:0 16px 34px rgba(0,0,0,.28);
+}
+.hero-qr strong{
+  font-size:.88rem;color:var(--cream);font-weight:700;text-align:center;
+}
+.hero-qr span{
+  font-size:.68rem;color:var(--muted);font-family:var(--font-mono);
+  letter-spacing:.05em;text-align:center;max-width:150px;
+}
+@media(max-width:768px){
+  .hero-qr{margin:14px auto 0;min-width:0;width:min(240px,100%)}
+}
 .btn-ghost{
   display:inline-flex;align-items:center;gap:7px;
   padding:13px 22px;border-radius:11px;font-size:.9rem;font-weight:700;
@@ -497,6 +523,14 @@ footer a:hover{color:var(--amber)}
   .book-cover{width:160px;height:232px}
 }
 </style>
+<style>
+:root{
+  --amber:{% if pub_theme == 'teal' %}#4ecdc4{% elif pub_theme == 'indigo' %}#6366f1{% elif pub_theme == 'coral' %}#f87171{% elif pub_theme == 'emerald' %}#34d399{% else %}#e8b86d{% endif %};
+  --amber2:{% if pub_theme == 'teal' %}#7de8e2{% elif pub_theme == 'indigo' %}#a5b4fc{% elif pub_theme == 'coral' %}#fca5a5{% elif pub_theme == 'emerald' %}#6ee7b7{% else %}#f5d08c{% endif %};
+  --teal:{% if pub_theme == 'teal' %}#83f3ea{% elif pub_theme == 'indigo' %}#93c5fd{% elif pub_theme == 'coral' %}#fdba74{% elif pub_theme == 'emerald' %}#2dd4bf{% else %}#4ecdc4{% endif %};
+  --border:{% if pub_theme == 'teal' %}rgba(78,205,196,.22){% elif pub_theme == 'indigo' %}rgba(99,102,241,.22){% elif pub_theme == 'coral' %}rgba(248,113,113,.22){% elif pub_theme == 'emerald' %}rgba(52,211,153,.22){% else %}rgba(232,184,109,.14){% endif %};
+}
+</style>
 </head>
 <body>
 
@@ -550,8 +584,9 @@ footer a:hover{color:var(--amber)}
         <a class="btn-ghost" href="#libro">Ver lectura actual</a>
         {% if group_invite_link %}
         <div class="hero-qr">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=4" alt="QR Unirse" width="80" height="80" loading="lazy">
-          <span>Escanea para unirte</span>
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=8" alt="QR Unirse" width="132" height="132" loading="lazy">
+          <strong>Unete en segundos</strong>
+          <span>Escanea el QR y entra directo al grupo de Telegram</span>
         </div>
         {% endif %}
       </div>
@@ -871,3 +906,4 @@ if(propList) propObs.observe(propList);
 </script>
 </body>
 </html>
+

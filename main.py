@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import json
 import logging
@@ -369,7 +369,7 @@ def is_admin_user(update):
         return False
     return str(update.effective_user.id) in ADMIN_TELEGRAM_IDS
 
-async def send_to_group(text, parse_mode="MarkdownV2", reply_markup=None, message_type="custom"):
+async def send_to_group(text, parse_mode=None, reply_markup=None, message_type="custom"):
     return await messaging_service.send_to_group(
         text,
         parse_mode=parse_mode,
@@ -431,7 +431,7 @@ async def announce_winner(book):
             return
     except Exception:
         pass
-    await send_to_group(text, reply_markup=reply_markup)
+    await send_to_group(text, parse_mode=None, reply_markup=reply_markup, message_type="winner_announcement")
 
 # --------------------------------------------------
 # TELEGRAM COMMANDS
@@ -1511,17 +1511,35 @@ async def send_reading_reminder():
         book = db.get_winner_book()
     if not book:
         return
+    days_left = None
+    if meeting and meeting.get("final_date"):
+        try:
+            final_dt = meeting["final_date"]
+            if isinstance(final_dt, str):
+                final_dt = datetime.fromisoformat(final_dt)
+            days_left = max(0, (final_dt - datetime.utcnow()).days)
+        except Exception:
+            days_left = None
     fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
     reunion_name = meeting["name"] if meeting else "Sin reunión"
     author_line = f"\n✍️ {book['author']}" if book.get("author") else ""
-    text = (
-        f"📖 Recordatorio de lectura\n\n"
-        f"El libro del ciclo es:\n"
-        f"📗 {book['title']}{author_line}\n\n"
-        f"📅 Reunión: {reunion_name}\n"
-        f"📆 Fecha: {fecha}\n\n"
-        f"¡A leer se ha dicho! 🚀"
-    )
+    lines = [
+        "📖 Recordatorio de lectura\n",
+        "Toca avanzar un poco más en la lectura.",
+        f"\n📚 {book['title']}{author_line}",
+        f"\n📅 Reunión: {reunion_name}",
+        f"🕒 Fecha: {fecha}",
+    ]
+    pages = book.get("pages")
+    if pages and days_left is not None and days_left > 0:
+        total_days = 30
+        elapsed = max(0, total_days - days_left)
+        pages_now = min(pages, int(pages * elapsed / total_days))
+        daily_pace = max(1, int(pages / total_days))
+        lines.append(f"\n📊 Para ir al día deberías llevar unas {pages_now} de {pages} páginas.")
+        lines.append(f"⏱️ Ritmo orientativo: unas {daily_pace} páginas al día.")
+    lines.append("\n✨ ¡A leer se ha dicho!")
+    text = "\n".join(lines)
     keyboard = []
     if meeting:
         keyboard.append([
@@ -1930,6 +1948,13 @@ register_handlers(telegram_app, {
 def home():
     return "ok", 200
 
+@flask_app.get("/favicon.ico")
+def favicon():
+    return Response(
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📚</text></svg>""",
+        mimetype="image/svg+xml",
+    )
+
 @flask_app.get("/health")
 def health():
     return {"status": "running"}, 200
@@ -2156,6 +2181,10 @@ def admin_send_reading_reminder():
 @flask_app.post("/admin/send/meeting-info")
 def admin_send_meeting_info():
     return _run_async(send_manual_meeting_info(require_admin, send_meeting_reminder, logger))
+
+@flask_app.post("/admin/send/pin-all")
+def admin_send_pin_all():
+    return _run_async(send_pin_all(require_admin, send_and_pin, logger))
 
 @flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
 def admin_send_dm_reminders(meeting_id):

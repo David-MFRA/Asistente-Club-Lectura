@@ -1244,16 +1244,34 @@ async def ciclo_cmd(update, context):
 
 async def nuevo_ciclo_cmd(update, context):
     if not is_admin_user(update): return
+    from app.web.admin.site import _suggested_cycle_name as _sug
     name = " ".join(context.args).strip() if context.args else None
     if not name:
-        from datetime import timezone as _tz
-        name = datetime.now(_tz.utc).strftime("%Y-%m")
+        name = _sug()
     db.set_config("active_cycle_key", name)
+    db.set_config("proposals_locked_for", "")
+    db.set_config("active_theme", "")
+    from app.web.admin.polls import _set_phase
+    _set_phase("setup")
+    db.log_event("admin", f"Ciclo «{name}» activado vía bot", category="cycle", actor="admin")
     await update.message.reply_text(
         f"✅ {bold('Nuevo ciclo creado')}: {code(name)}\n"
-        f"_A partir de ahora las propuestas y temáticas se guardan en este ciclo\\._",
+        f"_A partir de ahora las propuestas y temáticas se guardan en este ciclo\\._\n\n"
+        f"_Añade temáticas con /tema y lanza /encuesta\\_temas cuando estés listo\\._",
         parse_mode="MarkdownV2"
     )
+    # Announce in group
+    try:
+        from html import escape as _hesc
+        msg = (
+            f"🔄 <b>¡Nuevo ciclo: {_hesc(name)}!</b>\n\n"
+            f"Comienza un nuevo ciclo de lectura. "
+            f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas.\n\n"
+            f"📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
+        )
+        await send_to_group(msg, parse_mode="HTML", message_type="new_cycle")
+    except Exception:
+        logger.exception("Error enviando mensaje de nuevo ciclo al grupo desde bot")
 
 
 async def cerrar_ciclo_cmd(update, context):
@@ -2446,7 +2464,7 @@ def admin_ciclo():
 
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
-    return activate_cycle(require_admin)
+    return _run_async(activate_cycle(require_admin, send_to_group, logger))
 
 @flask_app.post("/admin/ciclo/cerrar")
 def admin_ciclo_cerrar():

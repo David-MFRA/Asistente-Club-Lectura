@@ -137,19 +137,54 @@ def render_admin_cycle(require_admin):
     )
 
 
-def activate_cycle(require_admin):
+async def activate_cycle(require_admin, send_to_group, logger):
     auth = require_admin()
     if auth:
         return auth
     name = request.form.get("cycle_name", "").strip()
     if not name:
         name = _suggested_cycle_name()
+
     db.set_config("active_cycle_key", name)
     db.set_config("proposals_locked_for", "")
     db.set_config("active_theme", "")
     _set_phase("setup")
+
+    # Create predefined themes if provided
+    raw_themes = request.form.get("themes", "")
+    created_themes = []
+    for t in raw_themes.split(","):
+        t = t.strip()
+        if t:
+            try:
+                db.create_theme(t, created_by="admin", cycle_key=name)
+                created_themes.append(t)
+            except Exception:
+                pass
+
     db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
-    flash(f"Ciclo «{name}» activado. Ahora añade las temáticas y lanza la encuesta.", "success")
+
+    # Announce in group
+    try:
+        themes_line = ""
+        if created_themes:
+            themes_line = (
+                "\n\n🏷️ <b>Temáticas propuestas:</b>\n"
+                + "\n".join(f"  • {hesc(t)}" for t in created_themes)
+            )
+        msg = (
+            f"🔄 <b>¡Nuevo ciclo: {hesc(name)}!</b>\n\n"
+            f"Comienza un nuevo ciclo de lectura. "
+            f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
+            + themes_line
+            + "\n\n📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
+        )
+        await send_to_group(msg, parse_mode="HTML", message_type="new_cycle")
+    except Exception:
+        logger.exception("Error enviando mensaje de nuevo ciclo al grupo")
+
+    themes_msg = f" con {len(created_themes)} temática{'s' if len(created_themes) != 1 else ''}" if created_themes else ""
+    flash(f"Ciclo «{name}» activado{themes_msg}. Mensaje enviado al grupo.", "success")
     return redirect(url_for("admin_ciclo"))
 
 

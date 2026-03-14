@@ -131,6 +131,24 @@ def assign_book_to_meeting(require_admin, meeting_id):
     if auth:
         return auth
     book_id = request.form.get("book_id", "").strip()
-    db.update_meeting(meeting_id=meeting_id, book_id=int(book_id) if book_id else None)
-    flash("Libro asignado a la reunion", "success")
+    if not book_id:
+        db.update_meeting(meeting_id=meeting_id, book_id=None)
+        flash("Libro desasignado de la reunion", "success")
+        return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
+    try:
+        book_id_int = int(book_id)
+    except ValueError:
+        flash("El libro seleccionado no es valido", "danger")
+        return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
+    if not db.get_book_by_id(book_id_int):
+        flash("El libro seleccionado ya no existe", "danger")
+        return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+
+    try:
+        db.update_meeting(meeting_id=meeting_id, book_id=book_id_int)
+        flash("Libro asignado a la reunion", "success")
+    except Exception:
+        flash("No se pudo asignar el libro seleccionado", "danger")
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))

@@ -70,6 +70,11 @@ El dashboard incluye un wizard que guía al administrador paso a paso:
 
 ---
 
+## Notas de ejecución
+
+- Las rutas web que necesitan llamar a lógica async del bot usan un bridge interno (`_run_async`) para ejecutarse sobre el mismo event loop del bot y evitar bloqueos/errores de concurrencia en Flask.
+- Si Telegram migra el grupo a supergrupo, el servicio intenta reenviar al nuevo `chat_id` automáticamente y guarda el valor detectado en `app_config` (`migrated_chat_id`) para diagnóstico.
+
 ## Comandos del bot
 
 ### Comandos de usuario
@@ -118,32 +123,46 @@ El dashboard incluye un wizard que guía al administrador paso a paso:
 
 ## Estructura del proyecto
 
-```
+``` 
 bot/
-├── main.py              # App Flask + handlers Telegram + schedulers
-├── db.py                # Capa de base de datos (PostgreSQL)
-├── ai_features.py       # Groq API + scraping Goodreads (citas y preguntas)
-├── books_api.py         # Google Books API
-├── recommendations.py   # Recomendaciones por temática
-├── trivia.py            # Preguntas de debate predefinidas
-├── stats.py             # Generación de gráficas (matplotlib)
-├── scheduler.py         # (legacy, schedulers en main.py)
-├── requirements.txt     # Dependencias Python
-└── templates/
-    ├── admin.html            # Dashboard principal
-    ├── admin_messages.html   # Editor de mensajes del bot
-    ├── admin_help.html       # Ayuda interna del admin
-    ├── admin_sent_messages.html  # Historial de mensajes
-    ├── admin_scheduler.html  # Programador de mensajes
-    ├── admin_historico.html  # Histórico de ciclos
-    ├── admin_db.html         # Visor de base de datos
-    ├── admin_ciclo.html      # Gestión de ciclos
-    ├── admin_login.html      # Login del admin
-    ├── meetings.html         # Lista de reuniones
-    ├── meeting_detail.html   # Detalle de reunión
-    ├── themes.html           # Gestión de temáticas
-    ├── attendance.html       # Asistencia
-    └── ranking.html          # Ranking de libros
+├── main.py                  # Wiring principal, arranque ASGI y rutas/handlers
+├── db.py                    # Capa de base de datos (PostgreSQL)
+├── ai_features.py           # Groq API + scraping Goodreads/Wikiquote
+├── books_api.py             # Google Books API
+├── recommendations.py       # Recomendaciones por temática
+├── trivia.py                # Preguntas de debate predefinidas
+├── stats.py                 # Gráficas y estadísticas
+├── app/
+│   ├── bootstrap.py         # Arranque compartido web + bot + scheduler
+│   ├── config.py            # Configuración y variables de entorno
+│   ├── formatting.py        # Helpers de formato/Markdown
+│   ├── messages.py          # Textos configurables por defecto
+│   ├── services/
+│   │   └── meeting_lookup.py
+│   ├── telegram/
+│   │   ├── access.py
+│   │   ├── callbacks.py
+│   │   ├── messaging.py
+│   │   ├── registry.py
+│   │   └── commands/
+│   │       ├── books.py
+│   │       ├── meetings.py
+│   │       ├── themes.py
+│   │       └── extras.py
+│   └── web/
+│       └── admin/
+│           ├── ai.py
+│           ├── catalog.py
+│           ├── demo.py
+│           ├── messaging.py
+│           ├── monitoring.py
+│           ├── operations.py
+│           ├── polls.py
+│           ├── site.py
+│           └── wizard.py
+├── static/
+├── templates/
+└── requirements.txt
 ```
 
 ---

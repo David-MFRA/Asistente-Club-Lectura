@@ -41,7 +41,9 @@
       "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('main.py OK'\\)\" 2>&1 && python -c \"import ast; ast.parse\\(open\\('db.py'\\).read\\(\\)\\); print\\('db.py OK'\\)\" 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"\nimport ast\nwith open\\('main.py', encoding='utf-8'\\) as f: src = f.read\\(\\)\nast.parse\\(src\\)\nprint\\('main.py OK'\\)\n\" 2>&1 && python -c \"\nimport ast\nwith open\\('db.py', encoding='utf-8'\\) as f: src = f.read\\(\\)\nast.parse\\(src\\)\nprint\\('db.py OK'\\)\n\" 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"\nimport ast\nfor f in ['main.py','db.py']:\n    with open\\(f, encoding='utf-8'\\) as fh: ast.parse\\(fh.read\\(\\)\\)\n    print\\(f, 'OK'\\)\n\" 2>&1)",
-      "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"\nimport ast\nfor f in ['main.py', 'db.py']:\n    with open\\(f, encoding='utf-8'\\) as fh: ast.parse\\(fh.read\\(\\)\\)\n    print\\(f, 'OK'\\)\n\" 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python -c \"\nimport ast\nfor f in ['main.py', 'db.py']:\n    with open\\(f, encoding='utf-8'\\) as fh: ast.parse\\(fh.read\\(\\)\\)\n    print\\(f, 'OK'\\)\n\" 2>&1)",
+      "Bash(ls -la \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\\\\app\\\\\" | grep -E \"\\\\.py|^d\")",
+      "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python3 -m py_compile main.py 2>&1 | head -20)"
     ]
   }
 }

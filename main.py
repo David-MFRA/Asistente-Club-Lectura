@@ -349,6 +349,8 @@ _bot_loop = None  # set in main() before serving
 
 def _run_async(coro):
     """Run an async coroutine from a sync Flask route (thread-safe)."""
+    if _bot_loop is None:
+        raise RuntimeError("Bot event loop not initialized")
     return asyncio.run_coroutine_threadsafe(coro, _bot_loop).result()
 
 # --------------------------------------------------
@@ -2014,135 +2016,44 @@ def admin_book_delete(proposal_id):
 # --------------------------------------------------
 
 @flask_app.post("/admin/encuesta/libros/crear")
-async def admin_crear_encuesta_libros():
-    return await create_book_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        books = db.get_book_proposals()
-        if len(books) < 2:
-            return "Necesitas al menos 2 propuestas para crear una encuesta", 400
-        if not TELEGRAM_CHAT_ID:
-            return "TELEGRAM_CHAT_ID no configurado en variables de entorno", 500
-
-        options = []
-        for b in books[:10]:
-            label = b["title"]
-            if b.get("author"):
-                label = f"{b['title']} — {b['author']}"
-            options.append(label[:100])
-
-        msg = await telegram_app.bot.send_poll(
-            chat_id=TELEGRAM_CHAT_ID,
-            question="📚 ¿Qué libro leemos este mes?",
-            options=options,
-            is_anonymous=False,
-            allows_multiple_answers=False,
-        )
-        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="books")
-    except Exception:
-        logger.exception("Error creando encuesta libros")
-        return "Error creando encuesta", 500
+def admin_crear_encuesta_libros():
+    return _run_async(create_book_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
     return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/encuesta/<int:poll_db_id>/cerrar")
-async def admin_cerrar_encuesta(poll_db_id):
-    return await close_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, announce_winner, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        poll = db.get_poll_by_id(poll_db_id)
-        if not poll:
-            return "Encuesta no encontrada", 404
-        await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
-        db.close_poll(poll_db_id)
-        # Anunciar ganador y auto-asignar a la reunión próxima
-        if poll.get("poll_type") == "books" and TELEGRAM_CHAT_ID:
-            tied = db.get_tied_books()
-            if len(tied) > 1:
-                # Send tie notification
-                tie_msg = (
-                    f"⚖️ ¡Hay empate en la votación!\n\n"
-                    f"Los siguientes libros han quedado empatados con {tied[0]['votes']} votos:\n"
-                )
-                for b in tied:
-                    tie_msg += f"  📖 {b['title']}" + (f" — {b['author']}" if b.get('author') else "") + "\n"
-                tie_msg += "\n🔁 Lanzando encuesta de desempate..."
-                await send_to_group(tie_msg, parse_mode=None, message_type="tie_notification")
-
-                # Create tiebreaker poll
-                options = []
-                for b in tied[:10]:
-                    label = b["title"]
-                    if b.get("author"):
-                        label = f"{b['title']} — {b['author']}"
-                    options.append(label[:100])
-
-                tie_poll = await telegram_app.bot.send_poll(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    question=f"⚖️ Desempate — ¿Cuál de estos {len(tied)} libros leemos?",
-                    options=options,
-                    is_anonymous=False,
-                    allows_multiple_answers=False,
-                )
-                db.save_poll(chat_id=tie_poll.chat_id, message_id=tie_poll.message_id,
-                             poll_id=tie_poll.poll.id, poll_type="books")
-                flash(f"¡Empate detectado! Se ha lanzado una encuesta de desempate con {len(tied)} libros.", "warning")
-                return redirect(url_for("admin_dashboard"))
-            else:
-                winner = db.get_winner_book()
-                if winner:
-                    await announce_winner(winner)
-                    # Asignar automáticamente el libro ganador a la próxima reunión
-                    next_meeting = db.get_latest_scheduled_meeting()
-                    if next_meeting and not next_meeting.get("book_id"):
-                        db.update_meeting(meeting_id=next_meeting["id"], book_id=winner["id"])
-                        logger.info("Libro ganador '%s' asignado automáticamente a '%s'",
-                                    winner["title"], next_meeting["name"])
-    except Exception:
-        logger.exception("Error cerrando encuesta")
-        return "Error cerrando encuesta", 500
-    return redirect(url_for("admin_dashboard"))
+def admin_cerrar_encuesta(poll_db_id):
+    return _run_async(close_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, announce_winner, logger))
 
 # --------------------------------------------------
 # FLASK — ENCUESTA TEMÁTICAS
 # --------------------------------------------------
 
 @flask_app.post("/admin/encuesta/temas/crear")
-async def admin_crear_encuesta_temas():
-    return await create_theme_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
-    auth = require_admin()
-    if auth: return auth
-    try:
-        themes = db.get_themes()
-        if len(themes) < 2:
-            return "Necesitas al menos 2 temáticas para crear una encuesta", 400
-        if not TELEGRAM_CHAT_ID:
-            return "TELEGRAM_CHAT_ID no configurado", 500
-
-        options = [t["name"][:100] for t in themes[:10]]
-        msg = await telegram_app.bot.send_poll(
-            chat_id=TELEGRAM_CHAT_ID,
-            question="🏷️ ¿Qué temática elegimos para el próximo ciclo?",
-            options=options,
-            is_anonymous=False,
-            allows_multiple_answers=False,
-        )
-        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="themes")
-    except Exception:
-        logger.exception("Error creando encuesta temas")
-        return "Error creando encuesta", 500
-    return redirect(url_for("admin_dashboard"))
+def admin_crear_encuesta_temas():
+    return _run_async(create_theme_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
 
 # --------------------------------------------------
 # FLASK — ENCUESTA FECHAS
 # --------------------------------------------------
 
 @flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/crear")
-async def admin_crear_encuesta_fechas(meeting_id):
-    return await create_dates_poll(require_admin, meeting_id, telegram_app, TELEGRAM_CHAT_ID, logger)
+def admin_crear_encuesta_fechas(meeting_id):
+    return _run_async(create_dates_poll(require_admin, meeting_id, telegram_app, TELEGRAM_CHAT_ID, logger))
+
+
+@flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/<int:poll_db_id>/cerrar")
+def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
+    return _run_async(
+        close_dates_poll(
+            require_admin,
+            meeting_id,
+            poll_db_id,
+            telegram_app,
+            send_to_group,
+            {"bold": bold, "italic": italic, "esc": esc},
+            logger,
+        )
+    )
 # --------------------------------------------------
 
 @flask_app.route("/meetings", methods=["GET", "POST"])
@@ -2235,20 +2146,20 @@ def admin_theme_delete(theme_id):
 # --------------------------------------------------
 
 @flask_app.post("/admin/send/meeting-reminder")
-async def admin_send_meeting_reminder():
-    return await send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger)
+def admin_send_meeting_reminder():
+    return _run_async(send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger))
 
 @flask_app.post("/admin/send/reading-reminder")
-async def admin_send_reading_reminder():
-    return await send_manual_reading_reminder(require_admin, send_reading_reminder, logger)
+def admin_send_reading_reminder():
+    return _run_async(send_manual_reading_reminder(require_admin, send_reading_reminder, logger))
 
 @flask_app.post("/admin/send/meeting-info")
-async def admin_send_meeting_info():
-    return await send_manual_meeting_info(require_admin, send_meeting_reminder, logger)
+def admin_send_meeting_info():
+    return _run_async(send_manual_meeting_info(require_admin, send_meeting_reminder, logger))
 
 @flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
-async def admin_send_dm_reminders(meeting_id):
-    return await send_dm_reminders(require_admin, meeting_id, telegram_app, logger)
+def admin_send_dm_reminders(meeting_id):
+    return _run_async(send_dm_reminders(require_admin, meeting_id, telegram_app, logger))
 @flask_app.get("/admin/historico")
 def admin_historico():
     return render_history(require_admin)
@@ -2306,8 +2217,8 @@ def admin_book_edit(book_id):
 # --------------------------------------------------
 
 @flask_app.post("/admin/send/custom")
-async def admin_send_custom():
-    return await send_custom_message(require_admin, logger, send_to_group)
+def admin_send_custom():
+    return _run_async(send_custom_message(require_admin, logger, send_to_group))
 
 # --------------------------------------------------
 # FLASK — MESSAGE TEMPLATES (admin)
@@ -2358,24 +2269,24 @@ def admin_ai_questions():
     return render_ai_questions(require_admin, logger)
 
 @flask_app.post("/admin/ai/questions/send")
-async def admin_ai_questions_send():
-    return await send_ai_questions(require_admin, logger, send_to_group)
+def admin_ai_questions_send():
+    return _run_async(send_ai_questions(require_admin, logger, send_to_group))
 
 @flask_app.get("/admin/ai/quote")
 def admin_ai_quote():
     return render_ai_quote(require_admin, logger)
 
 @flask_app.post("/admin/ai/quote/send")
-async def admin_ai_quote_send():
-    return await send_ai_quote(require_admin, logger, send_to_group)
+def admin_ai_quote_send():
+    return _run_async(send_ai_quote(require_admin, logger, send_to_group))
 
 # --------------------------------------------------
 # FLASK — AI ASSISTANT (contextual)
 # --------------------------------------------------
 
 @flask_app.post("/admin/ai/ask")
-async def admin_ai_ask():
-    return await ask_admin_ai(require_admin, _utcnow, logger)
+def admin_ai_ask():
+    return _run_async(ask_admin_ai(require_admin, _utcnow, logger))
 
 # --------------------------------------------------
 # FLASK — POSTER DESIGNER
@@ -2406,14 +2317,19 @@ def admin_ciclo_nuevo():
     return activate_cycle(require_admin)
 
 
+@flask_app.post("/admin/wizard/new-cycle")
+def admin_wizard_new_cycle():
+    return _run_async(wizard_new_cycle(require_admin, send_to_group, _utcnow, logger))
+
+
 @flask_app.post("/admin/wizard/lock-and-poll")
-async def admin_wizard_lock_and_poll():
-    return await wizard_lock_and_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
+def admin_wizard_lock_and_poll():
+    return _run_async(wizard_lock_and_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
 
 
 @flask_app.post("/admin/wizard/announce-date")
-async def admin_wizard_announce_date():
-    return await wizard_announce_date(require_admin, send_to_group, logger)
+def admin_wizard_announce_date():
+    return _run_async(wizard_announce_date(require_admin, send_to_group, logger))
 
 # --------------------------------------------------
 # FLASK — ASSIGN BOOK TO MEETING (admin)
@@ -2440,8 +2356,8 @@ def admin_waitlist_delete(wl_id):
     return delete_waitlist_entry(require_admin, wl_id)
 
 @flask_app.post("/admin/waitlist/suggest")
-async def admin_waitlist_suggest():
-    return await suggest_waitlist_to_group(require_admin, send_to_group)
+def admin_waitlist_suggest():
+    return _run_async(suggest_waitlist_to_group(require_admin, send_to_group))
 
 # --------------------------------------------------
 # FLASK — DEMO / TOUR
@@ -2485,12 +2401,16 @@ def admin_bug_update(report_id):
 # WEBHOOK
 # --------------------------------------------------
 
+async def _enqueue_webhook_update(data):
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.update_queue.put(update)
+
+
 @flask_app.post("/webhook")
-async def webhook():
+def webhook():
     try:
-        data   = request.get_json(force=True)
-        update = Update.de_json(data, telegram_app.bot)
-        await telegram_app.update_queue.put(update)
+        data = request.get_json(force=True)
+        _run_async(_enqueue_webhook_update(data))
         return Response(status=HTTPStatus.OK)
     except Exception:
         logger.exception("Error procesando webhook")
@@ -2601,6 +2521,8 @@ async def startup():
 
 
 async def main():
+    global _bot_loop
+    _bot_loop = asyncio.get_event_loop()
     await serve(
         flask_app,
         telegram_app,

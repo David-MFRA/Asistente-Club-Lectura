@@ -100,9 +100,12 @@ En Render, ve a **Environment → Environment Variables** y añade:
 | `FLASK_SECRET_KEY` | String aleatorio largo, ej. genera con `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `TELEGRAM_CHAT_ID` | ID del grupo de Telegram (número negativo) |
 | `ADMIN_TELEGRAM_ID` | Tu ID de Telegram (o varios separados por coma) |
+| `ALLOWED_CHAT_ID` | *(Opcional)* Chat permitido para el bot. Normalmente coincide con `TELEGRAM_CHAT_ID` |
 | `GROQ_API_KEY` | *(Opcional)* API key de Groq para funciones de IA |
 
 > ⚠️ Asegúrate de que `WEBHOOK_URL` NO tiene barra final y es exactamente la URL pública de Render.
+
+> ℹ️ Si el grupo migra a supergrupo, el bot intentará detectar el nuevo `chat_id` automáticamente al enviar mensajes. Aun así, conviene mantener `TELEGRAM_CHAT_ID` y `ALLOWED_CHAT_ID` alineados con el valor definitivo en Render.
 
 ### 3.3 Primer despliegue
 
@@ -170,6 +173,17 @@ INFO - Scheduler started
   ```
   https://api.telegram.org/bot<TOKEN>/getWebhookInfo
   ```
+
+### El grupo se ha migrado a supergrupo
+
+- Revisa los logs: el bot debería registrar el nuevo `chat_id`.
+- Comprueba en `app_config` si se guardó `migrated_chat_id`.
+- Aunque el bot reintenta con el nuevo ID, deja `TELEGRAM_CHAT_ID` y `ALLOWED_CHAT_ID` actualizados en Render para evitar estados inconsistentes tras reinicios.
+
+### La web carga sin CSS después de usar acciones del panel
+
+- Asegúrate de desplegar una versión con las rutas Flask administrativas ejecutadas como `def` y puenteadas al loop async del bot.
+- Si ves este síntoma tras un despliegue parcial, fuerza un redeploy limpio en Render.
 
 ### Error de conexión a la base de datos
 

@@ -23,8 +23,103 @@ import recommendations
 import db
 import ai_features
 from app.bootstrap import serve
-from app.config import create_scheduler
+from app.config import (
+    ADMIN_SECRET as CFG_ADMIN_SECRET,
+    ADMIN_TELEGRAM_IDS as CFG_ADMIN_TELEGRAM_IDS,
+    ALLOWED_CHAT_ID as CFG_ALLOWED_CHAT_ID,
+    BOT_TOKEN as CFG_BOT_TOKEN,
+    FLASK_SECRET_KEY as CFG_FLASK_SECRET_KEY,
+    GROUP_INVITE_LINK as CFG_GROUP_INVITE_LINK,
+    TELEGRAM_CHAT_ID as CFG_TELEGRAM_CHAT_ID,
+    WEBHOOK_URL as CFG_WEBHOOK_URL,
+    create_scheduler,
+)
+from app.formatting import bold, code, esc, italic
+from app.messages import get_text as shared_get_text
+from app.services.meeting_lookup import find_meeting_by_text
+from app.telegram.access import TelegramAccessControl
+from app.telegram.callbacks import CallbackHandler
+from app.telegram.commands.books import BookHandlers
+from app.telegram.commands.extras import ExtraHandlers
+from app.telegram.commands.meetings import MeetingHandlers
+from app.telegram.commands.themes import ThemeHandlers
+from app.telegram.messaging import TelegramMessagingService
 from app.telegram.registry import register_handlers
+from app.web.admin.messaging import (
+    add_scheduled_message,
+    delete_scheduled_message,
+    preview_admin_message,
+    render_admin_messages,
+    render_scheduler,
+    render_sent_messages,
+    reset_admin_message,
+    send_custom_message,
+    update_admin_message,
+)
+from app.web.admin.ai import (
+    ask_admin_ai,
+    render_ai_questions,
+    render_ai_quote,
+    send_ai_questions,
+    send_ai_quote,
+)
+from app.web.admin.catalog import (
+    add_meeting_date_option,
+    add_waitlist_entry,
+    close_meeting_date,
+    create_meeting as create_meeting_page,
+    delete_db_row,
+    delete_meeting as delete_meeting_page,
+    delete_waitlist_entry,
+    edit_book as edit_book_page,
+    export_books,
+    render_admin_db,
+    render_attendance,
+    render_close_voting,
+    render_gallery,
+    render_history,
+    render_meeting_detail,
+    render_meetings,
+    render_ranking,
+    render_themes,
+    render_waitlist,
+    save_gallery_notes,
+    suggest_waitlist_to_group,
+    truncate_db_table,
+    update_meeting as update_meeting_page,
+)
+from app.web.admin.demo import (
+    clear_demo_data,
+    render_demo_page,
+    run_demo_step as run_admin_demo_step,
+    seed_demo_data,
+)
+from app.web.admin.operations import (
+    assign_book_to_meeting,
+    send_dm_reminders,
+    send_manual_meeting_info,
+    send_manual_meeting_reminder,
+    send_manual_reading_reminder,
+    send_pin_all,
+)
+from app.web.admin.monitoring import render_admin_bugs, render_admin_logs, update_admin_bug
+from app.web.admin.polls import (
+    close_dates_poll,
+    close_poll,
+    create_book_poll,
+    create_dates_poll,
+    create_theme_poll,
+)
+from app.web.admin.site import (
+    activate_cycle,
+    close_cycle,
+    handle_public_settings,
+    render_admin_cycle,
+    render_admin_help,
+    render_admin_poster,
+    render_public_page,
+)
+from app.web.admin.wizard import wizard_announce_date, wizard_lock_and_poll, wizard_new_cycle
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
@@ -85,16 +180,8 @@ DEFAULT_MESSAGES = {
 
 
 def get_text(key, **kwargs):
-    """Obtiene texto del template (BD o default) y aplica placeholders."""
-    template = db.get_message_template(key)
-    if template is None:
-        template = DEFAULT_MESSAGES.get(key, "")
-    if kwargs:
-        try:
-            template = template.format(**kwargs)
-        except (KeyError, ValueError):
-            pass
-    return template
+    """Compatibilidad temporal mientras se vacia main.py."""
+    return shared_get_text(key, **kwargs)
 
 # --------------------------------------------------
 # CONFIG
@@ -102,11 +189,11 @@ def get_text(key, **kwargs):
 
 scheduler = create_scheduler()
 
-BOT_TOKEN         = os.getenv("BOT_TOKEN")
-WEBHOOK_URL       = os.getenv("WEBHOOK_URL")
+BOT_TOKEN         = CFG_BOT_TOKEN
+WEBHOOK_URL       = CFG_WEBHOOK_URL
 PORT              = int(os.environ.get("PORT", "10000"))
-ADMIN_SECRET      = os.getenv("ADMIN_SECRET", "")
-FLASK_SECRET_KEY  = os.getenv("FLASK_SECRET_KEY")
+ADMIN_SECRET      = CFG_ADMIN_SECRET
+FLASK_SECRET_KEY  = CFG_FLASK_SECRET_KEY
 if not FLASK_SECRET_KEY:
     import hashlib as _hashlib
     _bot_token = os.getenv("BOT_TOKEN", "")
@@ -116,14 +203,12 @@ if not FLASK_SECRET_KEY:
         "FLASK_SECRET_KEY no configurada — derivando de BOT_TOKEN. "
         "Define la variable de entorno para mayor seguridad."
     )
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_CHAT_ID  = CFG_TELEGRAM_CHAT_ID
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
-ALLOWED_CHAT_ID   = os.getenv("ALLOWED_CHAT_ID")
+ALLOWED_CHAT_ID   = CFG_ALLOWED_CHAT_ID
 # Soporta múltiples admins separados por coma: "123456,789012"
-ADMIN_TELEGRAM_IDS = {
-    x.strip() for x in os.getenv("ADMIN_TELEGRAM_ID", "").split(",") if x.strip()
-}
-GROUP_INVITE_LINK = os.getenv("GROUP_INVITE_LINK", "")
+ADMIN_TELEGRAM_IDS = CFG_ADMIN_TELEGRAM_IDS
+GROUP_INVITE_LINK = CFG_GROUP_INVITE_LINK
 
 if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
@@ -135,42 +220,18 @@ _cooldowns: dict = {}  # {(user_id, command): last_used_timestamp}
 
 def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
     """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
-    key = (user_id, command)
-    now = _time.monotonic()
-    last = _cooldowns.get(key, 0)
-    if now - last < seconds:
-        return False
-    _cooldowns[key] = now
-    return True
+    return access_control.check_cooldown(user_id, command, seconds)
 
 async def _is_group_member(user_id: int) -> bool:
     """Verifica si el usuario es miembro del grupo autorizado."""
-    if not ALLOWED_CHAT_ID:
-        return True
-    try:
-        member = await telegram_app.bot.get_chat_member(
-            chat_id=int(ALLOWED_CHAT_ID), user_id=user_id
-        )
-        return member.status not in ("left", "kicked", "banned")
-    except Exception:
-        return False
+    return await access_control.is_group_member(user_id)
 
 async def _allowed(update) -> bool:
     """Devuelve True si el update debe procesarse.
     - Chats de grupo: solo el grupo autorizado
     - Chats privados: solo si el usuario es miembro del grupo
     """
-    chat = update.effective_chat
-    if not ALLOWED_CHAT_ID:
-        return True
-    # Admins siempre tienen acceso
-    if update.effective_user and str(update.effective_user.id) in ADMIN_TELEGRAM_IDS:
-        return True
-    if chat.type in ("group", "supergroup"):
-        return str(chat.id) == str(ALLOWED_CHAT_ID)
-    if chat.type == "private":
-        return await _is_group_member(update.effective_user.id)
-    return False
+    return await access_control.allowed(update)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -185,6 +246,43 @@ logger = logging.getLogger(__name__)
 db.init_db()
 
 telegram_app = Application.builder().token(BOT_TOKEN).updater(None).build()
+access_control = TelegramAccessControl(
+    allowed_chat_id=ALLOWED_CHAT_ID,
+    admin_ids=ADMIN_TELEGRAM_IDS,
+    get_bot=lambda: telegram_app.bot,
+)
+messaging_service = TelegramMessagingService(
+    get_bot=lambda: telegram_app.bot,
+    chat_id=TELEGRAM_CHAT_ID,
+    logger=logger if "logger" in globals() else logging.getLogger(__name__),
+)
+book_handlers = BookHandlers(
+    allowed=_allowed,
+    check_cooldown=_check_cooldown,
+    logger=logger if "logger" in globals() else logging.getLogger(__name__),
+    formatting={"bold": bold, "code": code, "esc": esc, "italic": italic},
+)
+extra_handlers = ExtraHandlers(
+    allowed=_allowed,
+    check_cooldown=_check_cooldown,
+    logger=logger if "logger" in globals() else logging.getLogger(__name__),
+    formatting={"bold": bold, "esc": esc, "italic": italic},
+)
+meeting_handlers = MeetingHandlers(
+    allowed=_allowed,
+    check_cooldown=_check_cooldown,
+    logger=logger if "logger" in globals() else logging.getLogger(__name__),
+    formatting={"bold": bold, "italic": italic, "esc": esc},
+)
+theme_handlers = ThemeHandlers(
+    allowed=_allowed,
+    check_cooldown=_check_cooldown,
+    logger=logger if "logger" in globals() else logging.getLogger(__name__),
+    formatting={"bold": bold, "code": code, "esc": esc},
+)
+callback_handler_service = CallbackHandler(
+    logger=logger if "logger" in globals() else logging.getLogger(__name__)
+)
 
 flask_app = Flask(__name__)
 flask_app.secret_key = FLASK_SECRET_KEY
@@ -193,14 +291,6 @@ flask_app.secret_key = FLASK_SECRET_KEY
 # MARKDOWN V2 HELPERS
 # --------------------------------------------------
 
-def esc(text):
-    if not text:
-        return ""
-    return re.sub(r'([_*\[\]()~`>#+=|{}.!\\-])', r'\\\1', str(text))
-
-def bold(text):   return f"*{esc(text)}*"
-def italic(text): return f"_{esc(text)}_"
-def code(text):   return f"`{esc(text)}`"
 
 # --------------------------------------------------
 # JINJA FILTER — datetime-local format
@@ -252,6 +342,16 @@ def csrf_protect():
         abort(403)
 
 # --------------------------------------------------
+# ASYNC BRIDGE — run coroutines from sync Flask routes
+# --------------------------------------------------
+
+_bot_loop = None  # set in main() before serving
+
+def _run_async(coro):
+    """Run an async coroutine from a sync Flask route (thread-safe)."""
+    return asyncio.run_coroutine_threadsafe(coro, _bot_loop).result()
+
+# --------------------------------------------------
 # BOT / GROUP HELPERS
 # --------------------------------------------------
 
@@ -268,67 +368,24 @@ def is_admin_user(update):
     return str(update.effective_user.id) in ADMIN_TELEGRAM_IDS
 
 async def send_to_group(text, parse_mode="MarkdownV2", reply_markup=None, message_type="custom"):
-    if not TELEGRAM_CHAT_ID:
-        logger.warning("TELEGRAM_CHAT_ID no configurado")
-        return False
-    try:
-        msg = await telegram_app.bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup
-        )
-        try:
-            db.log_sent_message(message_type, TELEGRAM_CHAT_ID, text, msg.message_id)
-        except Exception:
-            pass
-        return True
-    except Exception:
-        logger.exception("Error enviando al grupo")
-        return False
+    return await messaging_service.send_to_group(
+        text,
+        parse_mode=parse_mode,
+        reply_markup=reply_markup,
+        message_type=message_type,
+    )
 
 async def send_and_pin(text, parse_mode=None, reply_markup=None):
     """Envía un mensaje al grupo y lo fija. Devuelve (sent, pinned)."""
-    if not TELEGRAM_CHAT_ID:
-        return False, False
-    try:
-        msg = await telegram_app.bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup
-        )
-        try:
-            await telegram_app.bot.pin_chat_message(
-                chat_id=TELEGRAM_CHAT_ID,
-                message_id=msg.message_id,
-                disable_notification=True
-            )
-            existing = db.get_config("pinned_message_ids") or ""
-            ids = [x for x in existing.split(",") if x.strip()]
-            ids.append(str(msg.message_id))
-            db.set_config("pinned_message_ids", ",".join(ids))
-            db.set_config("pinned_message_id", str(msg.message_id))
-            return True, True
-        except Exception as e:
-            logger.warning("No se pudo fijar el mensaje: %s", e)
-            return True, False
-    except Exception:
-        logger.exception("Error en send_and_pin")
-        return False, False
+    return await messaging_service.send_and_pin(
+        text,
+        parse_mode=parse_mode,
+        reply_markup=reply_markup,
+    )
 
 async def unpin_group_message():
     """Desfija el mensaje actual del grupo."""
-    pinned_id = db.get_config("pinned_message_id")
-    if pinned_id and TELEGRAM_CHAT_ID:
-        try:
-            await telegram_app.bot.unpin_chat_message(
-                chat_id=TELEGRAM_CHAT_ID,
-                message_id=int(pinned_id)
-            )
-            db.set_config("pinned_message_id", "")
-        except Exception:
-            logger.warning("No se pudo desfijar el mensaje")
+    await messaging_service.unpin_group_message()
 
 # --------------------------------------------------
 # WINNER ANNOUNCEMENT
@@ -449,6 +506,7 @@ async def ayuda_cmd(update, context):
 
 
 async def proponer(update, context):
+    return await book_handlers.proponer(update, context)
     if not await _allowed(update): return
     if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
         await update.message.reply_text(
@@ -503,6 +561,7 @@ async def proponer(update, context):
 
 
 async def propuestas(update, context):
+    return await book_handlers.propuestas(update, context)
     if not await _allowed(update): return
     try:
         books = db.get_book_proposals()
@@ -535,6 +594,7 @@ async def propuestas(update, context):
 
 
 async def votar(update, context):
+    return await book_handlers.votar(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "votar", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -578,6 +638,7 @@ async def votar(update, context):
 
 
 async def resultados(update, context):
+    return await book_handlers.resultados(update, context)
     if not await _allowed(update): return
     try:
         books = db.get_cycle_results()
@@ -638,11 +699,12 @@ def _find_meeting_by_text(query: str):
 
 
 async def reunion(update, context):
+    return await meeting_handlers.reunion(update, context)
     if not await _allowed(update): return
     try:
         if context.args:
             query = " ".join(context.args)
-            meeting = _find_meeting_by_text(query)
+            meeting = find_meeting_by_text(query)
             if not meeting:
                 await update.message.reply_text(f"❌ No encontré ninguna reunión con «{query}».\nUsa /reunion sin argumentos para ver la próxima.", parse_mode=None)
                 return
@@ -689,6 +751,7 @@ async def reunion(update, context):
 
 
 async def asistir(update, context):
+    return await meeting_handlers.asistir(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "asistir", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -727,6 +790,7 @@ async def asistir(update, context):
 
 
 async def noasistir(update, context):
+    return await meeting_handlers.noasistir(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "noasistir", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -764,6 +828,7 @@ async def noasistir(update, context):
 
 
 async def asistencia(update, context):
+    return await meeting_handlers.asistencia(update, context)
     if not await _allowed(update): return
     try:
         meeting = db.get_latest_scheduled_meeting()
@@ -782,6 +847,7 @@ async def asistencia(update, context):
 
 
 async def tema(update, context):
+    return await theme_handlers.tema(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "tema", 30):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -817,6 +883,7 @@ async def tema(update, context):
 
 
 async def temas(update, context):
+    return await theme_handlers.temas(update, context)
     if not await _allowed(update): return
     try:
         rows = db.get_themes()
@@ -845,6 +912,7 @@ async def temas(update, context):
 
 
 async def votar_tema(update, context):
+    return await theme_handlers.votar_tema(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "votar_tema", 10):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -873,6 +941,7 @@ async def votar_tema(update, context):
 
 
 async def trivia_cmd(update, context):
+    return await extra_handlers.trivia_cmd(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "trivia", 15):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -886,6 +955,7 @@ async def trivia_cmd(update, context):
 
 
 async def recomendar(update, context):
+    return await extra_handlers.recomendar(update, context)
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "recomendar", 60):
         await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
@@ -918,6 +988,7 @@ async def recomendar(update, context):
 # --------------------------------------------------
 
 async def button_handler(update, context):
+    return await callback_handler_service.handle(update, context)
     query = update.callback_query
     # Security: only allow group members (same check as bot commands)
     if not await _allowed(update):
@@ -1602,6 +1673,7 @@ async def desfijar_cmd(update, context):
 
 
 async def preguntas_cmd(update, context):
+    return await extra_handlers.preguntas_cmd(update, context)
     """Genera preguntas de debate para el libro actual."""
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "preguntas", 60):
@@ -1710,6 +1782,7 @@ async def proponer_fecha_cmd(update, context):
 
 
 async def cita_cmd(update, context):
+    return await extra_handlers.cita_cmd(update, context)
     """Genera una cita literaria relacionada con el libro actual."""
     if not await _allowed(update): return
     if not _check_cooldown(update.effective_user.id, "cita", 30):
@@ -1942,6 +2015,7 @@ def admin_book_delete(proposal_id):
 
 @flask_app.post("/admin/encuesta/libros/crear")
 async def admin_crear_encuesta_libros():
+    return await create_book_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -1974,6 +2048,7 @@ async def admin_crear_encuesta_libros():
 
 @flask_app.post("/admin/encuesta/<int:poll_db_id>/cerrar")
 async def admin_cerrar_encuesta(poll_db_id):
+    return await close_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, announce_winner, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2036,6 +2111,7 @@ async def admin_cerrar_encuesta(poll_db_id):
 
 @flask_app.post("/admin/encuesta/temas/crear")
 async def admin_crear_encuesta_temas():
+    return await create_theme_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2066,6 +2142,7 @@ async def admin_crear_encuesta_temas():
 
 @flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/crear")
 async def admin_crear_encuesta_fechas(meeting_id):
+    return await create_dates_poll(require_admin, meeting_id, telegram_app, TELEGRAM_CHAT_ID, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2095,6 +2172,15 @@ async def admin_crear_encuesta_fechas(meeting_id):
 
 @flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/cerrar/<int:poll_db_id>")
 async def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
+    return await close_dates_poll(
+        require_admin,
+        meeting_id,
+        poll_db_id,
+        telegram_app,
+        send_to_group,
+        {"bold": bold, "italic": italic, "esc": esc},
+        logger,
+    )
     auth = require_admin()
     if auth: return auth
     try:
@@ -2135,6 +2221,7 @@ async def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
 
 @flask_app.route("/meetings", methods=["GET", "POST"])
 def meetings_admin():
+    return render_meetings(require_admin)
     auth = require_admin()
     if auth: return auth
     if request.method == "POST":
@@ -2162,20 +2249,15 @@ def meetings_admin():
 
 @flask_app.get("/themes")
 def themes_admin():
-    auth = require_admin()
-    if auth: return auth
-    themes = db.get_themes()
-    return render_template("themes.html", themes=themes)
+    return render_themes(require_admin)
 
 @flask_app.get("/ranking")
 def ranking_admin():
-    auth = require_admin()
-    if auth: return auth
-    ranking = db.get_book_ranking()
-    return render_template("ranking.html", ranking=ranking)
+    return render_ranking(require_admin)
 
 @flask_app.get("/meeting/<int:meeting_id>")
 def meeting_detail_admin(meeting_id):
+    return render_meeting_detail(require_admin, meeting_id)
     auth = require_admin()
     if auth: return auth
     meeting = db.get_meeting(meeting_id)
@@ -2194,6 +2276,7 @@ def meeting_detail_admin(meeting_id):
 
 @flask_app.post("/meeting/<int:meeting_id>/edit")
 def meeting_edit_admin(meeting_id):
+    return update_meeting_page(require_admin, meeting_id)
     auth = require_admin()
     if auth: return auth
     name       = request.form.get("name", "").strip()
@@ -2208,6 +2291,7 @@ def meeting_edit_admin(meeting_id):
 
 @flask_app.post("/meeting/<int:meeting_id>/delete")
 def meeting_delete_admin(meeting_id):
+    return delete_meeting_page(require_admin, meeting_id)
     auth = require_admin()
     if auth: return auth
     db.delete_meeting(meeting_id)
@@ -2215,41 +2299,15 @@ def meeting_delete_admin(meeting_id):
 
 @flask_app.post("/meeting/<int:meeting_id>/date-option")
 def meeting_add_date_option_admin(meeting_id):
-    auth = require_admin()
-    if auth: return auth
-    option_date = request.form.get("option_date", "").strip()
-    if not option_date:
-        return "Fecha obligatoria", 400
-    db.add_meeting_date_option(meeting_id, option_date)
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+    return add_meeting_date_option(require_admin, meeting_id)
 
 @flask_app.post("/meeting/<int:meeting_id>/close-date")
 def meeting_close_date_admin(meeting_id):
-    auth = require_admin()
-    if auth: return auth
-    final_date = request.form.get("final_date", "").strip()
-    if not final_date:
-        return "Fecha obligatoria", 400
-    db.set_meeting_final_date(meeting_id, final_date)
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+    return close_meeting_date(require_admin, meeting_id)
 
 @flask_app.post("/create_meeting")
 def create_meeting():
-    auth = require_admin()
-    if auth: return auth
-    name         = request.form.get("meeting_name", "").strip()
-    meeting_date = request.form.get("meeting_date", "").strip() or None
-    location     = request.form.get("location", "").strip() or None
-    if not name:
-        return "Falta el nombre", 400
-    try:
-        m = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
-        if location:
-            db.update_meeting(meeting_id=m["id"], location=location)
-        return redirect(url_for("meetings_admin"))
-    except Exception:
-        logger.exception("Error creando reunión")
-        return "Error creando reunión", 500
+    return create_meeting_page(require_admin, logger)
 
 # --------------------------------------------------
 # FLASK — UTILIDADES
@@ -2257,6 +2315,7 @@ def create_meeting():
 
 @flask_app.get("/export")
 def export():
+    return export_books(require_admin)
     auth = require_admin()
     if auth: return auth
     rows = db.get_books()
@@ -2268,6 +2327,7 @@ def export():
 
 @flask_app.get("/close_voting")
 def close_voting():
+    return render_close_voting(require_admin)
     auth = require_admin()
     if auth: return auth
     winner = db.get_winner_book()
@@ -2277,6 +2337,7 @@ def close_voting():
 
 @flask_app.get("/attendance")
 def attendance():
+    return render_attendance(require_admin)
     auth = require_admin()
     if auth: return auth
     latest_meeting = db.get_latest_meeting()
@@ -2320,6 +2381,7 @@ def admin_theme_delete(theme_id):
 
 @flask_app.post("/admin/send/meeting-reminder")
 async def admin_send_meeting_reminder():
+    return await send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2331,6 +2393,7 @@ async def admin_send_meeting_reminder():
 
 @flask_app.post("/admin/send/reading-reminder")
 async def admin_send_reading_reminder():
+    return await send_manual_reading_reminder(require_admin, send_reading_reminder, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2341,6 +2404,7 @@ async def admin_send_reading_reminder():
 
 @flask_app.post("/admin/send/meeting-info")
 async def admin_send_meeting_info():
+    return await send_manual_meeting_info(require_admin, send_meeting_reminder, logger)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2353,6 +2417,7 @@ async def admin_send_meeting_info():
 
 @flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
 async def admin_send_dm_reminders(meeting_id):
+    return await send_dm_reminders(require_admin, meeting_id, telegram_app, logger)
     auth = require_admin()
     if auth: return auth
     meeting = db.get_meeting(meeting_id)
@@ -2389,48 +2454,7 @@ async def admin_send_dm_reminders(meeting_id):
 
 @flask_app.post("/admin/send/pin-all")
 async def admin_send_pin_all():
-    """Envía y fija un mensaje combinado con todas las reuniones activas."""
-    auth = require_admin()
-    if auth: return auth
-    try:
-        all_meetings = db.get_meetings(limit=10)
-        upcoming = [m for m in all_meetings if m.get("status") != "closed"]
-        if not upcoming:
-            flash("No hay reuniones activas para fijar", "danger")
-            return redirect(url_for("admin_dashboard"))
-        lines = ["📌 REUNIONES ACTIVAS\n"]
-        keyboard = []
-        for idx, meeting in enumerate(upcoming[:5], 1):
-            asistentes = db.get_attendance(meeting["id"])
-            fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-            lines.append(f"📅 Reunión {idx}: {meeting['name']}")
-            lines.append(f"   📆 Fecha: {fecha_str}")
-            if meeting.get("location"):
-                lines.append(f"   📍 Lugar: {meeting['location']}")
-            lines.append(f"   👥 Apuntados: {len(asistentes)}")
-            if idx < len(upcoming[:5]):
-                lines.append("")
-            short_name = meeting['name'][:20]
-            keyboard.append([
-                InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
-                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-            ])
-        lines.append("\nUsa /asistir para apuntarte a una reunión concreta 📖")
-        sent, pinned = await send_and_pin(
-            "\n".join(lines),
-            parse_mode=None,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        if pinned:
-            flash("Mensaje de reuniones enviado y fijado en el grupo", "success")
-        elif sent:
-            flash("Mensaje enviado al grupo, pero no se pudo fijar (¿el bot es admin con permisos de fijar?)", "warning")
-        else:
-            flash("Error enviando mensaje al grupo", "danger")
-    except Exception:
-        logger.exception("Error en pin-all")
-        flash("Error fijando mensaje", "danger")
-    return redirect(url_for("admin_dashboard"))
+    return await send_pin_all(require_admin, send_and_pin, logger)
 
 # --------------------------------------------------
 # FLASK — HISTÓRICO DE CICLOS
@@ -2438,6 +2462,7 @@ async def admin_send_pin_all():
 
 @flask_app.get("/admin/historico")
 def admin_historico():
+    return render_history(require_admin)
     auth = require_admin()
     if auth: return auth
     books_history  = db.get_all_books_history()
@@ -2458,6 +2483,7 @@ def admin_historico():
 
 @flask_app.get("/admin/galeria")
 def admin_galeria():
+    return render_gallery(require_admin)
     auth = require_admin()
     if auth: return auth
     meetings = db.get_galeria_data()
@@ -2465,6 +2491,7 @@ def admin_galeria():
 
 @flask_app.post("/admin/galeria/<int:meeting_id>/notes")
 def admin_galeria_notes(meeting_id):
+    return save_gallery_notes(require_admin, meeting_id)
     auth = require_admin()
     if auth: return auth
     notes = request.form.get("notes", "").strip() or None
@@ -2479,6 +2506,7 @@ def admin_galeria_notes(meeting_id):
 
 @flask_app.get("/publico")
 def public_page():
+    return render_public_page(GROUP_INVITE_LINK)
     winner = db.get_winner_book()
     meeting = db.get_latest_scheduled_meeting()
     proposals = db.get_book_proposals()
@@ -2503,6 +2531,7 @@ def public_page():
 
 @flask_app.route("/admin/public-settings", methods=["GET", "POST"])
 def admin_public_settings():
+    return handle_public_settings(require_admin, GROUP_INVITE_LINK)
     auth = require_admin()
     if auth: return auth
     if request.method == "POST":
@@ -2528,6 +2557,7 @@ def admin_public_settings():
 
 @flask_app.get("/admin/db")
 def admin_db():
+    return render_admin_db(require_admin, logger)
     auth = require_admin()
     if auth: return auth
     tables = db.get_table_names()
@@ -2543,6 +2573,7 @@ def admin_db():
 
 @flask_app.post("/admin/db/<table>/delete/<int:row_id>")
 def admin_db_delete_row(table, row_id):
+    return delete_db_row(require_admin, logger, table, row_id)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2553,6 +2584,7 @@ def admin_db_delete_row(table, row_id):
 
 @flask_app.post("/admin/db/<table>/truncate")
 def admin_db_truncate(table):
+    return truncate_db_table(require_admin, logger, table)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2567,6 +2599,7 @@ def admin_db_truncate(table):
 
 @flask_app.post("/admin/book/<int:book_id>/edit")
 def admin_book_edit(book_id):
+    return edit_book_page(require_admin, logger, book_id)
     auth = require_admin()
     if auth: return auth
     title       = request.form.get("title", "").strip() or None
@@ -2588,6 +2621,7 @@ def admin_book_edit(book_id):
 
 @flask_app.post("/admin/send/custom")
 async def admin_send_custom():
+    return await send_custom_message(require_admin, logger, send_to_group)
     auth = require_admin()
     if auth: return auth
     text = request.form.get("message", "").strip()
@@ -2611,33 +2645,11 @@ async def admin_send_custom():
 
 @flask_app.get("/admin/messages")
 def admin_messages():
-    auth = require_admin()
-    if auth: return auth
-    templates_db = db.get_all_message_templates()
-    # Merge defaults with DB overrides
-    templates_db_dict = {t["key"]: t for t in templates_db}
-    templates = []
-    for key, default_value in DEFAULT_MESSAGES.items():
-        if key in templates_db_dict:
-            templates.append({
-                "key": key,
-                "value": templates_db_dict[key]["value"],
-                "updated_at": templates_db_dict[key]["updated_at"],
-                "is_custom": True,
-                "default_value": default_value,
-            })
-        else:
-            templates.append({
-                "key": key,
-                "value": default_value,
-                "updated_at": None,
-                "is_custom": False,
-                "default_value": default_value,
-            })
-    return render_template("admin_messages.html", templates=templates)
+    return render_admin_messages(require_admin, DEFAULT_MESSAGES)
 
 @flask_app.post("/admin/messages/<key>/edit")
 def admin_message_edit(key):
+    return update_admin_message(require_admin, DEFAULT_MESSAGES, key)
     auth = require_admin()
     if auth: return auth
     if key not in DEFAULT_MESSAGES:
@@ -2650,6 +2662,7 @@ def admin_message_edit(key):
 
 @flask_app.post("/admin/messages/<key>/reset")
 def admin_message_reset(key):
+    return reset_admin_message(require_admin, key)
     auth = require_admin()
     if auth: return auth
     db.delete_message_template(key)
@@ -2658,6 +2671,7 @@ def admin_message_reset(key):
 
 @flask_app.post("/admin/messages/preview")
 def admin_message_preview():
+    return preview_admin_message(require_admin)
     auth = require_admin()
     if auth: return auth
     from flask import jsonify
@@ -2687,10 +2701,7 @@ def admin_message_preview():
 
 @flask_app.get("/admin/sent-messages")
 def admin_sent_messages():
-    auth = require_admin()
-    if auth: return auth
-    messages = db.get_sent_messages(limit=50)
-    return render_template("admin_sent_messages.html", messages=messages)
+    return render_sent_messages(require_admin)
 
 # --------------------------------------------------
 # FLASK — MESSAGE SCHEDULER
@@ -2698,13 +2709,11 @@ def admin_sent_messages():
 
 @flask_app.get("/admin/scheduler")
 def admin_scheduler():
-    auth = require_admin()
-    if auth: return auth
-    scheduled = db.get_all_scheduled_messages()
-    return render_template("admin_scheduler.html", scheduled=scheduled)
+    return render_scheduler(require_admin)
 
 @flask_app.post("/admin/scheduler/add")
 def admin_scheduler_add():
+    return add_scheduled_message(require_admin, logger)
     auth = require_admin()
     if auth: return auth
     text = request.form.get("text", "").strip()
@@ -2722,6 +2731,7 @@ def admin_scheduler_add():
 
 @flask_app.post("/admin/scheduler/<int:msg_id>/delete")
 def admin_scheduler_delete(msg_id):
+    return delete_scheduled_message(require_admin, logger, msg_id)
     auth = require_admin()
     if auth: return auth
     try:
@@ -2738,6 +2748,7 @@ def admin_scheduler_delete(msg_id):
 
 @flask_app.get("/admin/ai/questions")
 def admin_ai_questions():
+    return render_ai_questions(require_admin, logger)
     auth = require_admin()
     if auth: return auth
     winner = db.get_winner_book()
@@ -2765,6 +2776,7 @@ def admin_ai_questions():
 
 @flask_app.post("/admin/ai/questions/send")
 async def admin_ai_questions_send():
+    return await send_ai_questions(require_admin, logger, send_to_group)
     auth = require_admin()
     if auth: return auth
     content = request.form.get("content", "").strip()
@@ -2782,6 +2794,7 @@ async def admin_ai_questions_send():
 
 @flask_app.get("/admin/ai/quote")
 def admin_ai_quote():
+    return render_ai_quote(require_admin, logger)
     auth = require_admin()
     if auth: return auth
     winner = db.get_winner_book()
@@ -2807,6 +2820,7 @@ def admin_ai_quote():
 
 @flask_app.post("/admin/ai/quote/send")
 async def admin_ai_quote_send():
+    return await send_ai_quote(require_admin, logger, send_to_group)
     auth = require_admin()
     if auth: return auth
     content = request.form.get("content", "").strip()
@@ -2827,6 +2841,7 @@ async def admin_ai_quote_send():
 
 @flask_app.post("/admin/ai/ask")
 async def admin_ai_ask():
+    return await ask_admin_ai(require_admin, _utcnow, logger)
     auth = require_admin()
     if auth: return jsonify({"error": "No autorizado"}), 401
 
@@ -2880,11 +2895,7 @@ async def admin_ai_ask():
 
 @flask_app.get("/admin/poster")
 def admin_poster():
-    auth = require_admin()
-    if auth: return auth
-    winner = db.get_winner_book()
-    meeting = db.get_latest_scheduled_meeting()
-    return render_template("admin_poster.html", winner=winner, meeting=meeting)
+    return render_admin_poster(require_admin)
 
 # --------------------------------------------------
 # FLASK — ADMIN HELP
@@ -2892,9 +2903,7 @@ def admin_poster():
 
 @flask_app.get("/admin/help")
 def admin_help():
-    auth = require_admin()
-    if auth: return auth
-    return render_template("admin_help.html")
+    return render_admin_help(require_admin)
 
 # --------------------------------------------------
 # FLASK — CYCLE MANAGEMENT (admin)
@@ -2902,22 +2911,11 @@ def admin_help():
 
 @flask_app.get("/admin/ciclo")
 def admin_ciclo():
-    auth = require_admin()
-    if auth: return auth
-    current_cycle = db.get_current_cycle_key()
-    all_cycles    = db.get_all_cycle_keys()
-    books         = db.get_book_proposals()
-    themes        = db.get_themes()
-    winner        = db.get_winner_book()
-    return render_template(
-        "admin_ciclo.html",
-        current_cycle=current_cycle,
-        all_cycles=all_cycles,
-        books=books, themes=themes, winner=winner,
-    )
+    return render_admin_cycle(require_admin)
 
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
+    return activate_cycle(require_admin)
     auth = require_admin()
     if auth: return auth
     name = request.form.get("cycle_name", "").strip()
@@ -2932,6 +2930,7 @@ def admin_ciclo_nuevo():
 
 @flask_app.post("/admin/ciclo/cerrar")
 def admin_ciclo_cerrar():
+    return close_cycle(require_admin, logger)
     auth = require_admin()
     if auth: return auth
     cycle = db.get_current_cycle_key()
@@ -2952,107 +2951,17 @@ def admin_ciclo_cerrar():
 
 @flask_app.post("/admin/wizard/new-cycle")
 async def admin_wizard_new_cycle():
-    """Inicia un nuevo ciclo y envía mensaje al grupo pidiendo propuestas."""
-    auth = require_admin()
-    if auth: return auth
-    from datetime import timezone as _tz
-    cycle_name = request.form.get("cycle_name", "").strip()
-    if not cycle_name:
-        cycle_name = datetime.now(_tz.utc).strftime("%Y-%m")
-    cycle_name = cycle_name.upper()
-    db.set_config("active_cycle_key", cycle_name)
-    # No borrar proposals_locked_for: puede haber otros ciclos bloqueados
-    try:
-        text = (
-            f"📚 ¡Nuevo ciclo de lectura — {cycle_name}!\n\n"
-            f"Ha llegado el momento de elegir nuestro próximo libro. 🎉\n\n"
-            f"Sugiere tus propuestas con el comando:\n"
-            f"👉 /proponer título del libro\n\n"
-            f"¡Anímate a proponer y a votar! 🗳️"
-        )
-        await send_to_group(text, parse_mode=None, message_type="new_cycle")
-        flash(f"Ciclo {cycle_name} iniciado. Mensaje enviado al grupo.", "success")
-    except Exception:
-        logger.exception("Error en wizard new-cycle")
-        flash(f"Ciclo {cycle_name} creado pero no se pudo enviar el mensaje al grupo.", "warning")
-    return redirect(url_for("admin_dashboard"))
+    return await wizard_new_cycle(require_admin, send_to_group, _utcnow, logger)
 
 
 @flask_app.post("/admin/wizard/lock-and-poll")
 async def admin_wizard_lock_and_poll():
-    """Cierra las propuestas y lanza la encuesta de libros."""
-    auth = require_admin()
-    if auth: return auth
-    cycle = request.form.get("cycle") or db.get_current_cycle_key()
-    books = db.get_book_proposals(cycle)
-    if len(books) < 2:
-        flash("Necesitas al menos 2 propuestas para lanzar la encuesta.", "danger")
-        return redirect(url_for("admin_dashboard"))
-    if not TELEGRAM_CHAT_ID:
-        flash("TELEGRAM_CHAT_ID no configurado.", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        # Bloquear propuestas (acumulativo: soporte multi-ciclo)
-        _locked_now = db.get_config("proposals_locked_for") or ""
-        _locked_set = {x.strip() for x in _locked_now.split(",") if x.strip()}
-        _locked_set.add(cycle)
-        db.set_config("proposals_locked_for", ",".join(sorted(_locked_set)))
-        # Crear encuesta de libros
-        options = []
-        for b in books[:10]:
-            label = b["title"]
-            if b.get("author"):
-                label = f"{b['title']} — {b['author']}"
-            options.append(label[:100])
-        msg = await telegram_app.bot.send_poll(
-            chat_id=TELEGRAM_CHAT_ID,
-            question="📚 ¿Qué libro leemos este ciclo?",
-            options=options,
-            is_anonymous=False,
-            allows_multiple_answers=False,
-        )
-        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="books", cycle_key=cycle)
-        flash("Propuestas cerradas y encuesta de libros lanzada en Telegram.", "success")
-    except Exception:
-        logger.exception("Error en wizard lock-and-poll")
-        flash("Error lanzando la encuesta.", "danger")
-    return redirect(url_for("admin_dashboard"))
+    return await wizard_lock_and_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger)
 
 
 @flask_app.post("/admin/wizard/announce-date")
 async def admin_wizard_announce_date():
-    """Envía un mensaje al grupo anunciando la fecha de la reunión."""
-    auth = require_admin()
-    if auth: return auth
-    meeting = db.get_latest_scheduled_meeting()
-    if not meeting or not meeting.get("final_date"):
-        flash("No hay reunión con fecha confirmada.", "danger")
-        return redirect(url_for("admin_dashboard"))
-    try:
-        fecha = str(meeting["final_date"])[:16]
-        cycle = request.form.get("cycle") or db.get_current_cycle_key()
-        winner = db.get_winner_book(cycle)
-        book_line = f"\n📗 Libro: {winner['title']}" if winner else ""
-        location_line = f"\n📍 Lugar: {meeting['location']}" if meeting.get("location") else ""
-        text = (
-            f"📅 ¡Ya tenemos fecha para la reunión!\n\n"
-            f"📌 {meeting['name']}\n"
-            f"🗓️ {fecha}{location_line}{book_line}\n\n"
-            f"¡Apúntate con /asistir! 🙋"
-        )
-        keyboard = [[
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-        ]]
-        await send_to_group(text, parse_mode=None,
-                            reply_markup=InlineKeyboardMarkup(keyboard),
-                            message_type="date_announcement")
-        flash("Fecha de reunión anunciada en el grupo.", "success")
-    except Exception:
-        logger.exception("Error en wizard announce-date")
-        flash("Error enviando el anuncio.", "danger")
-    return redirect(url_for("admin_dashboard"))
+    return await wizard_announce_date(require_admin, send_to_group, logger)
 
 # --------------------------------------------------
 # FLASK — ASSIGN BOOK TO MEETING (admin)
@@ -3060,12 +2969,7 @@ async def admin_wizard_announce_date():
 
 @flask_app.post("/meeting/<int:meeting_id>/set-book")
 def meeting_set_book(meeting_id):
-    auth = require_admin()
-    if auth: return auth
-    book_id = request.form.get("book_id", "").strip()
-    db.update_meeting(meeting_id=meeting_id, book_id=int(book_id) if book_id else None)
-    flash("Libro asignado a la reunión", "success")
-    return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+    return assign_book_to_meeting(require_admin, meeting_id)
 
 # --------------------------------------------------
 # FLASK — BOOK WAITLIST
@@ -3073,6 +2977,7 @@ def meeting_set_book(meeting_id):
 
 @flask_app.get("/admin/waitlist")
 def admin_waitlist():
+    return render_waitlist(require_admin)
     auth = require_admin()
     if auth: return auth
     theme_filter = request.args.get('theme', '')
@@ -3085,6 +2990,7 @@ def admin_waitlist():
 
 @flask_app.post("/admin/waitlist/add")
 def admin_waitlist_add():
+    return add_waitlist_entry(require_admin)
     auth = require_admin()
     if auth: return auth
     book_id = request.form.get('book_id', type=int)
@@ -3101,6 +3007,7 @@ def admin_waitlist_add():
 
 @flask_app.post("/admin/waitlist/<int:wl_id>/delete")
 def admin_waitlist_delete(wl_id):
+    return delete_waitlist_entry(require_admin, wl_id)
     auth = require_admin()
     if auth: return auth
     db.remove_from_waitlist(wl_id)
@@ -3109,6 +3016,7 @@ def admin_waitlist_delete(wl_id):
 
 @flask_app.post("/admin/waitlist/suggest")
 async def admin_waitlist_suggest():
+    return await suggest_waitlist_to_group(require_admin, send_to_group)
     auth = require_admin()
     if auth: return auth
     theme = request.form.get('theme', '').strip()
@@ -3138,162 +3046,19 @@ def _utcnow():
 
 @flask_app.get("/admin/demo")
 def admin_demo():
-    auth = require_admin()
-    if auth: return auth
-    demo_active = db.get_config("demo_mode") == "true"
-    return render_template("admin_demo.html", demo_active=demo_active)
+    return render_demo_page(require_admin, db)
 
 @flask_app.post("/admin/demo/seed")
 def admin_demo_seed():
-    auth = require_admin()
-    if auth: return auth
-    try:
-        from datetime import timedelta
-        demo_books = [
-            {"title": "El nombre del viento", "author": "Patrick Rothfuss", "pages": 662,
-             "description": "La historia de Kvothe, un mago legendario que narra su propia vida.", "language_code": "es"},
-            {"title": "Sapiens", "author": "Yuval Noah Harari", "pages": 496,
-             "description": "Una breve historia de la humanidad desde el homo sapiens hasta la actualidad.", "language_code": "es"},
-            {"title": "La sombra del viento", "author": "Carlos Ruiz Zafón", "pages": 544,
-             "description": "Un misterioso libro hace que un joven se aventure en el laberinto de los libros perdidos de Barcelona.", "language_code": "es"},
-        ]
-        cycle_key = db.get_current_cycle_key()
-        for b in demo_books:
-            try:
-                db.insert_book(b, proposed_by="demo", cycle_key=cycle_key)
-            except Exception:
-                pass
-        try:
-            db.create_theme("Fantasía épica", created_by="demo", cycle_key=cycle_key)
-        except Exception:
-            pass
-        demo_date = (_utcnow() + timedelta(days=14)).replace(hour=19, minute=0, second=0, microsecond=0)
-        try:
-            db.create_meeting(name="Reunión de demostración", final_date=str(demo_date), created_by="demo")
-        except Exception:
-            pass
-        db.set_config("demo_mode", "true")
-        flash("✅ Datos de demo sembrados correctamente", "success")
-    except Exception:
-        logger.exception("Error sembrando datos demo")
-        flash("Error al sembrar datos", "danger")
-    return redirect(url_for("admin_dashboard") + "?tour=1")
+    return seed_demo_data(require_admin, db, _utcnow, logger)
 
 @flask_app.post("/admin/demo/clear")
 def admin_demo_clear():
-    auth = require_admin()
-    if auth: return auth
-    try:
-        cycle_key = db.get_current_cycle_key()
-        with db.get_cursor(commit=True) as cur:
-            cur.execute("DELETE FROM book_proposals WHERE cycle_key = %s AND proposed_by = 'demo'", (cycle_key,))
-            cur.execute("DELETE FROM themes WHERE cycle_key = %s AND created_by = 'demo'", (cycle_key,))
-            cur.execute("DELETE FROM meetings WHERE cycle_key = %s AND created_by = 'demo'", (cycle_key,))
-        db.set_config("demo_mode", "false")
-        flash("🧹 Datos de demo eliminados", "success")
-    except Exception:
-        logger.exception("Error limpiando datos demo")
-        flash("Error al limpiar datos", "danger")
-    return redirect(url_for("admin_dashboard"))
-
-
-# ── LIVE DEMO STEP RUNNER ──────────────────────────
-_DEMO_CYCLE = "__DEMO__"
-_DEMO_BOOKS = [
-    {"title": "El nombre del viento",   "author": "Patrick Rothfuss",  "pages": 662, "description": "La historia de Kvothe, un mago legendario.", "language_code": "es"},
-    {"title": "Sapiens",                "author": "Yuval Noah Harari",  "pages": 496, "description": "Una breve historia de la humanidad.", "language_code": "es"},
-    {"title": "La sombra del viento",   "author": "Carlos Ruiz Zafón", "pages": 544, "description": "Un laberinto de libros perdidos en Barcelona.", "language_code": "es"},
-    {"title": "El Hobbit",              "author": "J.R.R. Tolkien",    "pages": 310, "description": "La aventura de Bilbo Bolsón.", "language_code": "es"},
-]
-_DEMO_VOTE_DIST = [5, 3, 2, 1]   # votos por libro
-
-def _demo_cleanup():
-    with db.get_cursor(commit=True) as cur:
-        cur.execute("""DELETE FROM book_votes WHERE proposal_id IN
-                       (SELECT id FROM book_proposals WHERE cycle_key = %s)""", (_DEMO_CYCLE,))
-        cur.execute("DELETE FROM book_proposals WHERE cycle_key = %s", (_DEMO_CYCLE,))
-        cur.execute("DELETE FROM themes WHERE cycle_key = %s", (_DEMO_CYCLE,))
-        cur.execute("DELETE FROM meetings WHERE cycle_key = %s", (_DEMO_CYCLE,))
-
-@flask_app.get("/admin/demo/step/<int:n>")
-def admin_demo_step(n):
-    auth = require_admin()
-    if auth:
-        return jsonify({"ok": False, "message": "No autorizado"}), 401
-    try:
-        msg = _run_demo_step(n)
-        total = 10
-        return jsonify({"ok": True, "step": n, "total": total,
-                        "message": msg, "done": n >= total - 1})
-    except Exception as e:
-        logger.exception("Demo step %d error", n)
-        return jsonify({"ok": False, "step": n, "message": f"❌ Error: {e}", "done": True})
-
-def _run_demo_step(n: int) -> str:
-    if n == 0:
-        _demo_cleanup()
-        return "🚀 Entorno limpio — ciclo __DEMO__ preparado"
-    elif n == 1:
-        db.insert_book(_DEMO_BOOKS[0], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
-        return f"📚 Propuesta: {_DEMO_BOOKS[0]['title']} ({_DEMO_BOOKS[0]['author']})"
-    elif n == 2:
-        db.insert_book(_DEMO_BOOKS[1], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
-        return f"📚 Propuesta: {_DEMO_BOOKS[1]['title']} ({_DEMO_BOOKS[1]['author']})"
-    elif n == 3:
-        db.insert_book(_DEMO_BOOKS[2], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
-        return f"📚 Propuesta: {_DEMO_BOOKS[2]['title']} ({_DEMO_BOOKS[2]['author']})"
-    elif n == 4:
-        db.insert_book(_DEMO_BOOKS[3], proposed_by="__demo__", cycle_key=_DEMO_CYCLE)
-        return f"📚 Propuesta: {_DEMO_BOOKS[3]['title']} ({_DEMO_BOOKS[3]['author']})"
-    elif n == 5:
-        books = db.get_books(_DEMO_CYCLE)
-        lines = []
-        for i, book in enumerate(books[:4]):
-            votes = _DEMO_VOTE_DIST[i] if i < len(_DEMO_VOTE_DIST) else 0
-            for u_idx in range(votes):
-                db.vote_book(book["proposal_id"], f"__demo_user_{i}_{u_idx}__")
-            lines.append(f"{book['title'][:22]}: {'⭐'*votes} ({votes})")
-        return "🗳️ Votaciones simuladas:\n" + " | ".join(lines)
-    elif n == 6:
-        db.create_theme("Fantasía épica", created_by="__demo__", cycle_key=_DEMO_CYCLE)
-        db.create_theme("Ciencia ficción", created_by="__demo__", cycle_key=_DEMO_CYCLE)
-        return "🏷️ Temáticas creadas: Fantasía épica, Ciencia ficción"
-    elif n == 7:
-        demo_date = (_utcnow() + timedelta(days=12)).replace(hour=19, minute=0, second=0, microsecond=0)
-        db.create_meeting(name="Reunión demo — Club de Lectura", final_date=str(demo_date),
-                          cycle_key=_DEMO_CYCLE, created_by="__demo__")
-        return f"📅 Reunión demo creada para {str(demo_date)[:16]}"
-    elif n == 8:
-        books = db.get_books(_DEMO_CYCLE)
-        winner = books[0] if books else None
-        if winner:
-            return (f"🏆 Ganador del ciclo demo: «{winner['title']}» "
-                    f"con {winner['votes']} votos. ¡Felicidades!")
-        return "🏆 Ciclo demo completado"
-    elif n == 9:
-        _demo_cleanup()
-        return "🧹 Datos de demo eliminados — entorno limpio"
-    return "✅ Demo completada"
-
-# --------------------------------------------------
-# FLASK — EVENT LOG
-# --------------------------------------------------
+    return clear_demo_data(require_admin, db, logger)
 
 @flask_app.get("/admin/logs")
 def admin_logs():
-    auth = require_admin()
-    if auth: return auth
-    event_type = request.args.get("type", "")
-    category   = request.args.get("category", "")
-    events = db.get_events(
-        limit=300,
-        event_type=event_type or None,
-        category=category or None,
-    )
-    return render_template("admin_logs.html",
-                           events=events,
-                           event_type=event_type,
-                           category=category)
+    return render_admin_logs(require_admin)
 
 
 # --------------------------------------------------
@@ -3302,30 +3067,11 @@ def admin_logs():
 
 @flask_app.get("/admin/bugs")
 def admin_bugs():
-    auth = require_admin()
-    if auth: return auth
-    status_filter = request.args.get("status", "")
-    reports = db.get_bug_reports(status=status_filter or None)
-    counts = {
-        "open":     sum(1 for r in db.get_bug_reports() if r["status"] == "open"),
-        "resolved": sum(1 for r in db.get_bug_reports() if r["status"] == "resolved"),
-        "wontfix":  sum(1 for r in db.get_bug_reports() if r["status"] == "wontfix"),
-    }
-    return render_template("admin_bugs.html",
-                           reports=reports,
-                           status_filter=status_filter,
-                           counts=counts)
+    return render_admin_bugs(require_admin)
 
 @flask_app.post("/admin/bugs/<int:report_id>/update")
 def admin_bug_update(report_id):
-    auth = require_admin()
-    if auth: return auth
-    status      = request.form.get("status", "open")
-    admin_notes = request.form.get("admin_notes", "").strip() or None
-    db.update_bug_report(report_id, status, admin_notes)
-    db.log_event("admin", f"Bug #{report_id} actualizado a «{status}»", category="bug", actor="admin")
-    flash(f"Reporte #{report_id} actualizado", "success")
-    return redirect(url_for("admin_bugs"))
+    return update_admin_bug(require_admin, report_id)
 
 
 # --------------------------------------------------
@@ -3445,13 +3191,6 @@ async def startup():
         minutes=10, id="keep_alive", replace_existing=True
     )
     scheduler.start()
-
-
-async def shutdown():
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-    await telegram_app.stop()
-    await telegram_app.shutdown()
 
 
 async def main():

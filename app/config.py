@@ -1,6 +1,6 @@
 import logging
 import os
-import secrets
+import hashlib
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -12,10 +12,11 @@ PORT = int(os.environ.get("PORT", "10000"))
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 if not FLASK_SECRET_KEY:
-    FLASK_SECRET_KEY = secrets.token_hex(32)
+    bot_token = os.getenv("BOT_TOKEN", "")
+    FLASK_SECRET_KEY = hashlib.sha256(f"flask-{bot_token}-secret".encode()).hexdigest()
     logging.getLogger(__name__).warning(
-        "FLASK_SECRET_KEY no configurada - sesion no persistira entre reinicios. "
-        "Define la variable de entorno para produccion."
+        "FLASK_SECRET_KEY no configurada - derivando de BOT_TOKEN. "
+        "Define la variable de entorno para mayor seguridad."
     )
 
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")

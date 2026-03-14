@@ -36,8 +36,9 @@ def render_meetings(require_admin):
             meeting = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
             if location:
                 db.update_meeting(meeting_id=meeting["id"], location=location)
+            flash(f"Reunión «{name}» creada", "success")
         except Exception:
-            pass
+            flash("Error creando la reunión", "danger")
         return redirect(url_for("meetings_admin"))
 
     meetings_list = db.get_meetings()
@@ -98,15 +99,19 @@ def update_meeting(require_admin, meeting_id):
     status = request.form.get("status", "").strip() or None
     location = request.form.get("location", "").strip() or None
     notes = request.form.get("notes", "").strip() or None
-    db.update_meeting(
-        meeting_id=meeting_id,
-        name=name or None,
-        final_date=final_date,
-        summary=summary,
-        status=status,
-        location=location,
-        notes=notes,
-    )
+    try:
+        db.update_meeting(
+            meeting_id=meeting_id,
+            name=name or None,
+            final_date=final_date,
+            summary=summary,
+            status=status,
+            location=location,
+            notes=notes,
+        )
+        flash("Reunión actualizada", "success")
+    except Exception:
+        flash("Error actualizando la reunión", "danger")
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
 
@@ -114,7 +119,11 @@ def delete_meeting(require_admin, meeting_id):
     auth = require_admin()
     if auth:
         return auth
-    db.delete_meeting(meeting_id)
+    try:
+        db.delete_meeting(meeting_id)
+        flash("Reunión eliminada", "success")
+    except Exception:
+        flash("Error eliminando la reunión", "danger")
     return redirect(url_for("meetings_admin"))
 
 
@@ -124,8 +133,13 @@ def add_meeting_date_option(require_admin, meeting_id):
         return auth
     option_date = request.form.get("option_date", "").strip()
     if not option_date:
-        return "Fecha obligatoria", 400
-    db.add_meeting_date_option(meeting_id, option_date)
+        flash("La fecha es obligatoria", "danger")
+        return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+    try:
+        db.add_meeting_date_option(meeting_id, option_date)
+        flash("Opción de fecha añadida", "success")
+    except Exception:
+        flash("Error añadiendo la opción de fecha", "danger")
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
 
@@ -135,8 +149,13 @@ def close_meeting_date(require_admin, meeting_id):
         return auth
     final_date = request.form.get("final_date", "").strip()
     if not final_date:
-        return "Fecha obligatoria", 400
-    db.set_meeting_final_date(meeting_id, final_date)
+        flash("La fecha es obligatoria", "danger")
+        return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+    try:
+        db.set_meeting_final_date(meeting_id, final_date)
+        flash("Fecha de reunión confirmada", "success")
+    except Exception:
+        flash("Error confirmando la fecha", "danger")
     return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
 
@@ -148,15 +167,18 @@ def create_meeting(require_admin, logger):
     meeting_date = request.form.get("meeting_date", "").strip() or None
     location = request.form.get("location", "").strip() or None
     if not name:
-        return "Falta el nombre", 400
+        flash("El nombre de la reunión es obligatorio", "danger")
+        return redirect(url_for("meetings_admin"))
     try:
         meeting = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
         if location:
             db.update_meeting(meeting_id=meeting["id"], location=location)
+        flash(f"Reunión «{name}» creada", "success")
         return redirect(url_for("meetings_admin"))
     except Exception:
         logger.exception("Error creando reunion")
-        return "Error creando reunion", 500
+        flash("Error creando la reunión", "danger")
+        return redirect(url_for("meetings_admin"))
 
 
 def export_books(require_admin):

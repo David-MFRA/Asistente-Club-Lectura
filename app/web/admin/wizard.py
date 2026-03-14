@@ -1,3 +1,5 @@
+from html import escape as hesc
+
 from flask import flash, redirect, request, url_for
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -16,20 +18,15 @@ async def wizard_new_cycle(require_admin, send_to_group, utcnow, logger):
     db.set_config("active_cycle_key", cycle_name)
 
     try:
-        text = "\n".join(
-            [
-                f"📚 Nuevo ciclo de lectura: {cycle_name}",
-                "",
-                "✨ Arranca una nueva ronda del club.",
-                "Es momento de proponer lecturas para elegir el siguiente libro.",
-                "",
-                "📝 Usa este comando en el chat:",
-                "/proponer titulo del libro",
-                "",
-                "💡 Cuantas mas propuestas tengamos, mejor saldra la votacion.",
-            ]
+        text = (
+            f"📚 <b>Nuevo ciclo de lectura: {hesc(cycle_name)}</b>\n\n"
+            f"✨ Arranca una nueva ronda del club.\n"
+            f"Es momento de proponer lecturas para elegir el siguiente libro.\n\n"
+            f"📝 Propón con el comando:\n"
+            f"<code>/proponer título del libro</code>\n\n"
+            f"💡 Cuantas más propuestas tengamos, mejor saldrá la votación. ¡Anímate!"
         )
-        await send_to_group(text, parse_mode=None, message_type="new_cycle")
+        await send_to_group(text, parse_mode="HTML", message_type="new_cycle")
         flash(f"Ciclo {cycle_name} iniciado. Mensaje enviado al grupo.", "success")
     except Exception:
         logger.exception("Error en wizard new-cycle")
@@ -99,18 +96,16 @@ async def wizard_announce_date(require_admin, send_to_group, logger):
         date_text = str(meeting["final_date"])[:16]
         cycle = request.form.get("cycle") or db.get_current_cycle_key()
         winner = db.get_winner_book(cycle)
-        book_line = f"\n📖 Libro: {winner['title']}" if winner else ""
-        location_line = f"\n📍 Lugar: {meeting['location']}" if meeting.get("location") else ""
-        text = "\n".join(
-            [
-                "📅 Ya tenemos fecha para la reunion",
-                "",
-                f"🫶 {meeting['name']}",
-                f"🕒 {date_text}{location_line}{book_line}",
-                "",
-                "✅ Apuntate con /asistir",
-                "❌ Si no puedes venir, usa /noasistir",
-            ]
+        book_line = f"\n📖 Libro: <b>{hesc(winner['title'])}</b>" if winner else ""
+        location_line = f"\n📍 <b>{hesc(meeting['location'])}</b>" if meeting.get("location") else ""
+        text = (
+            f"📅 <b>¡Ya tenemos fecha para la reunión!</b>\n\n"
+            f"🫶 <b>{hesc(meeting['name'])}</b>\n"
+            f"🗓 <b>{hesc(date_text)}</b>"
+            f"{location_line}"
+            f"{book_line}\n\n"
+            f"✅ Apúntate con /asistir\n"
+            f"❌ Si no puedes venir, usa /noasistir"
         )
         keyboard = [[
             InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
@@ -118,7 +113,7 @@ async def wizard_announce_date(require_admin, send_to_group, logger):
         ]]
         await send_to_group(
             text,
-            parse_mode=None,
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
             message_type="date_announcement",
         )

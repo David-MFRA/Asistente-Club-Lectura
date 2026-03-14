@@ -449,6 +449,18 @@ def get_top_theme(cycle_key=None):
     return themes[0] if themes else None
 
 
+def get_tied_themes(cycle_key=None):
+    """Returns list of themes tied at the top vote count. Empty if no tie."""
+    themes = get_themes(cycle_key)
+    if len(themes) < 2:
+        return []
+    max_votes = themes[0].get("votes", 0)
+    if max_votes == 0:
+        return []
+    tied = [t for t in themes if t.get("votes", 0) == max_votes]
+    return tied if len(tied) > 1 else []
+
+
 def get_theme_previous_cycles(name):
     """Devuelve los ciclos anteriores donde esta temática fue usada."""
     current = get_current_cycle_key()

@@ -106,18 +106,24 @@ from app.web.admin.monitoring import render_admin_bugs, render_admin_logs, updat
 from app.web.admin.polls import (
     close_dates_poll,
     close_poll,
+    close_theme_poll,
     create_book_poll,
     create_dates_poll,
     create_theme_poll,
+    pick_book_winner,
 )
 from app.web.admin.site import (
     activate_cycle,
+    advance_to_books,
     close_cycle,
     handle_public_settings,
+    pick_theme_winner,
     render_admin_cycle,
     render_admin_help,
     render_admin_poster,
     render_public_page,
+    set_cycle_theme,
+    unlock_proposals,
 )
 from app.web.admin.wizard import wizard_announce_date, wizard_lock_and_poll, wizard_new_cycle
 
@@ -397,21 +403,22 @@ async def announce_winner(book):
     """Envía ficha completa del libro ganador al grupo."""
     if not TELEGRAM_CHAT_ID:
         return
+    from html import escape as hesc
     votes = book.get("votes", 0)
-    lines = ["🏆 ¡Tenemos libro del mes!\n"]
-    lines.append(f"📗 {book['title']}")
+    lines = ["🏆 <b>¡Tenemos libro del mes!</b>"]
+    lines.append(f"\n📗 <b>{hesc(book['title'])}</b>")
     if book.get("author"):
-        lines.append(f"✍️ {book['author']}")
+        lines.append(f"✍️ <i>{hesc(book['author'])}</i>")
     if book.get("pages"):
         lines.append(f"📄 {book['pages']} páginas")
     if book.get("language_code"):
-        lines.append(f"🌐 Idioma: {str(book['language_code']).upper()}")
-    lines.append(f"\n🗳️ Ganó con {votes} voto{'s' if votes != 1 else ''}")
+        lines.append(f"🌐 {str(book['language_code']).upper()}")
+    lines.append(f"\n🗳️ Ganó con <b>{votes} voto{'s' if votes != 1 else ''}</b>")
     if book.get("description"):
-        desc = book["description"]
+        desc = hesc(book["description"])
         if len(desc) > 600:
             desc = desc[:597] + "…"
-        lines.append(f"\n📖 Sinopsis\n{desc}")
+        lines.append(f"\n📖 <i>Sinopsis</i>\n{desc}")
     lines.append("\n¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión.")
     text = "\n".join(lines)
 
@@ -425,13 +432,13 @@ async def announce_winner(book):
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=book["cover"],
                 caption=text,
-                parse_mode=None,
+                parse_mode="HTML",
                 reply_markup=reply_markup
             )
             return
     except Exception:
         pass
-    await send_to_group(text, parse_mode=None, reply_markup=reply_markup, message_type="winner_announcement")
+    await send_to_group(text, parse_mode="HTML", reply_markup=reply_markup, message_type="winner_announcement")
 
 # --------------------------------------------------
 # TELEGRAM COMMANDS
@@ -1419,30 +1426,29 @@ async def send_meeting_reminder():
             except Exception:
                 pass
 
+        from html import escape as hesc
         fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-        names = "\n".join(f"  • {a}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
+        names = "\n".join(f"  ✅ {hesc(a)}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
 
-        lines = [f"📅 Recordatorio semanal del club\n"]
-        lines.append(f"Reunión: {meeting['name']}")
-        lines.append(f"📆 Fecha: {fecha_str}")
+        parts = [f"📅 <b>Recordatorio semanal del club</b>\n\n<b>{hesc(meeting['name'])}</b>\n🗓 <b>{hesc(fecha_str)}</b>"]
 
         if meeting.get("location"):
-            lines.append(f"📍 Lugar: {meeting['location']}")
+            parts.append(f"📍 {hesc(meeting['location'])}")
         if meeting.get("notes"):
-            lines.append(f"📝 {meeting['notes']}")
+            parts.append(f"📝 <i>{hesc(meeting['notes'])}</i>")
 
         if days_left is not None:
             if days_left > 0:
-                lines.append(f"⏳ Faltan {days_left} día{'s' if days_left != 1 else ''} para la reunión")
+                parts.append(f"⏳ Faltan <b>{days_left} día{'s' if days_left != 1 else ''}</b> para la reunión")
             elif days_left == 0:
-                lines.append(f"🔔 ¡La reunión es HOY!")
+                parts.append("🔔 <b>¡La reunión es HOY!</b>")
             else:
-                lines.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
+                parts.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
 
         if book and book.get("title"):
-            lines.append(f"\n📗 Libro: {book['title']}")
+            book_section = f"\n📗 <b>{hesc(book['title'])}</b>"
             if book.get("author"):
-                lines.append(f"   ✍️ {book['author']}")
+                book_section += f"\n✍️ <i>{hesc(book['author'])}</i>"
 
             pages = book.get("pages")
             if pages and days_left and days_left > 0:
@@ -1450,20 +1456,21 @@ async def send_meeting_reminder():
                 elapsed    = max(0, total_days - days_left)
                 pages_now  = int(pages * elapsed / total_days)
                 daily_pace = max(1, int(pages / total_days))
-                lines.append(
-                    f"\n📊 Ritmo de lectura\n"
-                    f"  Para estar al día deberías llevar unas {pages_now} páginas de {pages} en total ✨\n"
-                    f"  (Son unos {daily_pace} páginas al día, ¡tú puedes!)"
+                book_section += (
+                    f"\n\n📊 <b>Ritmo de lectura</b>\n"
+                    f"Para estar al día: <b>{pages_now} de {pages} págs</b>\n"
+                    f"<i>Unas {daily_pace} páginas al día — ¡tú puedes!</i>"
                 )
             progress_list = db.get_reading_progress(book["id"])
             if progress_list and pages:
-                lines.append(f"\n📖 Progreso del grupo")
+                book_section += "\n\n📖 <b>Progreso del grupo</b>"
                 for p in progress_list[:5]:
                     pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
-                    lines.append(f"  • {p['user_name']}: {p['pages_read']} págs ({pct}%)")
+                    book_section += f"\n  • {hesc(p['user_name'])}: {p['pages_read']} págs ({pct}%)"
+            parts.append(book_section)
 
-        lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
-        lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📖")
+        parts.append(f"\n👥 <b>Apuntados ({len(asistentes)})</b>:\n{names}")
+        parts.append("¿Aún no te has apuntado? Usa /asistir 📖")
 
         keyboard = [
             [
@@ -1474,30 +1481,30 @@ async def send_meeting_reminder():
         if meeting.get("book_id"):
             keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
 
-        await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+        await send_to_group("\n".join(parts), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         # Modo multi-reunión: mensaje combinado con todas las reuniones activas
-        lines = ["📌 REUNIONES ACTIVAS\n"]
+        from html import escape as hesc
+        parts = ["📌 <b>Reuniones activas del club</b>"]
         keyboard = []
         for idx, meeting in enumerate(upcoming[:5], 1):
             asistentes = db.get_attendance(meeting["id"])
             fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-            lines.append(f"📅 Reunión {idx}: {meeting['name']}")
-            lines.append(f"   📆 Fecha: {fecha_str}")
-            if meeting.get("location"):
-                lines.append(f"   📍 Lugar: {meeting['location']}")
-            lines.append(f"   👥 Apuntados: {len(asistentes)}")
-            if idx < len(upcoming[:5]):
-                lines.append("")
-            # Botones por reunión
+            location_line = f"\n📍 {hesc(meeting['location'])}" if meeting.get("location") else ""
+            parts.append(
+                f"\n<b>{idx}. {hesc(meeting['name'])}</b>\n"
+                f"🗓 <b>{hesc(fecha_str)}</b>"
+                f"{location_line}\n"
+                f"👥 {len(asistentes)} confirmado{'s' if len(asistentes) != 1 else ''}"
+            )
             short_name = meeting['name'][:20]
             keyboard.append([
                 InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
                 InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
             ])
 
-        lines.append(f"\nUsa /asistir para apuntarte a una reunión concreta 📖")
-        await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+        parts.append("\nUsa /asistir para apuntarte a una reunión concreta 📖")
+        await send_to_group("\n".join(parts), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def send_reading_reminder():
@@ -1520,15 +1527,15 @@ async def send_reading_reminder():
             days_left = max(0, (final_dt - datetime.utcnow()).days)
         except Exception:
             days_left = None
+    from html import escape as hesc
     fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
     reunion_name = meeting["name"] if meeting else "Sin reunión"
-    author_line = f"\n✍️ {book['author']}" if book.get("author") else ""
-    lines = [
-        "📖 Recordatorio de lectura\n",
-        "Toca avanzar un poco más en la lectura.",
-        f"\n📚 {book['title']}{author_line}",
-        f"\n📅 Reunión: {reunion_name}",
-        f"🕒 Fecha: {fecha}",
+    author_line = f"\n✍️ <i>{hesc(book['author'])}</i>" if book.get("author") else ""
+    parts = [
+        f"📖 <b>Recordatorio de lectura</b>\n\nToca avanzar un poco más en la lectura.\n",
+        f"📚 <b>{hesc(book['title'])}</b>{author_line}",
+        f"\n📅 Reunión: <b>{hesc(reunion_name)}</b>",
+        f"🗓 Fecha: <b>{hesc(fecha)}</b>",
     ]
     pages = book.get("pages")
     if pages and days_left is not None and days_left > 0:
@@ -1536,17 +1543,17 @@ async def send_reading_reminder():
         elapsed = max(0, total_days - days_left)
         pages_now = min(pages, int(pages * elapsed / total_days))
         daily_pace = max(1, int(pages / total_days))
-        lines.append(f"\n📊 Para ir al día deberías llevar unas {pages_now} de {pages} páginas.")
-        lines.append(f"⏱️ Ritmo orientativo: unas {daily_pace} páginas al día.")
-    lines.append("\n✨ ¡A leer se ha dicho!")
-    text = "\n".join(lines)
+        parts.append(f"\n📊 <b>Para ir al día:</b> {pages_now} de {pages} páginas.")
+        parts.append(f"⏱️ <i>Unas {daily_pace} páginas al día.</i>")
+    parts.append("\n✨ ¡A leer se ha dicho!")
+    text = "\n".join(parts)
     keyboard = []
     if meeting:
         keyboard.append([
             InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
             InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
         ])
-    await send_to_group(text, parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None)
+    await send_to_group(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None)
 
 
 # --------------------------------------------------
@@ -1564,31 +1571,30 @@ async def send_day_before_reminder():
     days_left = (final_dt - datetime.utcnow()).days
     if days_left not in (0, 1):
         return
+    from html import escape as hesc
     winner = db.get_winner_book()
     asistentes = db.get_attendance(meeting["id"])
     if days_left == 1:
-        header = f"🔔 ¡La reunión es MAÑANA!"
+        header = "🔔 <b>¡La reunión es MAÑANA!</b>"
     else:
-        header = f"🚨 ¡La reunión es HOY!"
-    lines = [
-        header + "\n",
-        f"📅 {meeting['name']}",
-        f"🗓️ {str(final_dt)[:16]}",
+        header = "🚨 <b>¡La reunión es HOY!</b>"
+    parts = [
+        f"{header}\n\n<b>{hesc(meeting['name'])}</b>\n🗓 <b>{hesc(str(final_dt)[:16])}</b>",
     ]
     if meeting.get("location"):
-        lines.append(f"📍 {meeting['location']}")
+        parts.append(f"📍 <b>{hesc(meeting['location'])}</b>")
     if winner:
-        lines.append(f"📗 Libro: {winner['title']}")
-    names = "\n".join(f"  ✅ {a}" for a in asistentes) if asistentes else "Nadie apuntado"
-    lines.append(f"\n👥 Apuntados ({len(asistentes)}):\n{names}")
-    lines.append(f"\n¿Aún no te has apuntado? Usa /asistir 📚")
+        parts.append(f"📗 <b>{hesc(winner['title'])}</b>")
+    names = "\n".join(f"  ✅ {hesc(a)}" for a in asistentes) if asistentes else "Nadie apuntado aún"
+    parts.append(f"\n👥 <b>Apuntados ({len(asistentes)})</b>:\n{names}")
+    parts.append("¿Aún no te has apuntado? Usa /asistir 📚")
     keyboard = [
         [
             InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
             InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
         ]
     ]
-    await send_to_group("\n".join(lines), parse_mode=None, reply_markup=InlineKeyboardMarkup(keyboard))
+    await send_to_group("\n".join(parts), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def send_scheduled_messages():
@@ -1601,6 +1607,46 @@ async def send_scheduled_messages():
             logger.info("Mensaje programado #%s enviado", msg["id"])
     except Exception:
         logger.exception("Error en send_scheduled_messages")
+
+
+async def _auto_close_cycle():
+    """Cierra automáticamente el ciclo al final del día de la reunión."""
+    try:
+        phase = db.get_config("cycle_phase") or "setup"
+        if phase in ("closed", "setup"):
+            return
+        meeting = db.get_latest_scheduled_meeting()
+        if not meeting or not meeting.get("final_date"):
+            return
+        final_dt = meeting["final_date"]
+        if isinstance(final_dt, str):
+            final_dt = datetime.fromisoformat(final_dt)
+        if hasattr(final_dt, 'tzinfo') and final_dt.tzinfo is None:
+            final_dt = final_dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        today = datetime.now(tz=final_dt.tzinfo).date() if final_dt.tzinfo else datetime.utcnow().date()
+        if final_dt.date() != today:
+            return
+        # It's meeting day — close the cycle
+        cycle = db.get_current_cycle_key()
+        cycle_theme = db.get_config("active_theme") or None
+        db.close_cycle(cycle)
+        db.set_config("cycle_phase", "closed")
+        try:
+            db.auto_add_runners_up_to_waitlist(cycle_key=cycle, cycle_theme=cycle_theme)
+        except Exception:
+            pass
+        from html import escape as hesc
+        farewell = (
+            f"🎉 <b>¡Hasta aquí el ciclo {hesc(cycle)}!</b>\n\n"
+            f"Ha sido un placer leer juntos. 📚\n"
+            f"Gracias a todos los que habéis participado.\n\n"
+            f"Pronto abriremos el siguiente ciclo. ¡Hasta entonces! 👋"
+        )
+        await send_to_group(farewell, parse_mode="HTML", message_type="cycle_closed")
+        db.log_event("scheduler", f"Ciclo «{cycle}» cerrado automáticamente al terminar el día de reunión", category="cycle", actor="scheduler")
+        logger.info("Ciclo «%s» cerrado automáticamente por el scheduler", cycle)
+    except Exception:
+        logger.exception("Error en _auto_close_cycle")
 
 
 # --------------------------------------------------
@@ -2015,8 +2061,10 @@ def admin_book_add():
     auth = require_admin()
     if auth: return auth
     title = request.form.get("title", "").strip()
+    next_url = request.form.get("_next", url_for("admin_dashboard"))
     if not title:
-        return redirect(url_for("admin_dashboard"))
+        flash("El título es obligatorio", "danger")
+        return redirect(next_url)
     try:
         book = books_api.google_books(title)
         if not book:
@@ -2025,16 +2073,23 @@ def admin_book_add():
                 "author": request.form.get("author", "").strip() or None,
             }
         db.insert_book(book, proposed_by="admin")
+        flash(f"Libro «{book['title']}» añadido", "success")
     except Exception:
         logger.exception("Error añadiendo libro desde admin")
-    return redirect(url_for("admin_dashboard"))
+        flash("Error añadiendo el libro", "danger")
+    return redirect(next_url)
 
 @flask_app.post("/admin/book/<int:proposal_id>/delete")
 def admin_book_delete(proposal_id):
     auth = require_admin()
     if auth: return auth
-    db.remove_book_proposal(proposal_id)
-    return redirect(url_for("admin_dashboard"))
+    next_url = request.form.get("_next", url_for("admin_dashboard"))
+    try:
+        db.remove_book_proposal(proposal_id)
+        flash("Propuesta eliminada", "success")
+    except Exception:
+        flash("Error eliminando la propuesta", "danger")
+    return redirect(next_url)
 
 # --------------------------------------------------
 # FLASK — ENCUESTA LIBROS
@@ -2043,7 +2098,6 @@ def admin_book_delete(proposal_id):
 @flask_app.post("/admin/encuesta/libros/crear")
 def admin_crear_encuesta_libros():
     return _run_async(create_book_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
-    return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/encuesta/<int:poll_db_id>/cerrar")
 def admin_cerrar_encuesta(poll_db_id):
@@ -2092,6 +2146,10 @@ def themes_admin():
 @flask_app.get("/ranking")
 def ranking_admin():
     return render_ranking(require_admin)
+
+@flask_app.get("/meeting/<int:meeting_id>")
+def meeting_detail_admin(meeting_id):
+    return render_meeting_detail(require_admin, meeting_id)
 
 @flask_app.post("/meeting/<int:meeting_id>/edit")
 def meeting_edit_admin(meeting_id):
@@ -2146,25 +2204,44 @@ def admin_theme_add():
     auth = require_admin()
     if auth: return auth
     name = request.form.get("name", "").strip()
-    if name:
+    next_url = request.form.get("_next", url_for("themes_admin"))
+    if not name:
+        flash("El nombre de la temática es obligatorio", "danger")
+        return redirect(next_url)
+    try:
         db.create_theme(name, created_by="admin")
-    return redirect(url_for("themes_admin"))
+        flash(f"Temática «{name}» añadida", "success")
+    except Exception:
+        flash("Error añadiendo la temática", "danger")
+    return redirect(next_url)
 
 @flask_app.post("/admin/theme/<int:theme_id>/edit")
 def admin_theme_edit(theme_id):
     auth = require_admin()
     if auth: return auth
     name = request.form.get("name", "").strip()
-    if name:
+    next_url = request.form.get("_next", url_for("themes_admin"))
+    if not name:
+        flash("El nombre no puede estar vacío", "danger")
+        return redirect(next_url)
+    try:
         db.update_theme(theme_id, name)
-    return redirect(url_for("themes_admin"))
+        flash("Temática actualizada", "success")
+    except Exception:
+        flash("Error actualizando la temática", "danger")
+    return redirect(next_url)
 
 @flask_app.post("/admin/theme/<int:theme_id>/delete")
 def admin_theme_delete(theme_id):
     auth = require_admin()
     if auth: return auth
-    db.delete_theme(theme_id)
-    return redirect(url_for("themes_admin"))
+    next_url = request.form.get("_next", url_for("themes_admin"))
+    try:
+        db.delete_theme(theme_id)
+        flash("Temática eliminada", "success")
+    except Exception:
+        flash("Error eliminando la temática", "danger")
+    return redirect(next_url)
 
 # --------------------------------------------------
 # FLASK — RECORDATORIOS MANUALES
@@ -2265,6 +2342,32 @@ def admin_message_edit(key):
 def admin_message_reset(key):
     return reset_admin_message(require_admin, key)
 
+@flask_app.post("/admin/messages/preview")
+def admin_message_preview():
+    auth = require_admin()
+    if auth:
+        return auth
+    from flask import jsonify
+    template = request.form.get("template", "")
+    example_vars = {
+        "user_name": "María García",
+        "book_title": "El nombre del viento",
+        "author": "Patrick Rothfuss",
+        "meeting_name": "Reunión de Abril",
+        "meeting_date": "2026-04-15 19:00",
+        "location": "Casa de Ana",
+        "attendee_count": "7",
+        "count": "7",
+        "names": "María, Carlos, Ana",
+        "location_line": "📍 Casa de Ana\n",
+        "author_line": "✍️ Patrick Rothfuss\n",
+    }
+    try:
+        rendered = template.format(**example_vars)
+    except (KeyError, ValueError):
+        rendered = template
+    return jsonify({"rendered": rendered})
+
 # --------------------------------------------------
 # FLASK — SENT MESSAGES HISTORY
 # --------------------------------------------------
@@ -2344,6 +2447,34 @@ def admin_ciclo():
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
     return activate_cycle(require_admin)
+
+@flask_app.post("/admin/ciclo/cerrar")
+def admin_ciclo_cerrar():
+    return close_cycle(require_admin, logger)
+
+@flask_app.post("/admin/ciclo/tema")
+def admin_ciclo_tema():
+    return set_cycle_theme(require_admin)
+
+@flask_app.post("/admin/ciclo/desbloquear")
+def admin_ciclo_desbloquear():
+    return unlock_proposals(require_admin)
+
+@flask_app.post("/admin/ciclo/advance-books")
+def admin_ciclo_advance_books():
+    return _run_async(advance_to_books(require_admin, send_to_group, logger))
+
+@flask_app.post("/admin/ciclo/pick-theme/<int:theme_id>")
+def admin_ciclo_pick_theme(theme_id):
+    return _run_async(pick_theme_winner(require_admin, theme_id, send_to_group, logger))
+
+@flask_app.post("/admin/ciclo/pick-book/<int:proposal_id>")
+def admin_ciclo_pick_book(proposal_id):
+    return _run_async(pick_book_winner(require_admin, proposal_id, announce_winner, logger))
+
+@flask_app.post("/admin/encuesta/temas/<int:poll_db_id>/cerrar")
+def admin_cerrar_encuesta_temas(poll_db_id):
+    return _run_async(close_theme_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, logger))
 
 
 @flask_app.post("/admin/wizard/new-cycle")
@@ -2545,6 +2676,12 @@ async def startup():
     scheduler.add_job(
         _keep_alive_ping, "interval",
         minutes=10, id="keep_alive", replace_existing=True
+    )
+    # Auto-cierre de ciclo — diario a las 23:30
+    scheduler.add_job(
+        _auto_close_cycle, "cron",
+        hour=23, minute=30,
+        id="auto_close_cycle", replace_existing=True
     )
     scheduler.start()
 

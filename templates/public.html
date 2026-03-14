@@ -161,43 +161,42 @@ nav{
 .btn-amber:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(232,184,109,.5)}
 .btn-amber--lg{padding:16px 30px;font-size:1rem;border-radius:13px;animation:pulse 2.5s ease-in-out infinite}
 .hero-qr{
-  position:relative;
-  display:flex;flex-direction:column;align-items:center;gap:10px;
-  min-width:180px;margin-left:6px;padding:16px 16px 14px;
-  border-radius:22px;
-  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));
+  display:inline-flex;align-items:center;gap:14px;
+  margin-top:20px;
+  padding:10px 18px 10px 10px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
   border:1px solid var(--border);
-  box-shadow:0 18px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
-  overflow:hidden;
+  transition:.18s ease;
+  max-width:fit-content;
+  text-decoration:none;
 }
-.hero-qr::before{
-  content:'ESCANEA';
-  position:absolute;top:12px;left:12px;
-  font-family:var(--font-mono);font-size:.62rem;font-weight:700;
-  letter-spacing:.12em;color:var(--amber);
-}
-.hero-qr::after{
-  content:'';
-  position:absolute;inset:auto -20px -28px auto;
-  width:96px;height:96px;border-radius:50%;
-  background:radial-gradient(circle, rgba(232,184,109,.22), transparent 70%);
-  pointer-events:none;
+.hero-qr:hover{
+  background:rgba(232,184,109,.05);
+  border-color:rgba(232,184,109,.28);
+  transform:translateY(-1px);
 }
 .hero-qr img{
-  margin-top:18px;
-  border-radius:18px;border:8px solid #fff;background:#fff;padding:10px;
-  width:132px;height:132px;
-  box-shadow:0 16px 34px rgba(0,0,0,.28);
+  width:80px;height:80px;
+  border-radius:9px;
+  border:4px solid #fff;background:#fff;
+  flex-shrink:0;
+  box-shadow:0 6px 18px rgba(0,0,0,.35);
+  display:block;
 }
-.hero-qr strong{
-  font-size:.88rem;color:var(--cream);font-weight:700;text-align:center;
+.hero-qr-body{display:flex;flex-direction:column;gap:3px}
+.hero-qr-eyebrow{
+  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--amber);opacity:.8;
 }
-.hero-qr span{
-  font-size:.68rem;color:var(--muted);font-family:var(--font-mono);
-  letter-spacing:.05em;text-align:center;max-width:150px;
+.hero-qr-title{
+  font-size:.88rem;font-weight:700;color:var(--cream);line-height:1.3;
+}
+.hero-qr-sub{
+  font-size:.73rem;color:var(--muted);line-height:1.4;max-width:160px;
 }
 @media(max-width:768px){
-  .hero-qr{margin:14px auto 0;min-width:0;width:min(240px,100%)}
+  .hero-qr{margin:18px auto 0}
 }
 .btn-ghost{
   display:inline-flex;align-items:center;gap:7px;
@@ -582,14 +581,17 @@ footer a:hover{color:var(--amber)}
         </a>
         {% endif %}
         <a class="btn-ghost" href="#libro">Ver lectura actual</a>
-        {% if group_invite_link %}
-        <div class="hero-qr">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=8" alt="QR Unirse" width="132" height="132" loading="lazy">
-          <strong>Unete en segundos</strong>
-          <span>Escanea el QR y entra directo al grupo de Telegram</span>
-        </div>
-        {% endif %}
       </div>
+      {% if group_invite_link %}
+      <a class="hero-qr" href="{{ group_invite_link }}" target="_blank" rel="noopener">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=6" alt="QR Unirse" width="80" height="80" loading="lazy">
+        <div class="hero-qr-body">
+          <span class="hero-qr-eyebrow">Escanea con el móvil</span>
+          <div class="hero-qr-title">Únete al grupo</div>
+          <div class="hero-qr-sub">Abre el enlace directo en Telegram</div>
+        </div>
+      </a>
+      {% endif %}
     </div>
     <div class="hero-book">
       <div class="book-3d">

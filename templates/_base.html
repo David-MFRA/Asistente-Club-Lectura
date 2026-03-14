@@ -64,20 +64,22 @@
   <button class="mob-menu-btn" onclick="openDrawer()" aria-label="Abrir menú">☰</button>
 </header>
 
+<!-- ── TOASTS ── -->
+<div id="toast-container" style="position:fixed;bottom:24px;right:24px;z-index:9990;display:flex;flex-direction:column;gap:10px;pointer-events:none;max-width:360px"></div>
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% if messages %}
+  <script>
+  (function(){
+    var toasts = {{ messages | tojson }};
+    window._pendingToasts = toasts;
+  })();
+  </script>
+  {% endif %}
+{% endwith %}
+
 <!-- ── CONTENT ── -->
 <div class="main {% block main_class %}{% endblock %}">
-  {% with messages = get_flashed_messages(with_categories=True) %}
-    {% if messages %}
-      <div class="flashes">
-        {% for cat, msg in messages %}
-          <div class="flash flash-{{ cat }}">
-            {% if cat == 'success' %}✅{% elif cat == 'danger' %}❌{% else %}⚠️{% endif %}
-            {{ msg }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
 
   {% block content %}{% endblock %}
 </div>
@@ -154,6 +156,66 @@
 
 <script src="/static/js/admin.js"></script>
 {% block extra_js %}{% endblock %}
+<script>
+// ── TOAST SYSTEM ──────────────────────────────────────────────
+(function(){
+  var ICONS = {success:'✅', danger:'❌', warning:'⚠️', info:'ℹ️'};
+  var COLORS = {
+    success:'rgba(16,185,129,.12)', danger:'rgba(239,68,68,.12)',
+    warning:'rgba(245,158,11,.12)', info:'rgba(99,102,241,.12)'
+  };
+  var BORDERS = {
+    success:'rgba(16,185,129,.35)', danger:'rgba(239,68,68,.35)',
+    warning:'rgba(245,158,11,.35)', info:'rgba(99,102,241,.35)'
+  };
+
+  function showToast(cat, msg){
+    var container = document.getElementById('toast-container');
+    if(!container) return;
+    var t = document.createElement('div');
+    t.style.cssText = [
+      'pointer-events:auto',
+      'background:' + (COLORS[cat]||COLORS.info),
+      'border:1px solid ' + (BORDERS[cat]||BORDERS.info),
+      'border-radius:12px',
+      'padding:12px 16px',
+      'display:flex','align-items:flex-start','gap:10px',
+      'backdrop-filter:blur(16px)',
+      'box-shadow:0 8px 28px rgba(0,0,0,.4)',
+      'font-size:.88rem','line-height:1.5','color:#f1f5f9',
+      'opacity:0','transform:translateX(40px)',
+      'transition:opacity .25s ease,transform .25s ease',
+      'cursor:pointer','max-width:360px','word-break:break-word'
+    ].join(';');
+    t.innerHTML = '<span style="flex-shrink:0;font-size:1.05rem">' + (ICONS[cat]||'ℹ️') + '</span>'
+      + '<span>' + msg + '</span>';
+    t.onclick = function(){ dismiss(t); };
+    container.appendChild(t);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        t.style.opacity = '1';
+        t.style.transform = 'translateX(0)';
+      });
+    });
+    var timer = setTimeout(function(){ dismiss(t); }, 5000);
+    function dismiss(el){
+      clearTimeout(timer);
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(40px)';
+      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 260);
+    }
+  }
+
+  window.showToast = showToast;
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var pending = window._pendingToasts || [];
+    pending.forEach(function(item, i){
+      setTimeout(function(){ showToast(item[0], item[1]); }, i * 180);
+    });
+  });
+})();
+</script>
 <script>
 // ── CSRF: inyectar token en todos los formularios POST del panel ──
 (function() {

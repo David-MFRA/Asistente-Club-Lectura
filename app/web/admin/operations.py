@@ -1,3 +1,5 @@
+from html import escape as hesc
+
 from flask import flash, redirect, request, url_for
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -11,8 +13,10 @@ async def send_manual_meeting_reminder(require_admin, send_meeting_reminder, log
     try:
         await send_meeting_reminder()
         db.log_event("admin", "Recordatorio de reunion enviado manualmente", category="meeting", actor="admin")
+        flash("Recordatorio de reunión enviado al grupo", "success")
     except Exception:
         logger.exception("Error enviando recordatorio de reunion manual")
+        flash("Error enviando el recordatorio de reunión", "danger")
     return redirect(url_for("admin_dashboard"))
 
 
@@ -22,8 +26,10 @@ async def send_manual_reading_reminder(require_admin, send_reading_reminder, log
         return auth
     try:
         await send_reading_reminder()
+        flash("Recordatorio de lectura enviado al grupo", "success")
     except Exception:
         logger.exception("Error enviando recordatorio de lectura manual")
+        flash("Error enviando el recordatorio de lectura", "danger")
     return redirect(url_for("admin_dashboard"))
 
 
@@ -61,17 +67,18 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
         if name in confirmed:
             continue
         try:
+            location_line = f"\n📍 <b>{hesc(meeting['location'])}</b>" if meeting.get("location") else ""
             await telegram_app.bot.send_message(
                 chat_id=member["user_id"],
                 text=(
-                    f"📚 Hola, {name}.\n\n"
-                    f"Te recuerdo la proxima reunion del club:\n"
-                    f"🫶 {meeting['name']}\n"
-                    f"🕒 {date_text}\n"
-                    + (f"📍 {meeting['location']}\n" if meeting.get("location") else "")
-                    + "\nResponde en el grupo con /asistir o /noasistir para confirmar."
+                    f"📚 Hola, <b>{hesc(name)}</b>.\n\n"
+                    f"Te recuerdo la próxima reunión del club:\n\n"
+                    f"🫶 <b>{hesc(meeting['name'])}</b>\n"
+                    f"🗓 <b>{hesc(date_text)}</b>"
+                    f"{location_line}\n\n"
+                    f"Responde en el grupo con /asistir o /noasistir para confirmar. 📖"
                 ),
-                parse_mode=None,
+                parse_mode="HTML",
             )
             sent += 1
         except Exception:
@@ -95,27 +102,20 @@ async def send_pin_all(require_admin, send_and_pin, logger):
             flash("No hay reuniones activas para fijar", "danger")
             return redirect(url_for("admin_dashboard"))
 
-        lines = [
-            "📌 Proximas reuniones del club",
-            "",
-            "Aqui tienes el resumen rapido para no perderte ninguna quedada:",
-        ]
+        parts = ["📌 <b>Próximas reuniones del club</b>\n"]
         keyboard = []
 
         for index, meeting in enumerate(upcoming[:5], 1):
             attendees = db.get_attendance(meeting["id"])
             date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha cerrada"
+            location_line = f"\n📍 {hesc(meeting['location'])}" if meeting.get("location") else ""
 
-            lines.extend(
-                [
-                    "",
-                    f"📚 Reunion {index}: {meeting['name']}",
-                    f"🕒 Fecha: {date_text}",
-                ]
+            parts.append(
+                f"<b>{index}. {hesc(meeting['name'])}</b>\n"
+                f"🗓 {hesc(date_text)}"
+                f"{location_line}\n"
+                f"👥 {len(attendees)} confirmado{'s' if len(attendees) != 1 else ''}"
             )
-            if meeting.get("location"):
-                lines.append(f"📍 Lugar: {meeting['location']}")
-            lines.append(f"👥 Confirmados: {len(attendees)}")
 
             short_name = meeting["name"][:20]
             keyboard.append(
@@ -125,16 +125,11 @@ async def send_pin_all(require_admin, send_and_pin, logger):
                 ]
             )
 
-        lines.extend(
-            [
-                "",
-                "✨ Usa los botones para apuntarte o avisar si no vienes.",
-            ]
-        )
+        parts.append("\n✨ Pulsa un botón para apuntarte o avisar si no vienes.")
 
         sent, pinned = await send_and_pin(
-            "\n".join(lines),
-            parse_mode=None,
+            "\n\n".join(parts),
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         if pinned:

@@ -5,29 +5,50 @@ import db
 
 COMMANDS = {
     "proponer": {"label": "/proponer", "emoji": "📚", "desc": "Proponer un libro", "group": "Participar"},
-    "propuestas": {"label": "/propuestas", "emoji": "🗳️", "desc": "Ver y votar libros", "group": "Participar"},
-    "votar": {"label": "/votar", "emoji": "✅", "desc": "Votar una propuesta", "group": "Participar"},
-    "resultados": {"label": "/resultados", "emoji": "🏆", "desc": "Ver ranking de votos", "group": "Consultar"},
-    "tema": {"label": "/tema", "emoji": "🏷️", "desc": "Proponer tematica", "group": "Participar"},
+    "propuestas": {"label": "/propuestas", "emoji": "🗳️", "desc": "Ver propuestas y votar", "group": "Participar"},
+    "votar": {"label": "/votar", "emoji": "✅", "desc": "Votar una propuesta por numero", "group": "Participar"},
+    "resultados": {"label": "/resultados", "emoji": "🏆", "desc": "Ver el ranking actual", "group": "Consultar"},
+    "tema": {"label": "/tema", "emoji": "🏷️", "desc": "Proponer una tematica", "group": "Participar"},
     "temas": {"label": "/temas", "emoji": "🎨", "desc": "Ver y votar tematicas", "group": "Participar"},
-    "votar_tema": {"label": "/votar_tema", "emoji": "🗳️", "desc": "Votar tematica", "group": "Participar"},
-    "reunion": {"label": "/reunion", "emoji": "📅", "desc": "Ver proxima reunion", "group": "Consultar"},
+    "votar_tema": {"label": "/votar_tema", "emoji": "🗳️", "desc": "Votar una tematica por ID", "group": "Participar"},
+    "reunion": {"label": "/reunion", "emoji": "📅", "desc": "Ver la proxima reunion o buscar una", "group": "Consultar"},
     "asistir": {"label": "/asistir", "emoji": "🙋", "desc": "Apuntarte a la reunion", "group": "Participar"},
     "noasistir": {"label": "/noasistir", "emoji": "❌", "desc": "Quitarte de la reunion", "group": "Participar"},
-    "asistencia": {"label": "/asistencia", "emoji": "👥", "desc": "Ver asistentes", "group": "Consultar"},
-    "proponer_fecha": {"label": "/proponer_fecha", "emoji": "🗓️", "desc": "Proponer fecha", "group": "Participar"},
-    "libro": {"label": "/libro", "emoji": "📖", "desc": "Ver libro actual", "group": "Consultar"},
-    "acta": {"label": "/acta", "emoji": "📝", "desc": "Ver acta de reunion", "group": "Consultar"},
-    "progreso": {"label": "/progreso", "emoji": "📈", "desc": "Registrar progreso", "group": "Tu actividad"},
-    "estadisticas": {"label": "/estadisticas", "emoji": "📊", "desc": "Tus estadisticas", "group": "Tu actividad"},
-    "recomendar": {"label": "/recomendar", "emoji": "💡", "desc": "Recibir recomendaciones", "group": "Extras"},
-    "lista_espera": {"label": "/lista_espera", "emoji": "⏳", "desc": "Ver lista de espera", "group": "Consultar"},
-    "trivia": {"label": "/trivia", "emoji": "🎲", "desc": "Pregunta para debatir", "group": "Extras"},
-    "bug": {"label": "/bug", "emoji": "🐛", "desc": "Reportar un problema", "group": "Ayuda"},
-    "admin_ayuda": {"label": "/admin_ayuda", "emoji": "🔐", "desc": "Comandos de admin", "group": "Admin"},
+    "asistencia": {"label": "/asistencia", "emoji": "👥", "desc": "Ver asistentes confirmados", "group": "Consultar"},
+    "proponer_fecha": {"label": "/proponer_fecha", "emoji": "🗓️", "desc": "Proponer fecha para la reunion", "group": "Participar"},
+    "libro": {"label": "/libro", "emoji": "📖", "desc": "Ver el libro del ciclo", "group": "Consultar"},
+    "acta": {"label": "/acta", "emoji": "📝", "desc": "Ver el acta de la ultima reunion", "group": "Consultar"},
+    "progreso": {"label": "/progreso", "emoji": "📈", "desc": "Registrar paginas leidas", "group": "Tu actividad"},
+    "estadisticas": {"label": "/estadisticas", "emoji": "📊", "desc": "Ver tu actividad en el club", "group": "Tu actividad"},
+    "recomendar": {"label": "/recomendar", "emoji": "💡", "desc": "Pedir recomendaciones por tematica", "group": "Extras"},
+    "lista_espera": {"label": "/lista_espera", "emoji": "⏳", "desc": "Ver libros en espera", "group": "Consultar"},
+    "trivia": {"label": "/trivia", "emoji": "🎲", "desc": "Sacar una pregunta para debatir", "group": "Extras"},
+    "bug": {"label": "/bug", "emoji": "🐛", "desc": "Reportar un problema al admin", "group": "Ayuda"},
+    "admin_ayuda": {"label": "/admin_ayuda", "emoji": "🔐", "desc": "Ver acciones de administracion", "group": "Admin"},
 }
 
 GROUP_ORDER = ["Ahora mismo", "Participar", "Consultar", "Tu actividad", "Extras", "Ayuda", "Admin"]
+
+HELP_EXAMPLES = {
+    "proponer": "/proponer Dune",
+    "propuestas": "/propuestas",
+    "votar": "/votar 3",
+    "tema": "/tema distopias",
+    "temas": "/temas",
+    "votar_tema": "/votar_tema 2",
+    "reunion": "/reunion abril",
+    "asistir": "/asistir",
+    "asistencia": "/asistencia",
+    "proponer_fecha": "/proponer_fecha 18/04 19:30",
+    "libro": "/libro",
+    "acta": "/acta",
+    "progreso": "/progreso 120",
+    "estadisticas": "/estadisticas",
+    "recomendar": "/recomendar",
+    "lista_espera": "/lista_espera",
+    "trivia": "/trivia",
+    "bug": "/bug No puedo votar desde el movil",
+}
 
 
 def get_cycle_context(cycle_key=None):
@@ -82,6 +103,23 @@ def _context_hidden(context):
     return hidden
 
 
+def _meeting_date_text(meeting):
+    if not meeting or not meeting.get("final_date"):
+        return "sin fecha cerrada"
+    return str(meeting["final_date"])[:16]
+
+
+def _top_examples(commands, limit=5):
+    examples = []
+    for command in commands:
+        example = HELP_EXAMPLES.get(command["id"])
+        if example and example not in examples:
+            examples.append(example)
+        if len(examples) >= limit:
+            break
+    return examples
+
+
 def get_contextual_commands(audience="private", cycle_key=None, is_admin=False):
     context = get_cycle_context(cycle_key)
     settings = context["settings"]
@@ -113,17 +151,17 @@ def build_welcome_text(user_name, is_admin=False, cycle_key=None):
     else:
         lines.append(f"\n📖 Todavia no hay libro cerrado para el ciclo <b>{hesc(context['cycle'])}</b>.")
     if meeting:
-        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "sin fecha"
-        lines.append(f"📅 Proxima reunion: <b>{hesc(meeting['name'])}</b> ({hesc(date_text)})")
+        lines.append(f"📅 Proxima reunion: <b>{hesc(meeting['name'])}</b> ({hesc(_meeting_date_text(meeting))})")
     else:
         lines.append("📅 Aun no hay reunion cerrada.")
     lines.append("\n👉 Lo mas util ahora:")
     for command in commands[:5]:
         lines.append(f"{command['emoji']} <b>{command['label']}</b> - {hesc(command['desc'])}")
+    lines.append("\nLos atajos cambian segun la fase del ciclo.")
     if settings.get("context_note"):
         lines.append(f"\n💬 {hesc(settings['context_note'])}")
     if is_admin:
-        lines.append("\n🔐 Tienes ademas /admin_ayuda para acciones de gestion.")
+        lines.append("\n🔐 Tambien tienes /admin_ayuda para acciones de gestion.")
     lines.append("\nUsa /ayuda para ver el menu contextual completo.")
     return "\n".join(lines), commands
 
@@ -134,13 +172,47 @@ def build_help_text(is_admin=False, cycle_key=None, audience="private"):
     settings = context["settings"]
     sections = {group: [] for group in GROUP_ORDER}
     highlighted_ids = {item["id"] for item in commands[:5]}
-    sections["Ahora mismo"].append(f"Ciclo <b>{hesc(context['cycle'])}</b>: {hesc(context['dashboard_state']['step_label'])}.")
-    sections["Ahora mismo"].append(hesc(context["dashboard_state"]["step_desc"]))
+    dashboard_state = context["dashboard_state"]
+
+    sections["Ahora mismo"].append(f"Ciclo <b>{hesc(context['cycle'])}</b>: {hesc(dashboard_state['step_label'])}.")
+    sections["Ahora mismo"].append(hesc(dashboard_state["step_desc"]))
+
+    winner = context["winner"]
+    if winner:
+        author = f" - {hesc(winner['author'])}" if winner.get("author") else ""
+        sections["Ahora mismo"].append(f"Libro activo: <b>{hesc(winner['title'])}</b>{author}.")
+
+    meeting = context["meeting"]
+    if meeting:
+        sections["Ahora mismo"].append(
+            f"Proxima reunion: <b>{hesc(meeting['name'])}</b> ({hesc(_meeting_date_text(meeting))})."
+        )
+    elif context["open_dates_poll"]:
+        sections["Ahora mismo"].append("Hay una votacion de fechas abierta para cerrar la reunion.")
+
     for command in commands:
-        marker = "⭐ " if command["id"] in highlighted_ids else ""
-        sections.setdefault(command["group"], []).append(f"{marker}<b>{command['label']}</b> - {hesc(command['desc'])}")
+        marker = "-> " if command["id"] in highlighted_ids else ""
+        sections.setdefault(command["group"], []).append(
+            f"{marker}<b>{command['label']}</b> - {hesc(command['desc'])}"
+        )
+
+    sections["Ayuda"].append("Los comandos marcados al principio son los mas utiles para la fase actual.")
+    if audience == "private":
+        sections["Ayuda"].append("En el chat privado veras botones rapidos para los atajos principales.")
+    else:
+        sections["Ayuda"].append("En el grupo conviene usar comandos cortos para no llenar el chat.")
+
+    examples = _top_examples(commands)
+    if examples:
+        sections["Ayuda"].append("Ejemplos rapidos:")
+        sections["Ayuda"].extend(f"<code>{hesc(example)}</code>" for example in examples)
+
     if settings.get("help_note"):
         sections["Ayuda"].append(hesc(settings["help_note"]))
+
+    if is_admin:
+        sections["Admin"].append("Para encuestas, mensajes y revision operativa grande suele ser mejor usar el panel web.")
+
     lines = ["📚 <b>Menu contextual del club</b>"]
     for group in GROUP_ORDER:
         items = [item for item in sections.get(group, []) if item]

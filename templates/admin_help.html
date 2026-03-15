@@ -4,131 +4,187 @@
 
 {% block head_extra %}
 <style>
-  h1  { font-size: 1.5rem; font-weight: 800; margin-bottom: 6px; }
-  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 24px; }
+  h1  { font-size: 1.55rem; font-weight: 800; margin-bottom: 6px; }
+  .sub { color: var(--muted); font-size: .92rem; margin-bottom: 24px; }
   .section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
   .section h2 { font-size: 1rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
   .section p, .section li { font-size: .88rem; color: var(--muted); line-height: 1.7; margin-bottom: 6px; }
   .section li { margin-left: 20px; }
-  .help-badge { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; margin-right: 4px; }
-  .badge-draft     { background: rgba(245,158,11,.15); color: var(--warning); border: 1px solid rgba(245,158,11,.3); }
-  .badge-scheduled { background: rgba(16,185,129,.15); color: var(--success); border: 1px solid rgba(16,185,129,.3); }
-  .badge-closed    { background: rgba(148,163,184,.15); color: var(--muted);   border: 1px solid rgba(148,163,184,.3); }
-  code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; color: var(--text); }
+  .quick-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px; }
+  .quick-link { display: block; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text); text-decoration: none; }
+  .quick-link strong { display: block; margin-bottom: 4px; font-size: .92rem; }
+  .quick-link span { color: var(--muted); font-size: .82rem; line-height: 1.5; display: block; }
   .tip { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.25); border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #a5b4fc; margin-top: 10px; }
+  .warn { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.25); border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #fcd34d; margin-top: 10px; }
+  code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; color: var(--text); }
   a { color: #a5b4fc; }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>❓ Centro de Ayuda</h1>
-<p class="sub">Guía completa para gestionar el club de lectura desde el panel de administración.</p>
+<h1>Centro de ayuda</h1>
+<p class="sub">Guia operativa del panel y del bot. Pensada para resolver rapido que pantalla usar, que paso toca ahora y donde mirar si algo falla.</p>
 
 <div class="section">
-  <h2>⚡ Vista recomendada: Ciclo rápido</h2>
-  <p>Usa <a href="/admin/ciclo/easy"><strong>/admin/ciclo/easy</strong></a> como tu vista principal, especialmente desde el móvil. Muestra siempre el estado actual del ciclo y <strong>la única acción que necesitas hacer</strong> en este momento. Se refresca automáticamente cada 30 segundos.</p>
-  <p>Para gestión avanzada (añadir/quitar propuestas, crear ciclos, resolver problemas) usa <a href="/admin/ciclo">/admin/ciclo</a>.</p>
+  <h2>Inicio rapido</h2>
+  <p>Si solo quieres operar el club sin pensar demasiado en la estructura del panel, este es el recorrido recomendado.</p>
+  <ol>
+    <li>Entra en <a href="/admin/ciclo/easy"><strong>/admin/ciclo/easy</strong></a> para ver la accion principal del momento.</li>
+    <li>Si necesitas detalle o corregir algo, salta a <a href="/admin/ciclo">/admin/ciclo</a>.</li>
+    <li>Para mensajes, usa <a href="/admin/messages">/admin/messages</a> y <a href="/admin/scheduler">/admin/scheduler</a>.</li>
+    <li>Para incidencias, revisa <a href="/admin/logs">/admin/logs</a>, <a href="/admin/audit">/admin/audit</a> y <a href="/admin/bugs">/admin/bugs</a>.</li>
+  </ol>
+  <div class="tip">Consejo: usa esta pagina como mapa del sistema. La vista rapida te dice que toca hacer; el resto de pantallas te deja operar con mas control.</div>
 </div>
 
 <div class="section">
-  <h2>🔄 Flujo completo de un ciclo</h2>
-  <p>Cada ciclo pasa por estas fases en orden. El admin controla cuándo avanza cada fase.</p>
+  <h2>Mapa del panel</h2>
+  <p>Estas son las pantallas mas importantes y para que sirven.</p>
+  <div class="quick-links">
+    <a class="quick-link" href="/admin">
+      <strong>/admin</strong>
+      <span>Dashboard general, alertas, estado del ciclo y accesos rapidos.</span>
+    </a>
+    <a class="quick-link" href="/admin/ciclo/easy">
+      <strong>/admin/ciclo/easy</strong>
+      <span>Vista rapida para operar el ciclo paso a paso, muy util desde movil.</span>
+    </a>
+    <a class="quick-link" href="/admin/ciclo">
+      <strong>/admin/ciclo</strong>
+      <span>Vista detallada de ciclos, reuniones, tematicas, ganador y acciones manuales.</span>
+    </a>
+    <a class="quick-link" href="/meetings">
+      <strong>/meetings</strong>
+      <span>Listado y edicion completa de reuniones.</span>
+    </a>
+    <a class="quick-link" href="/themes">
+      <strong>/themes</strong>
+      <span>Gestion de tematicas del ciclo.</span>
+    </a>
+    <a class="quick-link" href="/ranking">
+      <strong>/ranking</strong>
+      <span>Ranking historico y estado de votos.</span>
+    </a>
+    <a class="quick-link" href="/admin/messages">
+      <strong>/admin/messages</strong>
+      <span>Editor de mensajes del bot y variantes por fase o audiencia.</span>
+    </a>
+    <a class="quick-link" href="/admin/scheduler">
+      <strong>/admin/scheduler</strong>
+      <span>Mensajes programados y recordatorios personalizados.</span>
+    </a>
+    <a class="quick-link" href="/admin/search">
+      <strong>/admin/search</strong>
+      <span>Buscador administrativo para localizar datos y contexto.</span>
+    </a>
+    <a class="quick-link" href="/admin/bot-context">
+      <strong>/admin/bot-context</strong>
+      <span>Ajustes del menu contextual y ayudas suaves del bot.</span>
+    </a>
+    <a class="quick-link" href="/admin/logs">
+      <strong>/admin/logs</strong>
+      <span>Eventos operativos y trazas de actividad.</span>
+    </a>
+    <a class="quick-link" href="/admin/audit">
+      <strong>/admin/audit</strong>
+      <span>Auditoria de acciones administrativas.</span>
+    </a>
+    <a class="quick-link" href="/admin/bugs">
+      <strong>/admin/bugs</strong>
+      <span>Errores reportados desde /bug por los miembros.</span>
+    </a>
+    <a class="quick-link" href="/admin/db">
+      <strong>/admin/db</strong>
+      <span>Visor y editor de tablas. Usalo solo cuando haga falta mantenimiento.</span>
+    </a>
+    <a class="quick-link" href="/publico">
+      <strong>/publico</strong>
+      <span>Vista publica del club para revisar como se ve fuera del panel.</span>
+    </a>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Flujo recomendado del ciclo</h2>
+  <ol>
+    <li><strong>Crear ciclo</strong>: usa <a href="/admin/ciclo">/admin/ciclo</a> o el wizard. Define nombre y tematicas iniciales.</li>
+    <li><strong>Votar tematica</strong>: se lanza la encuesta y el grupo vota. Cierra la encuesta cuando toque.</li>
+    <li><strong>Abrir propuestas</strong>: los miembros usan <code>/proponer</code> y tu puedes anadir o limpiar propuestas desde el panel.</li>
+    <li><strong>Votar libros</strong>: lanza la encuesta de libros. Si hay varias partes, cierra todas antes de esperar anuncio final.</li>
+    <li><strong>Fijar reunion</strong>: crea o edita la reunion, anade opciones de fecha o fija la fecha manualmente.</li>
+    <li><strong>Anunciar asistencia</strong>: envia el mensaje con botones de asistencia y revisa asistentes.</li>
+    <li><strong>Seguir lectura</strong>: usa recordatorios, mensajes programados y, si quieres, IA para preguntas o citas.</li>
+    <li><strong>Cerrar ciclo</strong>: revisa lista de espera, historico y deja preparado el siguiente.</li>
+  </ol>
+  <div class="tip">La ayuda del bot tambien cambia por fase. Si notas que /ayuda no refleja bien el momento del ciclo, revisa <a href="/admin/bot-context">/admin/bot-context</a>.</div>
+</div>
+
+<div class="section">
+  <h2>Comandos del bot para miembros</h2>
+  <p>Los miembros ven una ayuda contextual con <code>/ayuda</code>. Los comandos mas habituales son estos:</p>
   <ul>
-    <li><strong>1. Inicio (setup)</strong> — Crea el ciclo desde <a href="/admin/ciclo">/admin/ciclo</a> con un nombre y al menos 2 temáticas. El bot anuncia el nuevo ciclo al grupo y lanza la encuesta de temáticas automáticamente.</li>
-    <li><strong>2. Votación de temática</strong> — El grupo vota en la encuesta nativa de Telegram. Cuando haya suficientes votos, el admin cierra la encuesta desde el panel. El bot anuncia la temática ganadora y sugiere un libro (si IA disponible).</li>
-    <li><strong>3. Propuestas de libros</strong> — Los miembros usan <code>/proponer</code> para proponer libros. Puedes ver, añadir o quitar propuestas desde <a href="/admin/ciclo">/admin/ciclo</a>. Cuando haya ≥2 propuestas, lanza la encuesta de libros.</li>
-    <li><strong>4. Votación de libros</strong> — El grupo vota. Si hay más de 10 propuestas se crean varias partes; el ganador se anuncia al cerrar <em>todas</em> las partes. Si hay empate, se lanza encuesta de desempate automáticamente.</li>
-    <li><strong>5. Fechas de reunión</strong> — Ve a la reunión desde <a href="/admin/ciclo/easy">/admin/ciclo/easy</a> → "Gestionar fechas". Añade opciones y lanza encuesta, o fija la fecha directamente. Al cerrar la encuesta el bot anuncia la fecha con botones de asistencia.</li>
-    <li><strong>6. Lectura</strong> — El ciclo está en marcha. Los miembros leen y usan <code>/progreso</code>, <code>/estadisticas</code>, etc. Usa <code>/preguntas</code> para generar preguntas de debate con IA.</li>
-    <li><strong>7. Cierre</strong> — Cierra el ciclo desde <a href="/admin/ciclo">/admin/ciclo</a>. Los runners-up se guardan en la lista de espera para el siguiente ciclo.</li>
+    <li><code>/start</code> y <code>/ayuda</code>: bienvenida y menu contextual.</li>
+    <li><code>/proponer</code>, <code>/propuestas</code>, <code>/votar</code> y <code>/resultados</code>: flujo de libros.</li>
+    <li><code>/tema</code>, <code>/temas</code> y <code>/votar_tema</code>: flujo de tematicas.</li>
+    <li><code>/reunion</code>, <code>/asistir</code>, <code>/noasistir</code> y <code>/asistencia</code>: flujo de reuniones.</li>
+    <li><code>/progreso</code> y <code>/estadisticas</code>: actividad personal.</li>
+    <li><code>/trivia</code>, <code>/recomendar</code>, <code>/lista_espera</code> y <code>/bug</code>: extras y soporte.</li>
   </ul>
-  <div class="tip">💡 Regla clave: una vez seleccionada una temática, un libro ganador o una fecha, el panel NO ofrece volver a lanzar esa encuesta. Si necesitas cambiarlo, usa el lápiz ✏️ de edición.</div>
 </div>
 
 <div class="section">
-  <h2>📊 Encuestas de Telegram</h2>
+  <h2>Comandos admin en Telegram</h2>
+  <p>Solo funcionan para IDs incluidos en <code>ADMIN_TELEGRAM_ID</code>.</p>
   <ul>
-    <li>Las encuestas son <strong>nativas de Telegram</strong> — los votos llegan en tiempo real al panel.</li>
-    <li>El admin decide cuándo cerrar cada encuesta. Al cerrar se determina el ganador automáticamente.</li>
-    <li>Si hay <strong>empate</strong>, se lanza una encuesta de desempate automáticamente.</li>
-    <li>Si hay <strong>más de 10 propuestas de libros</strong>, se crean varias encuestas (parte 1/2, parte 2/2...). El ganador se anuncia solo cuando se cierran <em>todas</em> las partes.</li>
-    <li>Los votos de las encuestas de libros se acumulan en la base de datos via <code>PollAnswerHandler</code> en tiempo real.</li>
+    <li><code>/admin_ayuda</code>: resumen rapido de acciones admin.</li>
+    <li><code>/ciclo</code>, <code>/nuevo_ciclo</code>, <code>/cerrar_ciclo</code>: acciones de ciclo.</li>
+    <li><code>/anuncio</code>, <code>/anunciar_ganador</code>: mensajes al grupo.</li>
+    <li><code>/encuesta_libros</code>, <code>/encuesta_temas</code>: encuestas rapidas desde Telegram.</li>
+    <li><code>/preguntas</code> y <code>/cita</code>: contenido con IA para el libro activo.</li>
+    <li><code>/enviar_recordatorio</code>, <code>/enviar_lectura</code>, <code>/fijar</code>, <code>/desfijar</code>: operativa del grupo.</li>
   </ul>
+  <div class="warn">Para acciones grandes o delicadas, mejor el panel web. Telegram va bien para atajos, pero no para mantenimiento fino.</div>
 </div>
 
 <div class="section">
-  <h2>📱 Comandos del bot para usuarios</h2>
+  <h2>Mensajes, recordatorios y automatizacion</h2>
   <ul>
-    <li><code>/proponer [título]</code> — Propone un libro. Busca en Google Books automáticamente. Sin cooldown.</li>
-    <li><code>/propuestas</code> — Lista de propuestas actuales con botones de voto inline.</li>
-    <li><code>/votar [N]</code> — Vota por la propuesta número N.</li>
-    <li><code>/resultados</code> — Ranking de votos actual.</li>
-    <li><code>/libro</code> — Libro ganador del ciclo activo.</li>
-    <li><code>/reunion [texto]</code> — Info de la próxima reunión. Acepta nombres/meses: <code>/reunion abril</code>.</li>
-    <li><code>/asistir</code> / <code>/noasistir</code> — Confirmación de asistencia.</li>
-    <li><code>/asistencia</code> — Lista de asistentes confirmados.</li>
-    <li><code>/progreso [N] páginas</code> — Registra tu avance de lectura.</li>
-    <li><code>/estadisticas</code> — Estadísticas del ciclo y del usuario.</li>
-    <li><code>/trivia</code> — Pregunta de trivia literaria aleatoria.</li>
-    <li><code>/recomendar</code> — Recomendación de libros basada en la temática activa.</li>
-    <li><code>/acta</code> — Resumen del último ciclo.</li>
-    <li><code>/lista_espera</code> — Libros en lista de espera para próximos ciclos.</li>
-    <li><code>/bug [descripción]</code> — Reportar un error al admin.</li>
+    <li><a href="/admin/messages">/admin/messages</a>: edita textos por defecto y variantes por fase o audiencia.</li>
+    <li><a href="/admin/scheduler">/admin/scheduler</a>: programa mensajes puntuales y recordatorios recurrentes.</li>
+    <li><a href="/admin/sent-messages">/admin/sent-messages</a>: revisa que se envio y cuando.</li>
+    <li>Los jobs base incluyen reunion semanal, recordatorio de lectura, aviso diario cercano a reunion, mensajes programados y keep-alive.</li>
   </ul>
 </div>
 
 <div class="section">
-  <h2>🔐 Comandos admin (en Telegram)</h2>
-  <p>Solo funcionan si tu Telegram ID está en <code>ADMIN_TELEGRAM_ID</code>.</p>
+  <h2>Observabilidad y soporte</h2>
   <ul>
-    <li><code>/admin_ayuda</code> — Lista de comandos admin disponibles.</li>
-    <li><code>/nuevo_ciclo</code> — Inicia un nuevo ciclo (usa el panel web, es más completo).</li>
-    <li><code>/cerrar_ciclo</code> — Cierra el ciclo activo.</li>
-    <li><code>/anuncio [texto]</code> — Envía un anuncio al grupo.</li>
-    <li><code>/anunciar_ganador</code> — Anuncia el libro ganador del ciclo.</li>
-    <li><code>/encuesta_libros</code> — Lanza encuesta de libros (usa el panel web).</li>
-    <li><code>/encuesta_temas</code> — Lanza encuesta de temáticas (usa el panel web).</li>
-    <li><code>/preguntas</code> — Genera 5 preguntas de debate con IA (Groq) para el libro activo y las envía al grupo.</li>
-    <li><code>/cita</code> — Genera una cita literaria del libro activo con IA y la envía al grupo.</li>
-    <li><code>/fijar</code> — Fija el recordatorio de reunión actual en el grupo.</li>
-    <li><code>/desfijar</code> — Desfija el mensaje fijado.</li>
-    <li><code>/enviar_recordatorio</code> — Envía el recordatorio de reunión ahora.</li>
-    <li><code>/enviar_lectura</code> — Envía el recordatorio de lectura ahora.</li>
-    <li><code>/proponer_fecha [fecha]</code> — Propone una fecha para la reunión.</li>
+    <li><a href="/admin/logs">/admin/logs</a>: eventos operativos y errores recientes.</li>
+    <li><a href="/admin/audit">/admin/audit</a>: quien hizo que accion en el panel.</li>
+    <li><a href="/admin/bugs">/admin/bugs</a>: incidencias reportadas por usuarios con <code>/bug</code>.</li>
+    <li><a href="/admin/search">/admin/search</a>: buscador administrativo para datos dispersos.</li>
+    <li><a href="/admin/simulator">/admin/simulator</a>: simulador para revisar la respuesta del sistema.</li>
   </ul>
 </div>
 
 <div class="section">
-  <h2>🤖 Asistente IA</h2>
-  <p>El modal 🤖 del dashboard permite hacer preguntas en lenguaje natural. El asistente conoce:</p>
+  <h2>Seguridad y operaciones</h2>
   <ul>
-    <li>El ciclo activo, libro ganador, propuestas actuales y reunion próxima.</li>
-    <li>Cómo funciona el panel de administración y todos los flujos del ciclo.</li>
-    <li>Los comandos del bot para usuarios y admins.</li>
+    <li>Define siempre <code>FLASK_SECRET_KEY</code> y <code>WEBHOOK_SECRET_TOKEN</code> en produccion.</li>
+    <li>Revisa que <code>TELEGRAM_CHAT_ID</code> y <code>ALLOWED_CHAT_ID</code> apunten al grupo correcto.</li>
+    <li>Usa <a href="/admin/db">/admin/db</a> con prudencia: es util para soporte, pero puede romper datos si se usa sin contexto.</li>
+    <li>Si cambias ayuda o menu contextual del bot, revisa tambien el README y <a href="/admin/bot-context">/admin/bot-context</a>.</li>
   </ul>
-  <p>Requiere <code>GROQ_API_KEY</code> configurada. Si falla con 403, puede ser un bloqueo de la IP del servidor (Cloudflare). Prueba desde localhost para descartar.</p>
-  <div class="tip">💡 Sugerencias: "¿Cuántos votos tiene cada propuesta?", "¿Qué temática recomiendas para el próximo ciclo?", "¿Cómo lanzo la encuesta de fechas?", "¿Qué pasa si hay empate?"</div>
 </div>
 
 <div class="section">
-  <h2>⚙️ Recordatorios automáticos</h2>
+  <h2>Problemas frecuentes</h2>
   <ul>
-    <li><strong>Lunes 10:00</strong> — Recordatorio de reunión semanal con botones de asistencia.</li>
-    <li><strong>Cada 2 días</strong> — Recordatorio de lectura con ritmo de páginas.</li>
-    <li><strong>Diario 10:00</strong> — Aviso especial si la reunión es hoy o mañana.</li>
-    <li><strong>Cada 5 min</strong> — Procesa mensajes programados desde el <a href="/admin/scheduler">programador</a>.</li>
-    <li><strong>Cada 10 min</strong> — Keep-alive ping para mantener el servidor activo en Render.</li>
+    <li><strong>El bot no responde</strong>: revisa <code>/health</code>, logs, webhook y permisos del bot en el grupo.</li>
+    <li><strong>No salen recordatorios</strong>: comprueba scheduler, chat ID y que el servicio no este dormido.</li>
+    <li><strong>La ayuda del bot no cuadra con el ciclo</strong>: revisa ciclo activo, encuestas abiertas y ajustes en <a href="/admin/bot-context">/admin/bot-context</a>.</li>
+    <li><strong>No puedes cerrar una encuesta</strong>: entra en la vista detallada del ciclo o en dashboard y revisa las encuestas abiertas de ese ciclo.</li>
+    <li><strong>Necesitas tocar datos manualmente</strong>: busca primero en el panel normal; deja <a href="/admin/db">/admin/db</a> como ultimo recurso.</li>
   </ul>
 </div>
-
-<div class="section">
-  <h2>✏️ Mensajes editables del bot</h2>
-  <p>Desde <a href="/admin/messages">/admin/messages</a> puedes editar los textos que envía el bot: bienvenida, ayuda, textos de encuestas, confirmaciones, etc. Cada mensaje tiene un botón de reset al valor por defecto.</p>
-</div>
-
-<div class="section">
-  <h2>🌐 Página pública</h2>
-  <p>La página <code>/</code> es pública y muestra: libro activo, próxima reunión (fecha, lugar y número de asistentes confirmados), propuestas en votación e historial de ciclos. Los nombres de asistentes son privados.</p>
-</div>
-
 {% endblock %}

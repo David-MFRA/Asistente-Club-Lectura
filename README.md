@@ -1,226 +1,222 @@
-# 📚 Bot Club de Lectura
+# Bot Club de Lectura
 
-Bot de Telegram para gestionar un club de lectura. Permite proponer y votar libros, organizar reuniones, gestionar asistencia, lanzar encuestas y enviar recordatorios automáticos. Incluye un panel de administración web.
+Bot de Telegram para gestionar un club de lectura con panel web de administracion. Permite proponer y votar libros, lanzar encuestas nativas de Telegram, organizar reuniones, registrar asistencia y progreso de lectura, y operar el ciclo completo desde `/admin`.
 
-## Funcionalidades
+## Que hace hoy
 
 ### Bot de Telegram
-- Proponer libros (búsqueda automática en Google Books) y votar
-- Proponer temáticas y votar
-- Ver la próxima reunión, apuntarse o quitarse con botones inline
-- Buscar reuniones por nombre o mes (`/reunion abril`)
-- Recordatorios automáticos semanales con ritmo de lectura
-- Preguntas de debate y citas literarias con IA (Groq)
-- Estadísticas personales de cada miembro
-- Soporte para múltiples reuniones y encuestas simultáneas
+- Propone libros con busqueda en Google Books.
+- Vota libros y tematicas desde comandos o encuestas de Telegram.
+- Muestra el libro activo, la proxima reunion y el acta anterior.
+- Permite confirmar asistencia y registrar progreso de lectura.
+- Ofrece ayuda contextual en privado con accesos rapidos.
+- Soporta extras como trivia, recomendaciones y reporte de bugs.
 
-### Panel de administración web (`/admin`)
-- Gestión completa de libros, temáticas y reuniones
-- Lanzar y cerrar encuestas de Telegram
-- Enviar y programar mensajes al grupo
-- Editar todos los textos del bot desde el panel
-- Historial de mensajes enviados
-- Visor y editor de la base de datos
-- Histórico de ciclos anteriores
-- Generar contenido con IA y enviarlo al grupo
-- Fijar mensajes importantes en el grupo
+### Panel web
+- Dashboard con estado del ciclo, alertas y accesos operativos.
+- Vista guiada de ciclo en `/admin/ciclo/easy`.
+- Gestion completa de libros, tematicas, reuniones y lista de espera.
+- Lanzamiento y cierre de encuestas de libros, tematicas y fechas.
+- Edicion de mensajes del bot y programacion de envios.
+- Auditoria, logs, bugs, buscador administrativo y contexto del bot.
+- Pagina publica del club en `/` y editor de su contenido.
 
-### Flujo guiado del ciclo (dashboard)
+## Arquitectura rapida
 
-El dashboard incluye un wizard que guía al administrador paso a paso:
+- `main.py`: arranque principal, glue code y algunas rutas y handlers legacy.
+- `db.py`: capa de acceso a PostgreSQL, inicializacion de tablas e indices.
+- `app/bootstrap.py`: arranque coordinado de Flask, Telegram y scheduler.
+- `app/runtime/jobs.py`: jobs en background y recarga de recordatorios.
+- `app/services/`: contexto del bot, auditoria, limites, observabilidad y helpers.
+- `app/telegram/`: control de acceso, callbacks, polling y comandos por dominio.
+- `app/web/admin/`: rutas y pantallas del panel.
 
-1. **Iniciar ciclo** → anuncia el nuevo ciclo en el grupo y habilita propuestas
-2. **Recoger propuestas** → los miembros usan `/proponer`, admin puede añadir desde el panel
-3. **Lanzar encuesta** → cierra propuestas y envía encuesta nativa de Telegram
-4. **Cerrar encuesta** → anuncia el ganador automáticamente
-5. **Fijar fecha** → directamente o via encuesta de fechas en Telegram
-6. **Anunciar fecha** → envía mensaje al grupo con botones de asistencia
+## Requisitos
 
----
-
-## Stack técnico
-
-| Componente | Tecnología |
-|---|---|
-| Lenguaje | Python 3.10+ |
-| Web framework | Flask (servido en modo WSGI threaded) |
-| Bot Telegram | python-telegram-bot 20.x (webhook) |
-| Base de datos | PostgreSQL (Supabase como backend gestionado) |
-| Scheduler | APScheduler (AsyncIOScheduler) |
-| Templates | Jinja2 |
-| IA (opcional) | Groq API — llama3-8b-8192 |
-| Libros | Google Books API |
-
----
+- Python 3.11 recomendado.
+- PostgreSQL accesible desde `DATABASE_URL`.
+- Un bot de Telegram creado con BotFather.
+- Un webhook publico para produccion. En local puedes usar ngrok.
 
 ## Variables de entorno
 
-| Variable | Obligatoria | Descripción |
+Las variables importantes son estas:
+
+| Variable | Obligatoria | Uso |
 |---|---|---|
-| `BOT_TOKEN` | ✅ | Token del bot de Telegram (obtenido de @BotFather) |
-| `WEBHOOK_URL` | ✅ | URL pública del servidor, ej. `https://miapp.onrender.com` |
-| `DATABASE_URL` | ✅ | Connection string PostgreSQL de Supabase |
-| `ADMIN_SECRET` | ✅ | Contraseña para acceder al panel `/admin` |
-| `FLASK_SECRET_KEY` | ✅ | Clave secreta para sesiones Flask (string aleatorio largo) |
-| `TELEGRAM_CHAT_ID` | ✅ | ID del grupo de Telegram donde opera el bot |
-| `ADMIN_TELEGRAM_ID` | ✅ | ID(s) de Telegram de los admins, separados por coma |
-| `ALLOWED_CHAT_ID` | ❌ | Si se define, el bot solo responde en ese chat |
-| `GROQ_API_KEY` | ❌ | API key de Groq para funciones de IA (gratis en console.groq.com) |
-| `PORT` | ❌ | Puerto del servidor (por defecto `10000`) |
+| `BOT_TOKEN` | Si | Token del bot de Telegram |
+| `WEBHOOK_URL` | Si | URL publica base, por ejemplo `https://miapp.onrender.com` |
+| `DATABASE_URL` | Si | Connection string PostgreSQL |
+| `ADMIN_SECRET` | Si | Clave para entrar al panel web |
+| `FLASK_SECRET_KEY` | Recomendado | Clave de sesion Flask |
+| `WEBHOOK_SECRET_TOKEN` | Recomendado | Token secreto para validar el webhook |
+| `TELEGRAM_CHAT_ID` | Si | ID del grupo donde opera el bot |
+| `ALLOWED_CHAT_ID` | Opcional | Limita respuestas a un chat concreto |
+| `ADMIN_TELEGRAM_ID` | Si | IDs de admins separados por coma |
+| `GROUP_INVITE_LINK` | Opcional | Enlace publico al grupo o canal |
+| `GROQ_API_KEY` | Opcional | Habilita funciones de IA |
+| `PORT` | Opcional | Puerto HTTP, por defecto `10000` |
 
----
+Hay un ejemplo listo en [`.env.example`](/C:/Users/david/OneDrive/Escritorio/bot/.env.example).
 
-## Notas de ejecución
+## Puesta en marcha local
 
-- El panel web se sirve con Flask en modo WSGI threaded para evitar los deadlocks que aparecían al mezclar `WsgiToAsgi` con acciones admin que llamaban a Telegram.
-- Las rutas web que necesitan llamar a lógica async del bot usan un bridge interno (`_run_async`) para ejecutarse sobre el mismo event loop del bot sin bloquear la carga de CSS/JS.
-- Si Telegram migra el grupo a supergrupo, el servicio intenta reenviar al nuevo `chat_id` automáticamente y guarda el valor detectado en `app_config` (`migrated_chat_id`) para diagnóstico.
+### 1. Crear entorno e instalar dependencias
 
-## Comandos del bot
-
-### Comandos de usuario
-
-| Comando | Descripción |
-|---|---|
-| `/start` | Mensaje de bienvenida |
-| `/ayuda` | Lista de todos los comandos |
-| `/proponer <título>` | Proponer un libro (busca en Google Books) |
-| `/propuestas` | Ver propuestas del ciclo con botones para votar |
-| `/votar <N>` | Votar la propuesta número N |
-| `/resultados` | Ranking de votos del ciclo actual |
-| `/libro` | Ver el libro ganador del ciclo |
-| `/tema <nombre>` | Proponer una temática |
-| `/temas` | Ver temáticas con botones para votar |
-| `/reunion [texto]` | Ver la próxima reunión (o buscar por nombre/mes) |
-| `/asistir` | Apuntarse a la reunión |
-| `/noasistir` | Quitarse de la reunión |
-| `/asistencia` | Ver lista de asistentes |
-| `/acta` | Resumen de la última reunión cerrada |
-| `/progreso <páginas>` | Registrar páginas leídas |
-| `/estadisticas` | Tus estadísticas en el club |
-| `/trivia` | Pregunta aleatoria para el debate |
-| `/preguntas` | Generar preguntas de debate con IA |
-| `/cita` | Cita del libro (Goodreads o IA) |
-| `/recomendar` | Recomendaciones según la temática activa |
-
-### Comandos de administrador
-
-| Comando | Descripción |
-|---|---|
-| `/admin_ayuda` | Lista de comandos de admin |
-| `/ciclo` | Ver el ciclo activo |
-| `/nuevo_ciclo [nombre]` | Crear nuevo ciclo |
-| `/cerrar_ciclo` | Cerrar el ciclo actual |
-| `/anuncio <texto>` | Enviar mensaje libre al grupo |
-| `/anunciar_ganador` | Anunciar el libro ganador |
-| `/encuesta_libros` | Lanzar encuesta de libros |
-| `/encuesta_temas` | Lanzar encuesta de temáticas |
-| `/enviar_recordatorio` | Enviar recordatorio de reunión ahora |
-| `/enviar_lectura` | Enviar recordatorio de lectura ahora |
-| `/fijar` | Fijar recordatorio de reunión en el grupo |
-| `/desfijar` | Desfijar el mensaje actual |
-
----
-
-## Estructura del proyecto
-
-``` 
-bot/
-├── main.py                  # Wiring principal, arranque ASGI y rutas/handlers
-├── db.py                    # Capa de base de datos (PostgreSQL)
-├── ai_features.py           # Groq API + scraping Goodreads/Wikiquote
-├── books_api.py             # Google Books API
-├── recommendations.py       # Recomendaciones por temática
-├── trivia.py                # Preguntas de debate predefinidas
-├── stats.py                 # Gráficas y estadísticas
-├── app/
-│   ├── bootstrap.py         # Arranque compartido web + bot + scheduler
-│   ├── config.py            # Configuración y variables de entorno
-│   ├── formatting.py        # Helpers de formato/Markdown
-│   ├── messages.py          # Textos configurables por defecto
-│   ├── services/
-│   │   └── meeting_lookup.py
-│   ├── telegram/
-│   │   ├── access.py
-│   │   ├── callbacks.py
-│   │   ├── messaging.py
-│   │   ├── registry.py
-│   │   └── commands/
-│   │       ├── books.py
-│   │       ├── meetings.py
-│   │       ├── themes.py
-│   │       └── extras.py
-│   └── web/
-│       └── admin/
-│           ├── ai.py
-│           ├── catalog.py
-│           ├── demo.py
-│           ├── messaging.py
-│           ├── monitoring.py
-│           ├── operations.py
-│           ├── polls.py
-│           ├── site.py
-│           └── wizard.py
-├── static/
-├── templates/
-└── requirements.txt
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
----
+### 2. Crear el archivo de entorno
 
-## Esquema de base de datos
+```powershell
+Copy-Item .env.example .env
+```
 
-| Tabla | Descripción |
-|---|---|
-| `books` | Catálogo de libros |
-| `book_proposals` | Propuestas por ciclo |
-| `book_votes` | Votos a propuestas |
-| `themes` | Temáticas propuestas |
-| `theme_votes` | Votos a temáticas |
-| `meetings` | Reuniones (con location, notes) |
-| `meeting_date_options` | Opciones de fecha para votación |
-| `meeting_date_votes` | Votos de fecha |
-| `meeting_attendance` | Asistencia a reuniones |
-| `telegram_polls` | Encuestas de Telegram activas |
-| `app_config` | Configuración del sistema (clave/valor) |
-| `reading_progress` | Progreso de lectura por usuario |
-| `message_templates` | Textos del bot personalizados |
-| `sent_messages` | Historial de mensajes enviados al grupo |
-| `scheduled_messages` | Mensajes programados para envío futuro |
+Rellena los valores reales antes de arrancar.
 
----
+### 3. Arrancar la app
 
-## Recordatorios automáticos
-
-| Cuándo | Qué envía |
-|---|---|
-| Lunes a las 10:00 | Recordatorio semanal: reunión, libro, ritmo de lectura, progreso del grupo |
-| Cada 2 días | Recordatorio de lectura con botones para apuntarse |
-| Diariamente a las 10:00 | Si la reunión es hoy o mañana, aviso urgente |
-| Cada 5 minutos | Comprueba y envía mensajes programados pendientes |
-
----
-
-## Instalación local
-
-```bash
-# Clonar el repositorio
-git clone <repo-url>
-cd bot
-
-# Crear entorno virtual
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Instalar dependencias
-pip install -r requirements.txt
-
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus valores
-
-# Arrancar
+```powershell
 python main.py
 ```
 
-> Para desarrollo local el webhook no funcionará desde localhost. Usa [ngrok](https://ngrok.com) para exponer el servidor: `ngrok http 10000` y pon la URL de ngrok como `WEBHOOK_URL`.
+La app expone:
+
+- `GET /health`
+- `POST /webhook`
+- `GET /admin`
+- `GET /admin/help`
+- `GET /`
+- `GET /publico`
+
+### 4. Probar en local con Telegram
+
+Telegram necesita una URL publica para el webhook. En local:
+
+```powershell
+ngrok http 10000
+```
+
+Despues usa la URL HTTPS de ngrok como `WEBHOOK_URL`.
+
+## Comandos del bot
+
+### Para miembros
+
+- `/start`: bienvenida y accesos rapidos en privado.
+- `/ayuda`: menu contextual segun la fase del ciclo.
+- `/proponer <titulo>`: proponer un libro.
+- `/propuestas`: ver propuestas y botones de voto.
+- `/votar <N>`: votar la propuesta numero `N`.
+- `/resultados`: ver el ranking actual.
+- `/tema <nombre>`: proponer una tematica.
+- `/temas`: ver y votar tematicas.
+- `/votar_tema <ID>`: votar una tematica concreta.
+- `/libro`: ver el libro del ciclo.
+- `/reunion [texto]`: ver la proxima reunion o buscar una por nombre o mes.
+- `/asistir` y `/noasistir`: gestionar asistencia.
+- `/asistencia`: ver asistentes confirmados.
+- `/acta`: ver el acta de la ultima reunion cerrada.
+- `/proponer_fecha DD/MM HH:MM`: sugerir una fecha.
+- `/progreso <paginas>`: registrar paginas leidas.
+- `/estadisticas`: ver tu actividad en el club.
+- `/trivia`: sacar una pregunta de debate.
+- `/recomendar`: pedir recomendaciones por tematica.
+- `/lista_espera`: ver libros en espera.
+- `/bug <descripcion>`: reportar un problema.
+
+### Solo para administracion
+
+- `/admin_ayuda`: resumen de acciones admin.
+- `/ciclo`: estado resumido del ciclo.
+- `/nuevo_ciclo [nombre]`: crear un nuevo ciclo.
+- `/cerrar_ciclo`: cerrar el ciclo activo.
+- `/anuncio <texto>`: enviar un mensaje al grupo.
+- `/anunciar_ganador`: publicar el libro ganador.
+- `/encuesta_libros`: lanzar la encuesta de libros.
+- `/encuesta_temas`: lanzar la encuesta de tematicas.
+- `/enviar_recordatorio`: enviar recordatorio de reunion.
+- `/enviar_lectura`: enviar recordatorio de lectura.
+- `/preguntas`: generar preguntas de debate con IA.
+- `/cita`: generar una cita del libro activo.
+- `/fijar` y `/desfijar`: fijar o quitar el mensaje fijado del grupo.
+
+## Flujo recomendado del ciclo
+
+1. Crear ciclo desde `/admin/ciclo` o usar el wizard.
+2. Votar tematica.
+3. Abrir propuestas de libros.
+4. Lanzar y cerrar encuesta de libros.
+5. Crear reunion y cerrar fecha.
+6. Anunciar la fecha y gestionar asistencia.
+7. Seguir lectura, recordatorios y acta.
+8. Cerrar ciclo y revisar lista de espera.
+
+La vista mas comoda para operar dia a dia es la ruta `/admin/ciclo/easy`.
+
+## Scheduler y jobs
+
+Por defecto se programan estos jobs:
+
+- Lunes 10:00: recordatorio semanal de reunion.
+- Cada 2 dias: recordatorio de lectura.
+- Diario 10:00: aviso especial si la reunion es hoy o manana.
+- Cada 5 minutos: envio de mensajes programados.
+- Cada 10 minutos: keep-alive HTTP.
+
+Ademas puedes crear recordatorios personalizados desde `/admin/scheduler`.
+
+## Estructura de proyecto
+
+```text
+bot/
+|-- main.py
+|-- db.py
+|-- ai_features.py
+|-- books_api.py
+|-- recommendations.py
+|-- trivia.py
+|-- app/
+|   |-- bootstrap.py
+|   |-- config.py
+|   |-- formatting.py
+|   |-- messages.py
+|   |-- runtime/
+|   |-- services/
+|   |-- telegram/
+|   `-- web/admin/
+|-- templates/
+|-- static/
+`-- tests/
+```
+
+## Calidad y verificacion
+
+Tests actuales:
+
+```powershell
+python -m unittest discover -s tests
+```
+
+Si tocas codigo sensible, merece la pena ejecutar tambien una compilacion rapida:
+
+```powershell
+python -m py_compile main.py db.py app\messages.py app\services\bot_context.py
+```
+
+## Notas operativas
+
+- El panel web usa Flask threaded y las acciones async pasan por un bridge interno para compartir event loop con Telegram.
+- Si `WEBHOOK_SECRET_TOKEN` no esta definido, la app deriva uno desde `BOT_TOKEN`, pero es mejor configurarlo de forma explicita.
+- Si `FLASK_SECRET_KEY` no esta definida, la app genera una clave derivada o efimera. Para produccion define una fija.
+- Si Telegram migra el grupo a supergrupo, la app intenta detectar el nuevo `chat_id` y guardarlo para diagnostico.
+- Hay herramientas potentes en `/admin/db`; conviene reservarlas para mantenimiento y diagnostico.
+
+## Documentacion relacionada
+
+- Despliegue: [DEPLOY.md](/C:/Users/david/OneDrive/Escritorio/bot/DEPLOY.md)
+- Ayuda del panel: `/admin/help`
+- Pendientes funcionales: `pendiente.txt`

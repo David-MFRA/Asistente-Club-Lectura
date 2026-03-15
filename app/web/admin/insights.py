@@ -6,6 +6,7 @@ from flask import flash, redirect, render_template, request, url_for
 import db
 from app.messages import get_text
 from app.services.admin_audit import prepare_admin_audit
+from app.services.admin_guidance import build_bot_context_previews
 from app.services.bot_context import (
     COMMANDS,
     GROUP_ORDER,
@@ -15,6 +16,7 @@ from app.services.bot_context import (
     get_cycle_context,
     get_soft_guidance,
 )
+from app.services.demo_fixtures import SIMULATOR_SCENARIOS, apply_simulator_scenario
 
 
 PHASE_OPTIONS = [
@@ -141,8 +143,11 @@ def render_admin_simulator(require_admin):
     cycle_key = request.args.get("cycle", "").strip() or db.get_current_cycle_key()
     audience = request.args.get("audience", "private").strip() or "private"
     admin_mode = request.args.get("admin") == "1"
+    scenario_key = request.args.get("scenario", "default").strip() or "default"
 
     context = get_cycle_context(cycle_key)
+    scenario_snapshot = apply_simulator_scenario(db, cycle_key, context, scenario_key)
+    context = scenario_snapshot["context"]
     meeting = context["meeting"]
     winner = context["winner"]
     dashboard_state = context["dashboard_state"]
@@ -278,10 +283,14 @@ def render_admin_simulator(require_admin):
         cycle_key=cycle_key,
         audience=audience,
         admin_mode=admin_mode,
+        scenario_key=scenario_key,
+        scenario=scenario_snapshot["scenario"],
+        simulator_scenarios=SIMULATOR_SCENARIOS,
         commands=commands,
         context=context,
         message_blocks=message_blocks,
         guidance_samples=guidance_samples,
+        tied_books=scenario_snapshot["tied_books"],
         cycles=db.get_active_cycle_keys() or [db.get_current_cycle_key()],
         phase_options=PHASE_OPTIONS,
     )
@@ -294,6 +303,7 @@ def render_admin_bot_context(require_admin):
 
     cycle_key = request.args.get("cycle", "").strip() or db.get_current_cycle_key()
     settings = db.get_cycle_bot_settings(cycle_key)
+    previews = build_bot_context_previews(cycle_key)
     grouped_commands = []
     for group_name in GROUP_ORDER:
         items = []
@@ -309,6 +319,8 @@ def render_admin_bot_context(require_admin):
         cycles=db.get_active_cycle_keys() or [db.get_current_cycle_key()],
         settings=settings,
         grouped_commands=grouped_commands,
+        preview_snapshot=previews["snapshot"],
+        preview_cards=previews["cards"],
     )
 
 

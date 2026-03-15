@@ -1,0 +1,70 @@
+Dashboard · Club de Lectura
+📚
+">
+Saltar al contenido
+Club de Lectura
+Panel operativo
+Dashboard
+Operar
+▾
+⚡ Ciclo rapido
+🔄 Ciclo detallado
+📅 Reuniones
+🏷️ Tematicas
+👥 Asistencia
+🏆 Ranking
+Sistema
+✉️ Mensajes
+⏰ Automatizacion
+📋 Mensajes enviados
+📜 Historico
+🏛️ Galeria
+🗄️ Base de datos
+📤 Exportar CSV
+🎯 Demo
+📚 Lista espera
+🖼️ Cartel
+🌐 Publica
+⚙️ Pagina
+📋 Logs
+🐛 Bugs
+❓ Ayuda
+🎯
+Salir
+☰
+Torre de control
+Reunion programada
+La reunion ya tiene fecha y falta comunicarla.
+Buscador global
+Buscar
+Simular bot
+Contexto bot
+Mensajes
+Auditoria
+Alertas
+FLASK_SECRET_KEY no configurada
+La sesion del panel usa una clave derivada o efimera. Define una clave propia en produccion.
+Revisar despliegue →
+WEBHOOK_SECRET_TOKEN no configurado
+El webhook funciona, pero con token derivado. Conviene fijar uno explicito en produccion.
+Ver seguridad →
+ADMIN_SECRET ausente
+El panel no deberia exponerse sin secreto de administracion configurado.
+Bloqueante →
+Recordatorio semanal desactivado
+Revisa el programador para activarlo.
+Abrir programador →
+Ahora mismo
+2 ciclo(s) activo(s)
+4 alerta(s) por revisar
+Libro activo: Dune
+Anunciar fecha al grupo
+Vista rapida del ciclo
+Ciclo detallado
+Guia operativa
+Checklist
+Anuncia la fecha al grupo si aun no se ha hecho.
+Revisa asistentes y programa recordatorios.
+Deja preparados mensajes de lectura o debate.
+Observabilidad
+12

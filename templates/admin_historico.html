@@ -24,6 +24,21 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:16px">
+  <form method="get" action="/admin/historico" class="row" style="align-items:end">
+    <div class="field" style="max-width:220px">
+      <label>Filas por seccion</label>
+      <select name="limit">
+        {% for option in [50, 100, 150, 250, 500] %}
+        <option value="{{ option }}" {% if option == history_limit %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Aplicar</button>
+    <div style="color:var(--muted);font-size:.83rem">Carga limitada para mantener el panel fluido cuando crece el historico.</div>
+  </form>
+</div>
+
 <div class="tabs">
   <button class="tab active" onclick="showTab('libros', this)">📚 Libros <span class="count-badge">{{ books_history|length }}</span></button>
   <button class="tab" onclick="showTab('tematicas', this)">🏷️ Temáticas <span class="count-badge">{{ themes_history|length }}</span></button>

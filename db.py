@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 
+from app.db_migrations import apply_migrations
 from app.services.identity_backfill import backfill_historical_user_identity
 from app.services.input_limits import (
     normalize_admin_search_query,
@@ -56,6 +57,8 @@ def get_cursor(commit=False):
 
 def init_db():
     with get_cursor(commit=True) as cur:
+        apply_migrations(cur)
+        return
         cur.execute("""
         CREATE TABLE IF NOT EXISTS books(
             id SERIAL PRIMARY KEY,
@@ -1403,7 +1406,7 @@ def update_theme(theme_id, name):
 # HISTORICAL DATA (all cycles)
 # =========================================================
 
-def get_all_books_history():
+def get_all_books_history(limit: int = 250):
     """All book proposals across all cycles, newest first."""
     with get_cursor() as cur:
         cur.execute("""
@@ -1415,11 +1418,12 @@ def get_all_books_history():
         LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
         GROUP BY bp.id, bp.cycle_key, b.id, b.title, b.author, b.cover, b.pages, bp.proposed_by
         ORDER BY bp.cycle_key DESC, votes DESC
-        """)
+        LIMIT %s
+        """, (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_all_themes_history():
+def get_all_themes_history(limit: int = 250):
     """All themes across all cycles."""
     with get_cursor() as cur:
         cur.execute("""
@@ -1429,27 +1433,31 @@ def get_all_themes_history():
         LEFT JOIN theme_votes tv ON tv.theme_id = t.id
         GROUP BY t.id, t.name, t.cycle_key, t.created_by, t.is_active
         ORDER BY t.cycle_key DESC, votes DESC
-        """)
+        LIMIT %s
+        """, (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_all_polls_history():
+def get_all_polls_history(limit: int = 250):
     """All Telegram polls across all cycles."""
     with get_cursor() as cur:
-        cur.execute("SELECT * FROM telegram_polls ORDER BY created_at DESC")
+        cur.execute("SELECT * FROM telegram_polls ORDER BY created_at DESC LIMIT %s", (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 
-def get_all_meetings_history():
+def get_all_meetings_history(limit: int = 250):
     """All meetings with attendee count."""
     with get_cursor() as cur:
         cur.execute("""
         SELECT m.*, b.title AS book_title,
-               (SELECT COUNT(*)::int FROM meeting_attendance ma WHERE ma.meeting_id = m.id) AS attendee_count
+               COUNT(ma.id)::int AS attendee_count
         FROM meetings m
         LEFT JOIN books b ON b.id = m.book_id
+        LEFT JOIN meeting_attendance ma ON ma.meeting_id = m.id
+        GROUP BY m.id, b.title
         ORDER BY COALESCE(m.final_date, m.created_at) DESC
-        """)
+        LIMIT %s
+        """, (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 

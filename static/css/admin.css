@@ -5,6 +5,7 @@
 /* ── RESET ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
+body.drawer-open { overflow: hidden; }
 
 /* ── BASE ──────────────────────────────────────────── */
 html, body {
@@ -19,6 +20,32 @@ body {
     radial-gradient(ellipse at 100% 100%, rgba(139,92,246,.15), transparent 50%),
     linear-gradient(160deg, var(--bg), var(--bg2) 60%, var(--bg3));
   padding: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  z-index: 1200;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,.16);
+  transform: translateY(-160%);
+  transition: transform .16s ease;
+}
+.skip-link:focus { transform: translateY(0); }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px solid rgba(251,191,36,.75);
+  outline-offset: 2px;
 }
 
 /* ── HEADER ────────────────────────────────────────── */
@@ -152,6 +179,16 @@ body {
 }
 .btn:hover  { filter: brightness(1.1); transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
+.btn:disabled,
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
 .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary2)); color: #fff; box-shadow: 0 4px 14px rgba(99,102,241,.3); }
 .btn-soft    { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
 .btn-danger  { background: rgba(239,68,68,.12); color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
@@ -388,6 +425,7 @@ details summary:hover { background: rgba(255,255,255,.04); }
   .mob-menu-btn { display: flex; }
   .header-nav   { display: none; }
   .main { padding: 14px 12px 80px; }
+  .page-head { align-items: flex-start; }
 }
 @media(max-width:640px) {
   .grid > .span-4,

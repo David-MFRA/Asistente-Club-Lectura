@@ -4,6 +4,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 
 import books_api
 import db
+from app.services.admin_guidance import build_cycle_easy_guidance, build_dashboard_focus
 from app.services.input_limits import (
     InputValidationError,
     normalize_admin_search_query,
@@ -152,6 +153,12 @@ def register_admin_routes(
         security_alerts = get_security_alerts()
         runtime_metrics = observability.snapshot() if observability is not None else None
         recent_audit = db.get_admin_audit_logs(limit=5)
+        cycle_state = cycle_states[0] if cycle_states else None
+        dashboard_focus = build_dashboard_focus(
+            cycle_state,
+            active_cycles=active_cycles,
+            alert_count=len(operational_alerts) + len(security_alerts),
+        )
         return render_template(
             "admin.html",
             books=books,
@@ -161,7 +168,7 @@ def register_admin_routes(
             open_poll_books=open_poll_books,
             open_poll_themes=open_poll_themes,
             cycle_states=cycle_states,
-            cycle_state=cycle_states[0] if cycle_states else None,
+            cycle_state=cycle_state,
             tied_books=tied_books,
             tied_count=len(tied_books),
             current_cycle=current_cycle,
@@ -170,6 +177,7 @@ def register_admin_routes(
             security_alerts=security_alerts,
             runtime_metrics=runtime_metrics,
             recent_audit=recent_audit,
+            dashboard_focus=dashboard_focus,
         )
 
     @flask_app.post("/admin/book/add")
@@ -556,7 +564,11 @@ def register_admin_routes(
             return auth
         active_keys = db.get_active_cycle_keys()
         cycle = db.get_cycle_state(active_keys[0]) if active_keys else None
-        return render_template("admin_ciclo_easy.html", cycle=cycle)
+        return render_template(
+            "admin_ciclo_easy.html",
+            cycle=cycle,
+            cycle_guidance=build_cycle_easy_guidance(cycle),
+        )
 
     @flask_app.post("/admin/ciclo/nuevo")
     def admin_ciclo_nuevo():

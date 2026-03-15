@@ -71,6 +71,19 @@
   }
   .chip strong { color: #f1f5f9; }
 
+  .guide-card {
+    margin: 0 16px 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .guide-title { font-weight: 800; font-size: .98rem; margin-bottom: 6px; }
+  .guide-summary { color: var(--muted); font-size: .84rem; line-height: 1.55; margin-bottom: 10px; }
+  .guide-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: .82rem; line-height: 1.65; }
+  .guide-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .guide-actions a { padding: 9px 12px; border-radius: 10px; text-decoration: none; }
+
   /* Books list */
   .books-list { margin: 0 16px 12px; }
   .book-item {
@@ -195,6 +208,25 @@
   </div>
 </div>
 {% endif %}
+
+<div class="guide-card">
+  <div class="guide-title">{{ cycle_guidance.title }}</div>
+  <div class="guide-summary">{{ cycle_guidance.summary }}</div>
+  <ul class="guide-list">
+    {% for item in cycle_guidance.checklist %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+  <div class="guide-actions">
+    {% for link in cycle_guidance.links %}
+      {% if link.kind == 'primary' %}
+      <a class="btn btn-primary" href="{{ link.url }}">{{ link.label }}</a>
+      {% else %}
+      <a class="btn btn-soft" href="{{ link.url }}">{{ link.label }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
 
 {# ── MAIN ACTION ── #}
 <div class="action-card">

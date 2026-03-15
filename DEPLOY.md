@@ -43,7 +43,7 @@ Opcionales:
 | `GROQ_API_KEY` | Habilita IA para preguntas y citas |
 | `PORT` | Puerto HTTP, por defecto `10000` |
 
-Puedes partir de [`.env.example`](/C:/Users/david/OneDrive/Escritorio/bot/.env.example).
+Puedes partir de `.env.example`.
 
 ## 3. Crear el servicio en Render
 

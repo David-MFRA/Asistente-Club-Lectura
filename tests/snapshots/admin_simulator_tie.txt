@@ -1,0 +1,70 @@
+Simulador · Club de Lectura
+📚
+">
+Saltar al contenido
+Club de Lectura
+Panel operativo
+Dashboard
+Operar
+▾
+⚡ Ciclo rapido
+🔄 Ciclo detallado
+📅 Reuniones
+🏷️ Tematicas
+👥 Asistencia
+🏆 Ranking
+Sistema
+✉️ Mensajes
+⏰ Automatizacion
+📋 Mensajes enviados
+📜 Historico
+🏛️ Galeria
+🗄️ Base de datos
+📤 Exportar CSV
+🎯 Demo
+📚 Lista espera
+🖼️ Cartel
+🌐 Publica
+⚙️ Pagina
+📋 Logs
+🐛 Bugs
+❓ Ayuda
+🎯
+Salir
+☰
+🧪
+Simulador del bot
+Previsualiza ciclo, mensajes, encuestas y ayudas contextuales sin tocar Telegram ni datos reales.
+Ciclo
+2026-04
+2026-03
+Audiencia
+Privado
+Grupo
+Modo
+Usuario
+Admin
+Escenario
+Actual
+Empate
+Sin reunion
+Encuesta multipart
+Ciclo bloqueado
+Actualizar
+Paso
+Empate pendiente
+Hay que resolver un empate antes de anunciar ganador.
+Libro
+Dune
+Reunion
+Debate Dune
+Comandos
+20
+private
+Escenario activo
+Simula empate final de votos para validar mensajes y decisiones.
+Menu contextual
+📅 /reunion
+🙋 /asistir
+❌ /noasistir
+👥 /asistencia

@@ -50,6 +50,7 @@ from app.services.input_limits import InputValidationError, normalize_bug_descri
 from app.services.observability import ObservabilityTracker
 from app.services.runtime_limits import SlidingWindowRateLimiter, TTLCache
 from app.runtime.jobs import RuntimeJobs
+from app.runtime_factory import build_runtime_services, build_webhook_handler
 from app.telegram.access import TelegramAccessControl
 from app.telegram.callbacks import CallbackHandler
 from app.telegram.commands.books import BookHandlers
@@ -222,63 +223,29 @@ logger = logging.getLogger(__name__)
 
 db.init_db()
 
-observability = ObservabilityTracker()
-admin_search_limiter = SlidingWindowRateLimiter()
-ai_quota_limiter = SlidingWindowRateLimiter()
-ai_response_cache = TTLCache()
-
-telegram_app = Application.builder().token(BOT_TOKEN).updater(None).build()
-access_control = TelegramAccessControl(
+runtime_services = build_runtime_services(
+    bot_token=BOT_TOKEN,
     allowed_chat_id=ALLOWED_CHAT_ID,
     admin_ids=ADMIN_TELEGRAM_IDS,
-    get_bot=lambda: telegram_app.bot,
-)
-messaging_service = TelegramMessagingService(
-    get_bot=lambda: telegram_app.bot,
-    chat_id=TELEGRAM_CHAT_ID,
-    logger=logger if "logger" in globals() else logging.getLogger(__name__),
-)
-book_handlers = BookHandlers(
-    allowed=_allowed,
-    check_cooldown=_check_cooldown,
-    logger=logger if "logger" in globals() else logging.getLogger(__name__),
-    formatting={"bold": bold, "code": code, "esc": esc, "italic": italic},
-)
-extra_handlers = ExtraHandlers(
-    allowed=_allowed,
-    check_cooldown=_check_cooldown,
-    logger=logger if "logger" in globals() else logging.getLogger(__name__),
-    formatting={"bold": bold, "esc": esc, "italic": italic},
-    admin_ids=ADMIN_TELEGRAM_IDS,
-    quota_limiter=ai_quota_limiter,
-    response_cache=ai_response_cache,
-)
-meeting_handlers = MeetingHandlers(
-    allowed=_allowed,
-    check_cooldown=_check_cooldown,
-    logger=logger if "logger" in globals() else logging.getLogger(__name__),
-    formatting={"bold": bold, "italic": italic, "esc": esc},
-)
-theme_handlers = ThemeHandlers(
-    allowed=_allowed,
-    check_cooldown=_check_cooldown,
-    logger=logger if "logger" in globals() else logging.getLogger(__name__),
-    formatting={"bold": bold, "code": code, "esc": esc},
-)
-callback_handler_service = CallbackHandler(
-    logger=logger if "logger" in globals() else logging.getLogger(__name__)
-)
-runtime_jobs = RuntimeJobs(
-    db=db,
-    scheduler=scheduler,
-    telegram_app=telegram_app,
-    logger=logger,
+    telegram_chat_id=TELEGRAM_CHAT_ID,
     webhook_url=WEBHOOK_URL,
-    admin_ids=ADMIN_TELEGRAM_IDS,
-    get_contextual_commands=get_contextual_commands,
-    observability=observability,
+    allowed=_allowed,
+    check_cooldown=_check_cooldown,
+    logger=logger,
 )
-poll_answer_handler = PollAnswerHandler(db=db, logger=logger, observability=observability)
+scheduler = runtime_services.scheduler
+observability = runtime_services.observability
+admin_search_limiter = runtime_services.admin_search_limiter
+telegram_app = runtime_services.telegram_app
+access_control = runtime_services.access_control
+messaging_service = runtime_services.messaging_service
+book_handlers = runtime_services.book_handlers
+extra_handlers = runtime_services.extra_handlers
+meeting_handlers = runtime_services.meeting_handlers
+theme_handlers = runtime_services.theme_handlers
+callback_handler_service = runtime_services.callback_handler
+runtime_jobs = runtime_services.runtime_jobs
+poll_answer_handler = runtime_services.poll_answer_handler
 
 flask_app = Flask(__name__)
 flask_app.secret_key = FLASK_SECRET_KEY
@@ -387,8 +354,7 @@ def _run_async(coro):
     return asyncio.run_coroutine_threadsafe(coro, _bot_loop).result()
 
 
-webhook_handler = WebhookHandler(
-    db=db,
+webhook_handler = build_webhook_handler(
     telegram_app=telegram_app,
     logger=logger,
     run_async=_run_async,

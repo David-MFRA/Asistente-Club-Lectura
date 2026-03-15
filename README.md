@@ -50,6 +50,8 @@ Las variables importantes son estas:
 | `ADMIN_SECRET` | Si | Clave para entrar al panel web |
 | `FLASK_SECRET_KEY` | Recomendado | Clave de sesion Flask |
 | `WEBHOOK_SECRET_TOKEN` | Recomendado | Token secreto para validar el webhook |
+| `ADMIN_DB_READ_ONLY` | Recomendado | Bloquea edicion/borrado en `/admin/db` cuando vale `1` |
+| `ADMIN_DB_ALLOW_RAW_SQL` | Recomendado | Activa la consola SQL del panel cuando vale `1` |
 | `TELEGRAM_CHAT_ID` | Si | ID del grupo donde opera el bot |
 | `ALLOWED_CHAT_ID` | Opcional | Limita respuestas a un chat concreto |
 | `ADMIN_TELEGRAM_ID` | Si | IDs de admins separados por coma |
@@ -57,7 +59,7 @@ Las variables importantes son estas:
 | `GROQ_API_KEY` | Opcional | Habilita funciones de IA |
 | `PORT` | Opcional | Puerto HTTP, por defecto `10000` |
 
-Hay un ejemplo listo en [`.env.example`](/C:/Users/david/OneDrive/Escritorio/bot/.env.example).
+Hay un ejemplo listo en `.env.example`.
 
 ## Puesta en marcha local
 
@@ -201,6 +203,11 @@ Tests actuales:
 python -m unittest discover -s tests
 ```
 
+CI minima:
+
+- GitHub Actions en `.github/workflows/ci.yml`
+- valida sintaxis y ejecuta la suite actual en cada push y pull request
+
 Si tocas codigo sensible, merece la pena ejecutar tambien una compilacion rapida:
 
 ```powershell
@@ -213,10 +220,12 @@ python -m py_compile main.py db.py app\messages.py app\services\bot_context.py
 - Si `WEBHOOK_SECRET_TOKEN` no esta definido, la app deriva uno desde `BOT_TOKEN`, pero es mejor configurarlo de forma explicita.
 - Si `FLASK_SECRET_KEY` no esta definida, la app genera una clave derivada o efimera. Para produccion define una fija.
 - Si Telegram migra el grupo a supergrupo, la app intenta detectar el nuevo `chat_id` y guardarlo para diagnostico.
-- Hay herramientas potentes en `/admin/db`; conviene reservarlas para mantenimiento y diagnostico.
+- `/admin/db` arranca ahora en modo solo lectura y con la consola SQL desactivada salvo que habilites `ADMIN_DB_READ_ONLY=0` o `ADMIN_DB_ALLOW_RAW_SQL=1`.
 
 ## Documentacion relacionada
 
-- Despliegue: [DEPLOY.md](/C:/Users/david/OneDrive/Escritorio/bot/DEPLOY.md)
+- Despliegue: `DEPLOY.md`
+- Operacion diaria: `OPERACIONES.md`
+- Arquitectura interna: `ARCHITECTURE.md`
 - Ayuda del panel: `/admin/help`
 - Pendientes funcionales: `pendiente.txt`

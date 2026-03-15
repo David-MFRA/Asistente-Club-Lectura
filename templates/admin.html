@@ -45,11 +45,21 @@
   .winner-banner-title { font-weight:700; color:#6ee7b7; font-size:.88rem; }
   .winner-banner-book { font-weight:800; margin-top:2px; }
 
+  .focus-card { background:linear-gradient(135deg,rgba(14,165,233,.12),rgba(99,102,241,.09)); border:1px solid rgba(96,165,250,.26); border-radius:16px; padding:18px 20px; margin-bottom:14px; display:grid; grid-template-columns:minmax(260px,1.2fr) minmax(240px,.8fr); gap:18px; }
+  .focus-eyebrow { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#93c5fd; margin-bottom:8px; }
+  .focus-title { font-size:1.08rem; font-weight:800; margin-bottom:6px; }
+  .focus-summary { color:var(--muted); font-size:.86rem; line-height:1.55; }
+  .focus-list { margin:0; padding-left:18px; color:var(--muted); font-size:.84rem; line-height:1.65; }
+  .focus-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .focus-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .focus-meta span { padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.09); color:#cbd5e1; font-size:.74rem; }
+
   @media(max-width:640px) {
     .stats-bar { gap:7px; }
     .stat-chip { min-width:90px; padding:10px 11px; }
     .stat-chip-value { font-size:1.25rem; }
     .reminder-grid { grid-template-columns:1fr; }
+    .focus-card { grid-template-columns:1fr; }
     table { min-width:480px; }
   }
 </style>
@@ -111,6 +121,40 @@
       {% endif %}
     </div>
   </div>
+
+  {% if dashboard_focus %}
+  <div class="focus-card">
+    <div>
+      <div class="focus-eyebrow">{{ dashboard_focus.eyebrow }}</div>
+      <div class="focus-title">{{ dashboard_focus.title }}</div>
+      <div class="focus-summary">{{ dashboard_focus.summary }}</div>
+      {% if dashboard_focus.meta %}
+      <div class="focus-meta">
+        {% for item in dashboard_focus.meta %}
+        <span>{{ item }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="focus-actions">
+        {% for link in dashboard_focus.links[:4] %}
+          {% if link.kind == 'primary' %}
+          <a class="btn btn-primary" href="{{ link.url }}">{{ link.label }}</a>
+          {% else %}
+          <a class="btn btn-soft" href="{{ link.url }}">{{ link.label }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <div class="focus-eyebrow">Checklist</div>
+      <ul class="focus-list">
+        {% for item in dashboard_focus.checklist %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
 
   {% if runtime_metrics %}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:14px">

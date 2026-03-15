@@ -2,12 +2,26 @@
 {% block title %}Contexto Bot{% endblock %}
 {% block main_class %}main--md{% endblock %}
 
+{% block head_extra %}
+<style>
+  .preview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-bottom:16px; }
+  .preview-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:16px; }
+  .preview-title { font-weight:800; margin-bottom:4px; }
+  .preview-sub { color:var(--muted); font-size:.82rem; margin-bottom:12px; line-height:1.5; }
+  .preview-body { background:rgba(8,12,22,.7); border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:12px; min-height:180px; color:#e2e8f0; font-size:.84rem; line-height:1.65; white-space:pre-line; }
+  .preview-commands { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .preview-commands .pill { background:rgba(99,102,241,.12); border-color:rgba(99,102,241,.22); color:#c7d2fe; }
+  .snapshot { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .snapshot .pill { background:rgba(16,185,129,.1); border-color:rgba(16,185,129,.22); color:#a7f3d0; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-head">
   <div class="page-badge">🧭</div>
   <div>
     <h1>Contexto del bot por ciclo</h1>
-    <div class="sub">Controla que comandos se destacan, cuales se ocultan y que notas contextuales ve el usuario en cada ciclo.</div>
+    <div class="sub">Controla que comandos se destacan, cuales se ocultan y que notas contextuales ve el usuario en cada ciclo. Debajo tienes una previsualizacion realista de /start y /ayuda.</div>
   </div>
 </div>
 
@@ -22,10 +36,35 @@
       </select>
     </div>
     <button class="btn btn-soft" type="submit">Cambiar ciclo</button>
+    <a class="btn btn-soft" href="/admin/simulator?cycle={{ cycle_key }}">Abrir simulador completo</a>
   </form>
+  <div class="snapshot">
+    <span class="pill">Ciclo {{ preview_snapshot.cycle }}</span>
+    <span class="pill">{{ preview_snapshot.step_label }}</span>
+    {% if preview_snapshot.winner %}<span class="pill">Libro: {{ preview_snapshot.winner }}</span>{% endif %}
+    {% if preview_snapshot.meeting %}<span class="pill">Reunion: {{ preview_snapshot.meeting }}</span>{% endif %}
+  </div>
+</div>
+
+<div class="preview-grid">
+  {% for card in preview_cards %}
+  <div class="preview-card">
+    <div class="preview-title">{{ card.title }}</div>
+    <div class="preview-sub">{{ card.description }}</div>
+    <div class="preview-body">{{ card.text | safe }}</div>
+    {% if card.commands %}
+    <div class="preview-commands">
+      {% for command in card.commands %}
+      <span class="pill">{{ command }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
 </div>
 
 <div class="card" style="margin-bottom:16px">
+  <div class="card-label">Ajustes del ciclo {{ cycle_key }}</div>
   <form method="post" action="/admin/bot-context">
     <input type="hidden" name="cycle" value="{{ cycle_key }}">
     <div class="field">
@@ -36,10 +75,12 @@
     <div class="field">
       <label>Comandos destacados en grupo</label>
       <input name="group_highlights" value="{{ settings.group_highlights|join(', ') }}" placeholder="propuestas, reunion">
+      <div style="color:var(--muted);font-size:.8rem">Sirve para empujar los comandos mas utiles cuando alguien usa /ayuda desde el grupo.</div>
     </div>
     <div class="field">
       <label>Comandos ocultos en este ciclo</label>
       <input name="hidden_commands" value="{{ settings.hidden_commands|join(', ') }}" placeholder="asistir, progreso">
+      <div style="color:var(--muted);font-size:.8rem">Util para esconder acciones que aun no tienen sentido en la fase actual.</div>
     </div>
     <div class="field">
       <label>Nota corta en /start</label>
@@ -55,7 +96,7 @@
         <option value="1" {% if settings.soft_mode_enabled %}selected{% endif %}>Activa</option>
         <option value="0" {% if not settings.soft_mode_enabled %}selected{% endif %}>Desactivada</option>
       </select>
-      <div style="color:var(--muted);font-size:.8rem">Cuando esta activa, el bot reconduce comandos fuera de momento en lugar de limitarse a responder que no.</div>
+      <div style="color:var(--muted);font-size:.8rem">Cuando esta activa, el bot reconduce comandos fuera de momento en lugar de responder de forma seca.</div>
     </div>
     <button class="btn btn-primary" type="submit">Guardar contexto del ciclo</button>
   </form>

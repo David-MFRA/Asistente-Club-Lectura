@@ -61,6 +61,29 @@
   </div>
 </div>
 
+<div class="card card--blur" style="margin-bottom:18px">
+  <div style="display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:700">Modo actual: {{ db_policy.mode_label }}</div>
+      <div style="color:var(--muted);font-size:.84rem;margin-top:4px">
+        {% if db_policy.read_only %}
+        La edicion directa, el borrado y el vaciado de tablas estan bloqueados.
+        {% else %}
+        La edicion directa esta habilitada para esta instancia.
+        {% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="pill {% if db_policy.read_only %}pill-draft{% else %}pill-scheduled{% endif %}">
+        {% if db_policy.read_only %}Solo lectura{% else %}Lectura y escritura{% endif %}
+      </span>
+      <span class="pill {% if db_policy.allow_raw_sql %}pill-scheduled{% else %}pill-closed{% endif %}">
+        SQL {% if db_policy.allow_raw_sql %}habilitado{% else %}desactivado{% endif %}
+      </span>
+    </div>
+  </div>
+</div>
+
 <div class="card card--blur sql-card">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
     <span style="font-size:1.2rem">🖥️</span>
@@ -76,12 +99,17 @@
     <button onclick="setSql('SELECT * FROM book_proposals ORDER BY created_at DESC LIMIT 20')">SELECT proposals</button>
     <button onclick="setSql('SELECT * FROM app_config ORDER BY key')">SELECT config</button>
   </div>
-  <textarea id="sql-input" class="sql-textarea" placeholder="SELECT * FROM books WHERE ...&#10;INSERT INTO ...&#10;UPDATE ... SET ... WHERE ..."></textarea>
+  <textarea id="sql-input" class="sql-textarea" placeholder="SELECT * FROM books WHERE ...&#10;INSERT INTO ...&#10;UPDATE ... SET ... WHERE ..." {% if not db_policy.allow_raw_sql %}disabled{% endif %}></textarea>
   <div class="sql-toolbar">
-    <button class="btn btn-primary btn-sm" onclick="runSql()">▶ Ejecutar</button>
-    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('sql-input').value='';clearSqlResult()">Limpiar</button>
+    <button class="btn btn-primary btn-sm" onclick="runSql()" {% if not db_policy.allow_raw_sql %}disabled{% endif %}>▶ Ejecutar</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('sql-input').value='';clearSqlResult()" {% if not db_policy.allow_raw_sql %}disabled{% endif %}>Limpiar</button>
     <span id="sql-running" style="display:none;color:var(--muted);font-size:.83rem">Ejecutando…</span>
   </div>
+  {% if not db_policy.allow_raw_sql %}
+  <div class="editor-note">La consola SQL esta desactivada por entorno. Activa <code>ADMIN_DB_ALLOW_RAW_SQL=1</code> para usarla.</div>
+  {% elif db_policy.read_only %}
+  <div class="editor-note">La consola sigue disponible, pero solo acepta consultas de lectura.</div>
+  {% endif %}
   <div id="sql-result" class="sql-result"></div>
 </div>
 
@@ -144,7 +172,7 @@
         {% endfor %}
       </div>
       <div class="editor-actions" style="margin-top:16px">
-        <button class="btn btn-primary" type="submit">Guardar cambios</button>
+        <button class="btn btn-primary" type="submit" {% if db_policy.read_only %}disabled{% endif %}>Guardar cambios</button>
         <a class="btn btn-ghost" href="/admin/db?table={{ table }}">Cancelar</a>
       </div>
     </form>
@@ -160,7 +188,7 @@
     <div class="danger-desc">Vaciar la tabla borra todos sus registros en cascada. Esta accion no se puede deshacer.</div>
     <form action="/admin/db/{{ table }}/truncate" method="post"
           onsubmit="return confirm('Seguro que quieres vaciar {{ table }}? No se puede deshacer.')">
-      <button class="btn btn-danger" type="submit">Vaciar tabla {{ table }}</button>
+      <button class="btn btn-danger" type="submit" {% if db_policy.read_only %}disabled{% endif %}>Vaciar tabla {{ table }}</button>
     </form>
   </div>
 
@@ -192,7 +220,7 @@
                     onsubmit="return confirm('Borrar fila con {{ pk_column }}={{ row[pk_column] }}?')">
                 <input type="hidden" name="pk_name" value="{{ pk_column }}">
                 <input type="hidden" name="pk_value" value="{{ row[pk_column] }}">
-                <button class="btn btn-danger btn-xs" type="submit">Borrar</button>
+                <button class="btn btn-danger btn-xs" type="submit" {% if db_policy.read_only %}disabled{% endif %}>Borrar</button>
               </form>
             </div>
             {% else %}

@@ -4,14 +4,36 @@
 
 // ── DRAWER (menú móvil) ──────────────────────────────
 function openDrawer() {
-  document.getElementById('drawer').classList.add('open');
-  document.getElementById('drawer-backdrop').classList.add('open');
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  const toggle = document.getElementById('drawer-toggle');
+  if (!drawer || !backdrop) return;
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+  backdrop.classList.add('open');
+  document.body.classList.add('drawer-open');
+  if (toggle) toggle.setAttribute('aria-expanded', 'true');
+  const firstLink = drawer.querySelector('.drawer-link');
+  if (firstLink) firstLink.focus();
 }
 function closeDrawer() {
-  document.getElementById('drawer').classList.remove('open');
-  document.getElementById('drawer-backdrop').classList.remove('open');
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  const toggle = document.getElementById('drawer-toggle');
+  if (!drawer || !backdrop) return;
+  drawer.classList.remove('open');
+  drawer.setAttribute('aria-hidden', 'true');
+  backdrop.classList.remove('open');
+  document.body.classList.remove('drawer-open');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
 }
 document.getElementById('drawer-backdrop').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeDrawer();
+    closeAI();
+  }
+});
 
 // Marcar drawer-link activo según URL actual
 (function() {

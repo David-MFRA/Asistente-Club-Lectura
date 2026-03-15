@@ -10,6 +10,7 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body>
+<a class="skip-link" href="#main-content">Saltar al contenido</a>
 
 <!-- ── HEADER ── -->
 <header class="header">
@@ -17,54 +18,56 @@
     <div class="header-logo">📚</div>
     <div>
       <div class="header-title">Club de Lectura</div>
-      <div class="header-sub">Panel de admin</div>
+      <div class="header-sub">Panel operativo</div>
     </div>
   </a>
-  <nav class="header-nav">
+  <nav class="header-nav" aria-label="Navegacion principal">
     <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="/admin">Dashboard</a>
     <div class="nav-drop">
-      <button class="nav-link">Gestión <span class="caret">▾</span></button>
+      <button class="nav-link">Operar <span class="caret">▾</span></button>
       <div class="drop-menu"><div class="drop-menu-inner">
+        <a class="drop-item" href="/admin/ciclo/easy">⚡ Ciclo rapido</a>
+        <a class="drop-item" href="/admin/ciclo">🔄 Ciclo detallado</a>
         <a class="drop-item" href="/meetings">📅 Reuniones</a>
-        <a class="drop-item" href="/themes">🏷️ Temáticas</a>
-        <a class="drop-item" href="/admin/ciclo/easy">⚡ Ciclo rápido</a>
-        <a class="drop-item" href="/admin/ciclo">🔄 Ciclo (detalle)</a>
+        <a class="drop-item" href="/themes">🏷️ Tematicas</a>
         <div class="drop-sep"></div>
         <a class="drop-item" href="/attendance">👥 Asistencia</a>
         <a class="drop-item" href="/ranking">🏆 Ranking</a>
       </div></div>
     </div>
     <div class="nav-drop">
-      <button class="nav-link">Datos <span class="caret">▾</span></button>
+      <button class="nav-link">Sistema <span class="caret">▾</span></button>
       <div class="drop-menu"><div class="drop-menu-inner">
+        <a class="drop-item" href="/admin/messages">✉️ Mensajes</a>
+        <a class="drop-item" href="/admin/scheduler">⏰ Automatizacion</a>
+        <a class="drop-item" href="/admin/sent-messages">📋 Mensajes enviados</a>
+        <a class="drop-item" href="/admin/historico">📜 Historico</a>
+        <a class="drop-item" href="/admin/galeria">🏛️ Galeria</a>
         <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
-        <a class="drop-item" href="/admin/historico">📜 Histórico</a>
-        <a class="drop-item" href="/admin/galeria">🏛️ Galería</a>
-        <a class="drop-item" href="/admin/sent-messages">📋 Historial mensajes</a>
         <a class="drop-item" href="/export">📤 Exportar CSV</a>
         <div class="drop-sep"></div>
-        <a class="drop-item" href="/admin/demo">🎯 Demo / Tour</a>
+        <a class="drop-item" href="/admin/demo">🎯 Demo</a>
       </div></div>
     </div>
     <div class="nav-sep"></div>
     <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages">✉️ Mensajes</a>
-    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler">⏰ Programador</a>
-    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist">📚 Espera</a>
+    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler">⏰ Automatizacion</a>
+    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist">📚 Lista espera</a>
     <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster">🖼️ Cartel</a>
     <div class="nav-sep"></div>
-    <a class="nav-link" href="/publico" target="_blank">🌐 Pública</a>
-    <a class="nav-link {% if request.path == '/admin/public-settings' %}active{% endif %}" href="/admin/public-settings">⚙️ Config</a>
+    <a class="nav-link" href="/publico" target="_blank">🌐 Publica</a>
+    <a class="nav-link {% if request.path == '/admin/public-settings' %}active{% endif %}" href="/admin/public-settings">⚙️ Pagina</a>
     <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">📋 Logs</a>
     <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs">🐛 Bugs</a>
-    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓</a>
-    <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta página">🎯</button>
+    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓ Ayuda</a>
+    <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta página" aria-label="Iniciar tour guiado">🎯</button>
     {% block nav_extra %}{% endblock %}
     <form action="/admin/logout" method="post" style="display:inline;margin:0">
-      <button class="nav-link" type="submit" style="color:#fca5a5;margin-left:2px">Salir</button>
+      <button class="nav-link" type="submit" style="color:#fca5a5;margin-left:2px" aria-label="Cerrar sesion">Salir</button>
     </form>
   </nav>
   <!-- Hamburger visible solo en móvil -->
-  <button class="mob-menu-btn" onclick="openDrawer()" aria-label="Abrir menú">☰</button>
+  <button class="mob-menu-btn" id="drawer-toggle" onclick="openDrawer()" aria-label="Abrir menú" aria-controls="drawer" aria-expanded="false">☰</button>
 </header>
 
 <!-- ── TOASTS ── -->
@@ -82,37 +85,39 @@
 {% endwith %}
 
 <!-- ── CONTENT ── -->
-<div class="main {% block main_class %}{% endblock %}">
+<main class="main {% block main_class %}{% endblock %}" id="main-content" tabindex="-1">
 
   {% block content %}{% endblock %}
-</div>
+</main>
 
 <!-- ── DRAWER (menú móvil) ── -->
 <div class="drawer-backdrop" id="drawer-backdrop"></div>
-<div class="drawer" id="drawer">
+<div class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-handle"></div>
-  <nav class="drawer-links">
+  <nav class="drawer-links" aria-label="Navegacion movil">
     <a class="drawer-link" href="/admin">🏠 Dashboard</a>
+    <a class="drawer-link" href="/admin/ciclo/easy">⚡ Ciclo rapido</a>
+    <a class="drawer-link" href="/admin/ciclo">🔄 Ciclo detallado</a>
     <a class="drawer-link" href="/meetings">📅 Reuniones</a>
-    <a class="drawer-link" href="/themes">🏷️ Temáticas</a>
-    <a class="drawer-link" href="/admin/ciclo/easy">⚡ Ciclo rápido</a>
-    <a class="drawer-link" href="/admin/ciclo">🔄 Ciclo (detalle)</a>
+    <a class="drawer-link" href="/themes">🏷️ Tematicas</a>
     <a class="drawer-link" href="/attendance">👥 Asistencia</a>
     <a class="drawer-link" href="/ranking">🏆 Ranking</a>
-    <a class="drawer-link" href="/admin/historico">📜 Histórico</a>
-    <a class="drawer-link" href="/admin/galeria">🏛️ Galería</a>
+    <a class="drawer-link" href="/admin/historico">📜 Historico</a>
+    <a class="drawer-link" href="/admin/galeria">🏛️ Galeria</a>
     <a class="drawer-link" href="/admin/messages">✉️ Mensajes</a>
-    <a class="drawer-link" href="/admin/scheduler">⏰ Programador</a>
-    <a class="drawer-link" href="/admin/waitlist">📚 En espera</a>
+    <a class="drawer-link" href="/admin/scheduler">⏰ Automatizacion</a>
+    <a class="drawer-link" href="/admin/sent-messages">📋 Mensajes enviados</a>
+    <a class="drawer-link" href="/admin/waitlist">📚 Lista espera</a>
     <a class="drawer-link" href="/admin/poster">🖼️ Cartel</a>
     <a class="drawer-link" href="/admin/db">🗄️ Base de datos</a>
     <a class="drawer-link" href="/admin/demo">🎯 Demo</a>
-    <a class="drawer-link" href="/publico" target="_blank">🌐 Ver pública</a>
+    <a class="drawer-link" href="/publico" target="_blank">🌐 Ver publica</a>
+    <a class="drawer-link" href="/admin/public-settings">⚙️ Pagina publica</a>
     <a class="drawer-link" href="/admin/logs">📋 Logs</a>
     <a class="drawer-link" href="/admin/bugs">🐛 Bugs</a>
     <a class="drawer-link" href="/admin/help">❓ Ayuda</a>
     <form action="/admin/logout" method="post" style="margin:0">
-      <button class="drawer-link" type="submit" style="color:#fca5a5;width:100%;text-align:left;background:none;border:none;padding:0">🚪 Salir</button>
+      <button class="drawer-link" type="submit" style="color:#fca5a5;width:100%;text-align:left;background:none;border:none;padding:0" aria-label="Cerrar sesion">🚪 Salir</button>
     </form>
   </nav>
 </div>

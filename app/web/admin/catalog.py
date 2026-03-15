@@ -5,6 +5,11 @@ from flask import Response, flash, redirect, render_template, request, url_for
 
 import db
 from app.services.admin_audit import prepare_admin_audit
+from app.services.admin_db_policy import (
+    ensure_admin_db_write_allowed,
+    get_admin_db_policy,
+    validate_admin_sql,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -279,12 +284,14 @@ def render_history(require_admin):
     auth = require_admin()
     if auth:
         return auth
+    history_limit = min(max(request.args.get("limit", default=150, type=int), 25), 500)
     return render_template(
         "admin_historico.html",
-        books_history=db.get_all_books_history(),
-        themes_history=db.get_all_themes_history(),
-        polls_history=db.get_all_polls_history(),
-        meetings_history=db.get_all_meetings_history(),
+        books_history=db.get_all_books_history(limit=history_limit),
+        themes_history=db.get_all_themes_history(limit=history_limit),
+        polls_history=db.get_all_polls_history(limit=history_limit),
+        meetings_history=db.get_all_meetings_history(limit=history_limit),
+        history_limit=history_limit,
     )
 
 
@@ -310,6 +317,7 @@ def render_admin_db(require_admin, logger):
     auth = require_admin()
     if auth:
         return auth
+    db_policy = get_admin_db_policy()
     tables = db.get_table_names()
     table = request.args.get("table", "books")
     edit_pk_value = request.args.get("edit")
@@ -341,6 +349,7 @@ def render_admin_db(require_admin, logger):
         pk_column=pk_column,
         edit_row=edit_row,
         editor_columns=editor_columns,
+        db_policy=db_policy,
     )
 
 
@@ -348,6 +357,11 @@ def delete_db_row(require_admin, logger, table):
     auth = require_admin()
     if auth:
         return auth
+    try:
+        ensure_admin_db_write_allowed()
+    except PermissionError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_db", table=table))
     pk_name = (request.form.get("pk_name") or "").strip()
     pk_value = request.form.get("pk_value")
     logger.info("Admin DB: eliminando fila tabla=%s pk=%s valor=%r", table, pk_name, pk_value)
@@ -376,6 +390,11 @@ def update_db_row(require_admin, logger, table):
     auth = require_admin()
     if auth:
         return auth
+    try:
+        ensure_admin_db_write_allowed()
+    except PermissionError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_db", table=table))
 
     pk_name = (request.form.get("pk_name") or "").strip()
     pk_value = request.form.get("pk_value")
@@ -433,6 +452,11 @@ def truncate_db_table(require_admin, logger, table):
     auth = require_admin()
     if auth:
         return auth
+    try:
+        ensure_admin_db_write_allowed()
+    except PermissionError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin_db", table=table))
     logger.warning("Admin DB: vaciando tabla=%s", table)
     try:
         prepare_admin_audit(
@@ -468,18 +492,22 @@ def execute_sql_query(require_admin, logger):
         return Response(json.dumps({"error": "SQL vacío"}), mimetype="application/json", status=400)
     logger.info("Admin DB SQL: ejecutando query (len=%d)", len(sql))
     try:
+        policy = validate_admin_sql(sql)
         cols, rows, rowcount, is_select = db.execute_raw_sql(sql)
         prepare_admin_audit(
             action="db_raw_sql",
             target_type="sql",
             target_id="manual",
             before={},
-            after={"sql": sql[:500], "rowcount": rowcount},
+            after={"sql": sql[:500], "rowcount": rowcount, "read_only": policy["read_only"]},
         )
         return Response(
             json.dumps({"cols": cols, "rows": rows, "rowcount": rowcount, "is_select": is_select}, default=_json_default),
             mimetype="application/json",
         )
+    except PermissionError as exc:
+        logger.warning("Admin DB SQL bloqueado: %s", exc)
+        return Response(json.dumps({"error": str(exc)}), mimetype="application/json", status=403)
     except Exception as exc:
         logger.warning("Admin DB SQL error: %s", exc)
         return Response(json.dumps({"error": str(exc)}), mimetype="application/json", status=400)

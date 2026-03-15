@@ -155,7 +155,7 @@ function startPageTour() {
     const nextBtn = document.getElementById('tour-next');
     if (nextBtn) nextBtn.textContent = 'Cerrar';
     const tt = document.getElementById('tour-tooltip');
-    if (tt) tt.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+    if (tt) { tt.style.display='block'; tt.style.position='fixed'; tt.style.top='50%'; tt.style.left='50%'; tt.style.transform='translate(-50%,-50%)'; tt.style.zIndex='9999'; }
     ov.style.display = 'block';
     return;
   }
@@ -202,11 +202,25 @@ function _showPgTourStep() {
       if (hl) hl.style.cssText = `display:block;position:absolute;top:${rect.top+sy-6}px;left:${rect.left-6}px;width:${rect.width+12}px;height:${rect.height+12}px;border:2px solid #6366f1;border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;z-index:9998`;
       const ttTop = rect.bottom + sy + 14;
       const ttLeft = Math.max(8, Math.min(rect.left, window.innerWidth - 336));
-      if (tooltip) tooltip.style.cssText = `display:block;position:absolute;top:${ttTop}px;left:${ttLeft}px;z-index:9999`;
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.position = 'absolute';
+        tooltip.style.top = ttTop + 'px';
+        tooltip.style.left = ttLeft + 'px';
+        tooltip.style.transform = '';
+        tooltip.style.zIndex = '9999';
+      }
     }, 250);
   } else {
     if (hl) hl.style.display = 'none';
-    if (tooltip) tooltip.style.cssText = 'display:block;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999';
+    if (tooltip) {
+      tooltip.style.display = 'block';
+      tooltip.style.position = 'fixed';
+      tooltip.style.top = '50%';
+      tooltip.style.left = '50%';
+      tooltip.style.transform = 'translate(-50%,-50%)';
+      tooltip.style.zIndex = '9999';
+    }
   }
 }
 

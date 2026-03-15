@@ -55,7 +55,8 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
                 is_anonymous=False,
                 allows_multiple_answers=False,
             )
-            db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="books")
+            db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id,
+                         poll_type="books", cycle_key=cycle)
             # Store option→proposal_id mapping for real-time vote tracking
             db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in chunk]))
 
@@ -82,6 +83,25 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
         db.close_poll(poll_db_id)
 
         if poll.get("poll_type") == "books" and telegram_chat_id:
+            cycle_key = poll.get("cycle_key") or db.get_current_cycle_key()
+
+            # Check if there are still open book polls for this cycle
+            remaining_open = db.get_open_polls(poll_type="books", cycle_key=cycle_key)
+            all_cycle_polls = db.get_all_polls_for_cycle(poll_type="books", cycle_key=cycle_key)
+            total = len(all_cycle_polls)
+            closed = sum(1 for p in all_cycle_polls if p["is_closed"])
+
+            if remaining_open:
+                # Still more polls to close — don't determine winner yet
+                flash(
+                    f"Encuesta cerrada ({closed}/{total}). "
+                    f"Quedan {len(remaining_open)} encuesta(s) abiertas del mismo ciclo. "
+                    f"Ciérralas todas antes de determinar el ganador.",
+                    "warning",
+                )
+                return redirect(url_for("admin_dashboard"))
+
+            # All polls closed — now determine winner from accumulated book_votes
             tied = db.get_tied_books()
             if len(tied) > 1:
                 books_list = "\n".join(
@@ -114,8 +134,9 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                     message_id=tie_poll.message_id,
                     poll_id=tie_poll.poll.id,
                     poll_type="books",
+                    cycle_key=cycle_key,
                 )
-                flash(f"Empate entre {len(tied)} libros. Encuesta de desempate lanzada automáticamente.", "warning")
+                flash(f"Todas las encuestas cerradas. Empate entre {len(tied)} libros. Encuesta de desempate lanzada.", "warning")
                 return redirect(url_for("admin_dashboard"))
 
             winner = db.get_winner_book()
@@ -127,7 +148,7 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                 _set_phase("date_voting")
                 flash(f"¡Ganador: «{winner['title']}»! Ahora añade fechas para la reunión.", "success")
             else:
-                flash("Encuesta cerrada. Sin ganador claro aún.", "warning")
+                flash("Todas las encuestas cerradas. Sin ganador claro aún.", "warning")
         else:
             flash("Encuesta cerrada correctamente", "success")
     except Exception:
@@ -199,15 +220,43 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             flash("Encuesta no encontrada", "danger")
             return redirect(url_for("admin_ciclo"))
 
-        await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
+        tg_poll = await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
         db.close_poll(poll_db_id)
 
-        tied = db.get_tied_themes()
+        # Determine winner directly from Telegram poll data (authoritative vote counts)
+        options_map_raw = db.get_config(f"poll_options_{poll['poll_id']}") or "[]"
+        try:
+            theme_ids = json.loads(options_map_raw)
+        except Exception:
+            theme_ids = []
+
+        # Build ranked list: [{id, name, votes}] from tg_poll.options + theme_ids mapping
+        all_themes_db = {t["id"]: t for t in db.get_themes()}
+        ranked = []
+        if tg_poll and tg_poll.options and theme_ids:
+            for i, opt in enumerate(tg_poll.options):
+                if i < len(theme_ids):
+                    tid = theme_ids[i]
+                    name_str = all_themes_db.get(tid, {}).get("name") or opt.text
+                    ranked.append({"id": tid, "name": name_str, "votes": opt.voter_count})
+            ranked.sort(key=lambda x: x["votes"], reverse=True)
+        # Fallback to DB counts if mapping unavailable
+        if not ranked:
+            ranked = db.get_themes()
+
+        total_votes = sum(r["votes"] for r in ranked)
+        if total_votes == 0:
+            flash("Encuesta de temáticas cerrada, pero no se registró ningún voto.", "warning")
+            return redirect(url_for("admin_ciclo"))
+
+        max_votes = ranked[0]["votes"]
+        tied = [t for t in ranked if t["votes"] == max_votes]
+
         if len(tied) > 1:
             themes_list = "\n".join(f"  • <b>{hesc(t['name'])}</b>" for t in tied)
             tie_text = (
                 f"⚖️ <b>¡Empate en la votación de temática!</b>\n\n"
-                f"Estas temáticas han quedado empatadas con <b>{tied[0]['votes']} votos</b>:\n"
+                f"Estas temáticas han quedado empatadas con <b>{max_votes} votos</b>:\n"
                 f"{themes_list}\n\n"
                 f"🔁 El admin decidirá el siguiente paso."
             )
@@ -217,7 +266,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
                 options = [t["name"][:100] for t in tied[:10]]
                 tie_poll = await telegram_app.bot.send_poll(
                     chat_id=telegram_chat_id,
-                    question=f"⚖️ Desempate temática: ¿cuál elegimos?",
+                    question="⚖️ Desempate temática: ¿cuál elegimos?",
                     options=options,
                     is_anonymous=False,
                     allows_multiple_answers=False,
@@ -231,8 +280,8 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             flash(f"Empate entre {len(tied)} temáticas. Encuesta de desempate lanzada.", "warning")
             return redirect(url_for("admin_ciclo"))
 
-        # No tie → set winner theme, advance to books
-        top = db.get_top_theme()
+        # No tie → winner is ranked[0]
+        top = ranked[0] if ranked else None
         if top:
             db.set_config("active_theme", top["name"])
             _set_phase("books")

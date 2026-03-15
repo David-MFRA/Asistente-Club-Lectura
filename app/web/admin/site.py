@@ -171,8 +171,27 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
 
     db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
 
-    # Launch theme poll automatically if >= 2 themes were created
+    # Announce in group FIRST, then launch poll
     poll_launched = False
+    try:
+        themes_line = ""
+        if created_themes:
+            themes_line = (
+                "\n\n🏷️ <b>Temáticas propuestas:</b>\n"
+                + "\n".join(f"  • {hesc(t)}" for t in created_themes)
+            )
+        msg = (
+            f"🔄 <b>¡Nuevo ciclo: {hesc(name)}!</b>\n\n"
+            f"Comienza un nuevo ciclo de lectura. "
+            f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
+            + themes_line
+            + "\n\n📊 A continuación la encuesta de temáticas. ¡Votad!"
+        )
+        await send_to_group(msg, parse_mode="HTML", message_type="new_cycle")
+    except Exception:
+        logger.exception("Error enviando mensaje de nuevo ciclo al grupo")
+
+    # Launch theme poll automatically if >= 2 themes were created
     if len(created_themes) >= 2 and telegram_app and telegram_chat_id:
         try:
             options = [t[:100] for t in created_themes[:10]]
@@ -192,26 +211,6 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
             poll_launched = True
         except Exception:
             logger.exception("Error lanzando encuesta de temas automáticamente")
-
-    # Announce in group
-    try:
-        themes_line = ""
-        if created_themes:
-            themes_line = (
-                "\n\n🏷️ <b>Temáticas propuestas:</b>\n"
-                + "\n".join(f"  • {hesc(t)}" for t in created_themes)
-            )
-        poll_note = "" if poll_launched else "\n\n📊 Pronto se abrirá la encuesta de temáticas. ¡Estad atentos!"
-        msg = (
-            f"🔄 <b>¡Nuevo ciclo: {hesc(name)}!</b>\n\n"
-            f"Comienza un nuevo ciclo de lectura. "
-            f"Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
-            + themes_line
-            + poll_note
-        )
-        await send_to_group(msg, parse_mode="HTML", message_type="new_cycle")
-    except Exception:
-        logger.exception("Error enviando mensaje de nuevo ciclo al grupo")
 
     themes_msg = f" con {len(created_themes)} temática{'s' if len(created_themes) != 1 else ''}" if created_themes else ""
     poll_msg = " y encuesta lanzada" if poll_launched else ""

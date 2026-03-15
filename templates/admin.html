@@ -75,6 +75,16 @@
 {% block content %}
 
   <!-- ── CYCLE WIZARDS (uno por ciclo activo) ── -->
+  {% if not cycle_states %}
+  <div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);border-radius:16px;padding:22px 24px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="font-size:2rem">📭</div>
+    <div style="flex:1">
+      <div style="font-weight:800;font-size:1rem;margin-bottom:4px">No hay ciclos activos</div>
+      <div style="color:var(--muted);font-size:.85rem">Crea un nuevo ciclo para empezar a recoger propuestas y organizar votaciones.</div>
+    </div>
+    <a href="/admin/ciclo" class="btn btn-primary">🆕 Crear ciclo →</a>
+  </div>
+  {% endif %}
   {% for cs in cycle_states %}
   <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(139,92,246,.08));border:1px solid rgba(99,102,241,.25);border-radius:16px;padding:18px 20px;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -98,8 +108,8 @@
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         {% if cs.step == 'new_cycle' %}
-        <a href="/admin/ciclo" class="btn btn-primary" style="font-size:.88rem">{{ cs.step_action }} →</a>
-        <small style="color:var(--muted);font-size:.78rem">Configura las temáticas antes de iniciar el ciclo</small>
+        <a href="/admin/ciclo" class="btn btn-soft" style="font-size:.88rem">Gestionar ciclos →</a>
+        <small style="color:var(--muted);font-size:.78rem">Crea y gestiona el ciclo desde la sección de ciclos</small>
         {% elif cs.step_url and cs.step_url != '#books' %}
         <form action="{{ cs.step_url }}" method="post">
           <input type="hidden" name="cycle" value="{{ cs.cycle }}">
@@ -155,19 +165,19 @@
   </div>
 
   <!-- Alertas encuestas activas -->
-  {% if open_poll_books %}
+  {% for opb in open_poll_books %}
   <div class="alert-poll">
     <div class="alert-poll-icon">🗳️</div>
     <div class="alert-poll-text">
-      <div class="alert-poll-title">Encuesta de libros activa en Telegram</div>
-      <div class="alert-poll-sub">Ciérrala para anunciar el ganador y asignarlo automáticamente a la próxima reunión.</div>
+      <div class="alert-poll-title">Encuesta de libros activa en Telegram{% if open_poll_books|length > 1 %} ({{ loop.index }}/{{ open_poll_books|length }}){% endif %}</div>
+      <div class="alert-poll-sub">{% if open_poll_books|length > 1 %}Cierra todas las partes antes de que se determine el ganador.{% else %}Ciérrala para anunciar el ganador.{% endif %}</div>
     </div>
-    <form action="/admin/encuesta/{{ open_poll_books.id }}/cerrar" method="post">
+    <form action="/admin/encuesta/{{ opb.id }}/cerrar" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-danger" type="submit" data-tip="Cierra la encuesta y anuncia el libro ganador">🔒 Cerrar y anunciar</button>
+      <button class="btn btn-danger" type="submit" data-tip="Cierra esta parte de la encuesta">🔒 Cerrar{% if open_poll_books|length > 1 %} parte {{ loop.index }}{% endif %}</button>
     </form>
   </div>
-  {% endif %}
+  {% endfor %}
   {% if open_poll_themes %}
   <div class="alert-poll" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3)">
     <div class="alert-poll-icon">🏷️</div>
@@ -208,7 +218,7 @@
         </form>
       </div>
 
-      {% if not open_poll_books %}
+      {% if not open_poll_books|length %}
       <div class="card" style="margin-top:10px">
         <div class="card-label">Encuesta de libros</div>
         {% if books|length >= 2 %}

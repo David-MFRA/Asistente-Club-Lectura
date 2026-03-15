@@ -336,6 +336,7 @@ extra_handlers = ExtraHandlers(
     check_cooldown=_check_cooldown,
     logger=logger if "logger" in globals() else logging.getLogger(__name__),
     formatting={"bold": bold, "esc": esc, "italic": italic},
+    admin_ids=ADMIN_TELEGRAM_IDS,
 )
 meeting_handlers = MeetingHandlers(
     allowed=_allowed,
@@ -2162,7 +2163,7 @@ def admin_dashboard():
     meetings         = db.get_meetings(limit=5)
     themes           = db.get_themes()
     ranking          = db.get_book_ranking()
-    open_poll_books  = db.get_open_poll(poll_type="books")
+    open_poll_books  = db.get_open_polls(poll_type="books")   # lista de todas las abiertas
     open_poll_themes = db.get_open_poll(poll_type="themes")
     cycle_states     = db.get_active_cycle_states()
     tied_books       = db.get_tied_books()

@@ -5,13 +5,18 @@ import trivia
 
 
 class ExtraHandlers:
-    def __init__(self, allowed, check_cooldown, logger, formatting):
+    def __init__(self, allowed, check_cooldown, logger, formatting, admin_ids=None):
         self.allowed = allowed
         self.check_cooldown = check_cooldown
         self.logger = logger
         self.bold = formatting["bold"]
         self.esc = formatting["esc"]
         self.italic = formatting["italic"]
+        self.admin_ids = set(str(i) for i in (admin_ids or []))
+
+    def _is_admin(self, update):
+        uid = str(update.effective_user.id) if update.effective_user else ""
+        return uid in self.admin_ids
 
     async def trivia_cmd(self, update, context):
         if not await self.allowed(update):
@@ -56,6 +61,9 @@ class ExtraHandlers:
     async def preguntas_cmd(self, update, context):
         if not await self.allowed(update):
             return
+        if not self._is_admin(update):
+            await update.message.reply_text("⛔ Este comando es solo para administradores del club.", parse_mode=None)
+            return
         if not self.check_cooldown(update.effective_user.id, "preguntas", 60):
             await update.message.reply_text("Espera un momento antes de generar mas preguntas.", parse_mode=None)
             return
@@ -83,6 +91,9 @@ class ExtraHandlers:
 
     async def cita_cmd(self, update, context):
         if not await self.allowed(update):
+            return
+        if not self._is_admin(update):
+            await update.message.reply_text("⛔ Este comando es solo para administradores del club.", parse_mode=None)
             return
         if not self.check_cooldown(update.effective_user.id, "cita", 30):
             await update.message.reply_text("Espera un momento.", parse_mode=None)

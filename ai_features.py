@@ -8,24 +8,33 @@ import urllib.parse
 import json
 
 logger = logging.getLogger(__name__)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-
-
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
-    "qwen/qwen3-32b",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768",
     "llama-3.1-8b-instant",
 ]
 
 
+def _mask_key(key: str) -> str:
+    """Muestra los primeros 6 y últimos 4 caracteres de la API key, resto asteriscos."""
+    if len(key) <= 10:
+        return "*" * len(key)
+    return key[:6] + "*" * (len(key) - 10) + key[-4:]
+
+
 def _groq_chat(prompt: str, max_tokens: int = 2000, model: str | None = None) -> str | None:
     """Llama a la API de Groq probando modelos en orden hasta obtener respuesta."""
-    if not GROQ_API_KEY:
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        logger.warning("Groq: GROQ_API_KEY no está definida o está vacía")
         return None
+    logger.info("Groq: usando API key %s", _mask_key(api_key))
     models = [model] if model else GROQ_MODELS
     for m in models:
         try:
+            logger.info("Groq: intentando modelo '%s' (max_tokens=%d)", m, max_tokens)
             body = json.dumps({
                 "model": m,
                 "messages": [{"role": "user", "content": prompt}],
@@ -36,7 +45,7 @@ def _groq_chat(prompt: str, max_tokens: int = 2000, model: str | None = None) ->
                 "https://api.groq.com/openai/v1/chat/completions",
                 data=body,
                 headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 method="POST"
@@ -45,10 +54,18 @@ def _groq_chat(prompt: str, max_tokens: int = 2000, model: str | None = None) ->
                 data = json.loads(resp.read())
                 result = data["choices"][0]["message"]["content"].strip()
                 if result:
-                    logger.debug("Groq respondió con modelo: %s", m)
+                    logger.info("Groq: respuesta OK con modelo '%s' (%d chars)", m, len(result))
                     return result
+        except urllib.error.HTTPError as e:
+            body_err = ""
+            try:
+                body_err = e.read().decode("utf-8", errors="ignore")[:300]
+            except Exception:
+                pass
+            logger.warning("Groq HTTP %d con modelo '%s': %s — %s", e.code, m, e.reason, body_err)
         except Exception as e:
-            logger.warning("Groq error con modelo %s: %s — probando siguiente", m, e)
+            logger.warning("Groq error con modelo '%s': %s", m, e)
+    logger.error("Groq: todos los modelos fallaron")
     return None
 
 

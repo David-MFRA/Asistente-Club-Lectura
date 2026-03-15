@@ -716,6 +716,30 @@ def get_open_poll(poll_type="books", cycle_key=None, meeting_id=None):
         return dict(row) if row else None
 
 
+def get_open_polls(poll_type="books", cycle_key=None):
+    """Devuelve TODAS las encuestas abiertas de un tipo para un ciclo."""
+    cycle_key = cycle_key or get_current_cycle_key()
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT * FROM telegram_polls
+        WHERE cycle_key=%s AND poll_type=%s AND is_closed=FALSE
+        ORDER BY created_at ASC
+        """, (cycle_key, poll_type))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_polls_for_cycle(poll_type="books", cycle_key=None):
+    """Devuelve TODAS las encuestas (abiertas y cerradas) de un tipo para un ciclo."""
+    cycle_key = cycle_key or get_current_cycle_key()
+    with get_cursor() as cur:
+        cur.execute("""
+        SELECT * FROM telegram_polls
+        WHERE cycle_key=%s AND poll_type=%s
+        ORDER BY created_at ASC
+        """, (cycle_key, poll_type))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def get_poll_by_id(poll_db_id):
     with get_cursor() as cur:
         cur.execute("SELECT * FROM telegram_polls WHERE id=%s", (poll_db_id,))
@@ -852,8 +876,7 @@ def add_active_cycle(key):
 def remove_active_cycle(key):
     keys = [k for k in get_active_cycle_keys() if k != key]
     set_config("active_cycles", ",".join(keys))
-    if keys:
-        set_config("active_cycle_key", keys[0])
+    set_config("active_cycle_key", keys[0] if keys else "")
 
 
 def get_cycle_state(cycle_key):
@@ -872,7 +895,8 @@ def get_cycle_state(cycle_key):
     )
 
     open_theme_poll = get_open_poll("themes", cycle_key=cycle_key)
-    open_book_poll = get_open_poll("books", cycle_key=cycle_key)
+    open_book_polls = get_open_polls("books", cycle_key=cycle_key)
+    open_book_poll = open_book_polls[0] if open_book_polls else None  # for compat
 
     with get_cursor() as cur:
         cur.execute("""
@@ -891,6 +915,9 @@ def get_cycle_state(cycle_key):
         phase = "book_voting"
     elif books:
         phase = "books"
+    elif active_theme:
+        # Theme already chosen → accept proposals
+        phase = "books"
     elif open_theme_poll:
         phase = "theme_voting"
     elif themes:
@@ -907,7 +934,8 @@ def get_cycle_state(cycle_key):
         "active_theme": active_theme,
         "phase": phase,
         "open_theme_poll": open_theme_poll,
-        "open_book_poll": open_book_poll,
+        "open_book_polls": open_book_polls,
+        "open_book_poll": open_book_poll,  # compat: primera o None
         "meeting": meeting,
     }
 
@@ -1148,27 +1176,19 @@ def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
 
 
 def get_active_cycle_states():
-    """Devuelve el estado del wizard para todos los ciclos con propuestas activas + el ciclo por defecto."""
+    """Devuelve el estado del wizard solo para ciclos realmente activos (no cerrados)."""
+    active_cycle_keys = get_active_cycle_keys()  # source of truth: active_cycles config
+    if not active_cycle_keys:
+        return []
+
     with get_cursor() as cur:
-        cur.execute(
-            "SELECT key, value FROM app_config WHERE key IN ('active_cycle_key', 'proposals_locked_for')"
-        )
-        cfg = {r["key"]: r["value"] for r in cur.fetchall()}
-        cur.execute("""
-            SELECT DISTINCT cycle_key FROM book_proposals
-            WHERE is_active = TRUE
-            ORDER BY cycle_key DESC
-        """)
-        active_keys = [r["cycle_key"] for r in cur.fetchall()]
-
-    default_cycle = cfg.get("active_cycle_key") or current_cycle_key()
-    locked_for = cfg.get("proposals_locked_for", "")
-
-    if default_cycle not in active_keys:
-        active_keys.insert(0, default_cycle)
+        cur.execute("SELECT value FROM app_config WHERE key='proposals_locked_for'")
+        row = cur.fetchone()
+    locked_for = (row["value"] if row else "") or ""
+    default_cycle = active_cycle_keys[0]
 
     states = []
-    for ck in active_keys:
+    for ck in active_cycle_keys:
         state = get_cycle_dashboard_state(cycle=ck, _proposals_locked_for=locked_for)
         state["is_default"] = (ck == default_cycle)
         states.append(state)

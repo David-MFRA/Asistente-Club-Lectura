@@ -59,7 +59,9 @@
     <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓</a>
     <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta página">🎯</button>
     {% block nav_extra %}{% endblock %}
-    <a class="nav-link" href="/admin/logout" style="color:#fca5a5;margin-left:2px">Salir</a>
+    <form action="/admin/logout" method="post" style="display:inline;margin:0">
+      <button class="nav-link" type="submit" style="color:#fca5a5;margin-left:2px">Salir</button>
+    </form>
   </nav>
   <!-- Hamburger visible solo en móvil -->
   <button class="mob-menu-btn" onclick="openDrawer()" aria-label="Abrir menú">☰</button>
@@ -109,7 +111,9 @@
     <a class="drawer-link" href="/admin/logs">📋 Logs</a>
     <a class="drawer-link" href="/admin/bugs">🐛 Bugs</a>
     <a class="drawer-link" href="/admin/help">❓ Ayuda</a>
-    <a class="drawer-link" href="/admin/logout" style="color:#fca5a5">🚪 Salir</a>
+    <form action="/admin/logout" method="post" style="margin:0">
+      <button class="drawer-link" type="submit" style="color:#fca5a5;width:100%;text-align:left;background:none;border:none;padding:0">🚪 Salir</button>
+    </form>
   </nav>
 </div>
 
@@ -233,7 +237,7 @@
   var origFetch = window.fetch;
   window.fetch = function(url, opts) {
     opts = opts || {};
-    if (opts.method && opts.method.toUpperCase() === 'POST' && typeof url === 'string' && url.startsWith('/admin')) {
+    if (opts.method && opts.method.toUpperCase() === 'POST' && typeof url === 'string' && url.startsWith('/') && url !== '/webhook') {
       opts.headers = Object.assign({}, opts.headers, { 'X-CSRF-Token': token });
     }
     return origFetch(url, opts);

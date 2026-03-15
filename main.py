@@ -7,6 +7,7 @@ import time as _time
 import asyncio
 from datetime import datetime, timedelta
 from http import HTTPStatus
+import secrets
 
 from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages, jsonify
 from asgiref.wsgi import WsgiToAsgi
@@ -32,6 +33,7 @@ from app.config import (
     GROUP_INVITE_LINK as CFG_GROUP_INVITE_LINK,
     TELEGRAM_CHAT_ID as CFG_TELEGRAM_CHAT_ID,
     WEBHOOK_URL as CFG_WEBHOOK_URL,
+    WEBHOOK_SECRET_TOKEN as CFG_WEBHOOK_SECRET_TOKEN,
     create_scheduler,
 )
 from app.formatting import bold, code, esc, italic
@@ -163,6 +165,7 @@ if not FLASK_SECRET_KEY:
         "Define la variable de entorno para mayor seguridad."
     )
 TELEGRAM_CHAT_ID  = CFG_TELEGRAM_CHAT_ID
+WEBHOOK_SECRET_TOKEN = CFG_WEBHOOK_SECRET_TOKEN
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
 ALLOWED_CHAT_ID   = CFG_ALLOWED_CHAT_ID
 # Soporta múltiples admins separados por coma: "123456,789012"
@@ -176,6 +179,7 @@ if not WEBHOOK_URL:
 
 # Anti-spam: cooldown por usuario y comando
 _cooldowns: dict = {}  # {(user_id, command): last_used_timestamp}
+_admin_login_attempts: dict = {}  # {remote_addr: [timestamps]}
 
 def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
     """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
@@ -246,6 +250,13 @@ callback_handler_service = CallbackHandler(
 
 flask_app = Flask(__name__)
 flask_app.secret_key = FLASK_SECRET_KEY
+flask_app.config.update(
+    SESSION_COOKIE_NAME="club_admin_session",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=str(WEBHOOK_URL).startswith("https://"),
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+)
 
 # --------------------------------------------------
 # MARKDOWN V2 HELPERS
@@ -275,26 +286,42 @@ def require_admin():
         return redirect(url_for("admin_login"))
     return None
 
+def _is_login_rate_limited(remote_addr: str, *, max_attempts: int = 8, window_seconds: int = 900):
+    now = _time.time()
+    attempts = [ts for ts in _admin_login_attempts.get(remote_addr, []) if now - ts < window_seconds]
+    _admin_login_attempts[remote_addr] = attempts
+    return len(attempts) >= max_attempts
+
+
+def _register_login_failure(remote_addr: str):
+    now = _time.time()
+    attempts = [ts for ts in _admin_login_attempts.get(remote_addr, []) if now - ts < 900]
+    attempts.append(now)
+    _admin_login_attempts[remote_addr] = attempts
+    return len(attempts)
+
+
+def _clear_login_failures(remote_addr: str):
+    _admin_login_attempts.pop(remote_addr, None)
+
+
 def get_csrf_token():
     """Genera (o devuelve) el token CSRF de la sesión actual."""
-    import secrets as _s
     if "csrf_token" not in session:
-        session["csrf_token"] = _s.token_hex(16)
+        session["csrf_token"] = secrets.token_hex(16)
     return session["csrf_token"]
 
 flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
 
 @flask_app.before_request
 def csrf_protect():
-    """Valida el token CSRF en todos los POST de rutas /admin/* (excepto login)."""
+    """Valida el token CSRF en todos los POST administrativos y legacy."""
     if request.method != "POST":
         return
-    if not request.path.startswith("/admin"):
-        return
-    if request.path in ("/admin/login",):
+    if request.path in ("/admin/login", "/webhook"):
         return
     if not is_admin_logged():
-        return  # require_admin() ya maneja esto
+        return  # require_admin() ya maneja accesos sin sesión
     token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
     if not token or token != session.get("csrf_token"):
         logger.warning("CSRF inválido en %s desde %s", request.path, request.remote_addr)
@@ -2087,16 +2114,27 @@ def admin_login():
 
 @flask_app.post("/admin/login")
 def admin_login_post():
+    remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    if _is_login_rate_limited(remote_addr):
+        logger.warning("Login admin bloqueado por rate limit desde %s", remote_addr)
+        return render_template("admin_login.html", error="Demasiados intentos. Espera unos minutos."), 429
     secret = request.form.get("secret", "").strip()
     if not ADMIN_SECRET:
         return "ADMIN_SECRET no configurado", 500
     if secret != ADMIN_SECRET:
+        attempts = _register_login_failure(remote_addr)
+        logger.warning("Login admin fallido desde %s (intento %d)", remote_addr, attempts)
         return render_template("admin_login.html", error="Secreto incorrecto"), 403
+    _clear_login_failures(remote_addr)
+    session.clear()
     session["admin_logged"] = True
+    session["csrf_token"] = secrets.token_hex(16)
+    session.permanent = True
     db.log_event("admin", "Inicio de sesión en el panel", category="auth", actor="admin")
+    logger.info("Login admin correcto desde %s", remote_addr)
     return redirect(url_for("admin_dashboard"))
 
-@flask_app.get("/admin/logout")
+@flask_app.post("/admin/logout")
 def admin_logout():
     db.log_event("admin", "Cierre de sesión del panel", category="auth", actor="admin")
     session.clear()
@@ -2777,6 +2815,10 @@ async def _enqueue_webhook_update(data):
 @flask_app.post("/webhook")
 def webhook():
     try:
+        secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not WEBHOOK_SECRET_TOKEN or secret_token != WEBHOOK_SECRET_TOKEN:
+            logger.warning("Webhook rechazado por token invalido desde %s", request.remote_addr)
+            return Response(status=HTTPStatus.FORBIDDEN)
         data = request.get_json(force=True)
         _run_async(_enqueue_webhook_update(data))
         return Response(status=HTTPStatus.OK)
@@ -2854,7 +2896,10 @@ async def _keep_alive_ping():
 async def startup():
     await telegram_app.initialize()
     await telegram_app.start()
-    await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    await telegram_app.bot.set_webhook(
+        url=f"{WEBHOOK_URL}/webhook",
+        secret_token=WEBHOOK_SECRET_TOKEN,
+    )
 
     # Registrar comandos del bot en Telegram
     user_commands = [

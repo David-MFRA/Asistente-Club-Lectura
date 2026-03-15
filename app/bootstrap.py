@@ -6,7 +6,7 @@ import urllib.request
 from telegram import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat
 from werkzeug.serving import make_server
 
-from app.config import ADMIN_TELEGRAM_IDS, PORT, WEBHOOK_URL
+from app.config import ADMIN_TELEGRAM_IDS, PORT, WEBHOOK_SECRET_TOKEN, WEBHOOK_URL
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,10 @@ def configure_scheduler(
 async def startup(telegram_app, scheduler, scheduler_jobs):
     await telegram_app.initialize()
     await telegram_app.start()
-    await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    await telegram_app.bot.set_webhook(
+        url=f"{WEBHOOK_URL}/webhook",
+        secret_token=WEBHOOK_SECRET_TOKEN,
+    )
     await register_bot_commands(telegram_app.bot)
     configure_scheduler(scheduler, *scheduler_jobs)
     scheduler.start()

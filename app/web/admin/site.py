@@ -153,25 +153,44 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
 
     # Validate themes before creating anything
     raw_themes = request.form.get("themes", "")
-    candidate_themes = [t.strip() for t in raw_themes.split(",") if t.strip()]
+    candidate_themes = []
+    duplicate_inputs = []
+    seen_themes = set()
+    for raw_theme in raw_themes.split(","):
+        theme = raw_theme.strip()
+        if not theme:
+            continue
+        normalized = theme.casefold()
+        if normalized in seen_themes:
+            duplicate_inputs.append(theme)
+            continue
+        seen_themes.add(normalized)
+        candidate_themes.append(theme)
     if len(candidate_themes) < 2:
-        flash("Añade al menos 2 temáticas para crear el ciclo.", "danger")
+        flash("Añade al menos 2 temáticas distintas para crear el ciclo.", "danger")
         return redirect(url_for("admin_ciclo"))
 
     logger.info("Admin: activando ciclo «%s» con %d temáticas", name, len(candidate_themes))
     db.add_active_cycle(name)
+    db.set_config("active_theme", "")
+    db.set_config(f"active_theme:{name}", "")
 
     # Create predefined themes
-    created_themes = []
-    created_theme_ids = []
+    created_theme_rows = []
+    duplicate_themes = []
+    failed_themes = []
     for t in candidate_themes:
         try:
             result = db.create_theme(t, created_by="admin", cycle_key=name)
-            created_themes.append(t)
             if result:
-                created_theme_ids.append(result["id"])
+                created_theme_rows.append(result)
+            else:
+                duplicate_themes.append(t)
         except Exception:
-            pass
+            failed_themes.append(t)
+            logger.exception("Error creando temática inicial «%s» para ciclo «%s»", t, name)
+    created_themes = [theme["name"] for theme in created_theme_rows]
+    created_theme_ids = [theme["id"] for theme in created_theme_rows]
 
     db.log_event("admin", f"Ciclo «{name}» activado", category="cycle", actor="admin")
 
@@ -216,10 +235,17 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
         except Exception:
             logger.exception("Error lanzando encuesta de temas automáticamente")
 
+    if duplicate_inputs:
+        logger.info("Admin: ciclo «%s» ignoró %d temáticas duplicadas en el formulario", name, len(duplicate_inputs))
     themes_msg = f" con {len(created_themes)} temática{'s' if len(created_themes) != 1 else ''}" if created_themes else ""
     poll_msg = " y encuesta lanzada" if poll_launched else ""
     logger.info("Admin: ciclo «%s» activado%s%s", name, themes_msg, poll_msg)
-    flash(f"Ciclo «{name}» activado{themes_msg}{poll_msg}. Mensaje enviado al grupo.", "success")
+    flash_msg = f"Ciclo «{name}» activado{themes_msg}{poll_msg}. Mensaje enviado al grupo."
+    if duplicate_themes or duplicate_inputs or failed_themes:
+        skipped = len(duplicate_themes) + len(duplicate_inputs) + len(failed_themes)
+        flash(f"{flash_msg} Se omitieron {skipped} temática(s) repetidas o con error.", "warning")
+    else:
+        flash(flash_msg, "success")
     return redirect(url_for("admin_ciclo"))
 
 
@@ -247,7 +273,8 @@ def set_cycle_theme(require_admin):
     theme = request.form.get("active_theme", "").strip()
     cycle_key = request.form.get("cycle_key", "").strip() or db.get_current_cycle_key()
     logger.info("Admin: temática del ciclo «%s» → «%s»", cycle_key, theme or "(borrada)")
-    db.set_config("active_theme", theme)
+    if cycle_key == db.get_current_cycle_key():
+        db.set_config("active_theme", theme)
     db.set_config(f"active_theme:{cycle_key}", theme)
     flash(f"Temática del ciclo {'actualizada a «' + theme + '»' if theme else 'borrada'}", "success")
     return redirect(url_for("admin_ciclo"))
@@ -257,8 +284,12 @@ def unlock_proposals(require_admin):
     auth = require_admin()
     if auth:
         return auth
-    db.set_config("proposals_locked_for", "")
-    flash("Propuestas desbloqueadas. Los miembros pueden volver a proponer libros.", "success")
+    cycle_key = request.form.get("cycle_key") or request.form.get("cycle") or ""
+    db.unlock_cycle_proposals(cycle_key or None)
+    if cycle_key:
+        flash(f"Propuestas desbloqueadas para el ciclo «{cycle_key}».", "success")
+    else:
+        flash("Propuestas desbloqueadas. Los miembros pueden volver a proponer libros.", "success")
     return redirect(url_for("admin_ciclo"))
 
 
@@ -267,18 +298,18 @@ async def pick_theme_winner(require_admin, theme_id, send_to_group_fn, logger):
     auth = require_admin()
     if auth:
         return auth
-    theme = None
-    for t in db.get_themes():
-        if t["id"] == theme_id:
-            theme = t
-            break
+    theme = db.get_theme_by_id(theme_id)
     if not theme:
         flash("Temática no encontrada", "danger")
         return redirect(url_for("admin_ciclo"))
 
-    db.set_config("active_theme", theme["name"])
+    cycle_key = theme.get("cycle_key") or db.get_current_cycle_key()
+    if cycle_key == db.get_current_cycle_key():
+        db.set_config("active_theme", theme["name"])
+    db.set_config(f"active_theme:{cycle_key}", theme["name"])
     _set_phase("books")
-    db.set_config("proposals_locked_for", "")
+    db.unlock_cycle_proposals(cycle_key)
+    logger.info("Admin: temática ganadora manual «%s» en ciclo=%s", theme["name"], cycle_key)
 
     try:
         ai_suggestion = ""
@@ -313,15 +344,14 @@ def rename_cycle(require_admin):
     if not new_name or not cycle_key:
         flash("Nombre inválido", "danger")
         return redirect(url_for("admin_ciclo"))
-    # Update active_cycles list
-    active_keys = db.get_active_cycle_keys()
-    if cycle_key in active_keys:
-        # Remove old, add new
-        db.remove_active_cycle(cycle_key)
-        db.add_active_cycle(new_name)
-    # Update active_cycle_key if it was the primary
-    if db.get_config("active_cycle_key") == cycle_key:
-        db.set_config("active_cycle_key", new_name)
+    if cycle_key == new_name:
+        flash("El ciclo ya tiene ese nombre.", "info")
+        return redirect(url_for("admin_ciclo"))
+    if db.cycle_exists(new_name):
+        flash(f"Ya existe un ciclo llamado «{new_name}».", "danger")
+        return redirect(url_for("admin_ciclo"))
+    summary = db.rename_cycle_key(cycle_key, new_name)
+    logger.info("Admin: ciclo renombrado %s -> %s con resumen=%r", cycle_key, new_name, summary)
     flash(f"Ciclo renombrado a «{new_name}»", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -332,10 +362,13 @@ async def advance_to_books(require_admin, send_to_group_fn, logger):
     auth = require_admin()
     if auth:
         return auth
-    active_theme = db.get_config("active_theme") or ""
-    logger.info("Admin: avanzando a fase 'books' (temática activa: «%s»)", active_theme or "ninguna")
+    cycle_key = request.form.get("cycle") or db.get_current_cycle_key()
+    active_theme = db.get_config(f"active_theme:{cycle_key}") or ""
+    if cycle_key == db.get_current_cycle_key():
+        db.set_config("active_theme", active_theme)
+    logger.info("Admin: avanzando a fase 'books' para ciclo=%s (temática activa: «%s»)", cycle_key, active_theme or "ninguna")
     _set_phase("books")
-    db.set_config("proposals_locked_for", "")
+    db.unlock_cycle_proposals(cycle_key)
 
     try:
         theme_line = f"🏷️ Temática: <b>{hesc(active_theme)}</b>\n\n" if active_theme else ""

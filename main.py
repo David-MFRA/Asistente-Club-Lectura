@@ -35,7 +35,7 @@ from app.config import (
     create_scheduler,
 )
 from app.formatting import bold, code, esc, italic
-from app.messages import get_text as shared_get_text
+from app.messages import DEFAULT_MESSAGES as SHARED_DEFAULT_MESSAGES, get_text as shared_get_text
 from app.services.meeting_lookup import find_meeting_by_text
 from app.telegram.access import TelegramAccessControl
 from app.telegram.callbacks import CallbackHandler
@@ -134,118 +134,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 # DEFAULT MESSAGES — textos editables desde el admin
 # --------------------------------------------------
 
-DEFAULT_MESSAGES = {
-    "welcome_message": (
-        "📚 *¡Bienvenid@ al Club de Lectura!*\n\n"
-        "Propón libros, vota, apúntate a reuniones y mucho más.\n\n"
-        "Usa /ayuda para ver todos los comandos disponibles. 🚀"
-    ),
-    "help_message": (
-        "📚 *Club de Lectura* — Comandos\n\n"
-        "📖 *Libros*\n"
-        "  /proponer título — Propone un libro\n"
-        "  /propuestas — Lista con botones para votar\n"
-        "  /votar N — Vota la propuesta número N\n"
-        "  /resultados — Ranking de votos\n"
-        "  /libro — Libro del ciclo actual\n\n"
-        "🏷️ *Temáticas*\n"
-        "  /tema nombre — Propone una temática\n"
-        "  /temas — Lista con botones para votar\n\n"
-        "📅 *Reunión*\n"
-        "  /reunion — Info de la próxima reunión\n"
-        "  /asistir — Apuntarse a la reunión\n"
-        "  /noasistir — Quitarse de la reunión\n"
-        "  /asistencia — Ver asistentes\n"
-        "  /acta — Resumen de la última reunión\n\n"
-        "📊 *Tu actividad*\n"
-        "  /progreso páginas — Registra tu lectura\n"
-        "  /estadisticas — Tus estadísticas del club\n\n"
-        "🎲 *Extras*\n"
-        "  /trivia — Pregunta para el debate\n"
-        "  /preguntas — Preguntas de debate con IA\n"
-        "  /cita — Cita literaria del libro actual\n"
-        "  /recomendar — Libros del tema activo\n"
-        "  /lista_espera — Libros en lista de espera\n"
-        "  /proponer_fecha DD/MM HH:MM — Proponer fecha de reunión"
-    ),
-    "next_meeting_message": (
-        "📅 *{meeting_name}*\n\n"
-        "📆 Fecha: {meeting_date}\n"
-        "{location_line}"
-        "👥 Apuntados: {attendee_count}"
-    ),
-    "proposal_confirmation_message": (
-        "✅ *¡Libro propuesto!* por {user_name}\n\n"
-        "📗 {book_title}\n"
-        "{author_line}"
-        "_Usa /propuestas para votar._"
-    ),
-    "attendance_join_message": "🎉 *{user_name}* se apuntó a *{meeting_name}*\n\n👥 Apuntados ({count}): {names}",
-    "attendance_leave_message": "👋 *{user_name}* se ha quitado de *{meeting_name}*\n\n👥 Quedan ({count}): {names}",
-    "attendance_prompt_message": "📅 ¿A qué reunión te apuntas? Elige una:",
-    "theme_chosen_message": (
-        "🏷️ <b>Temática elegida: {theme_name}</b>\n\n"
-        "¡Es hora de proponer libros para este ciclo!\n\n"
-        "📝 Propón con el comando /proponer\n"
-        "💡 Cuantas más propuestas tengamos, mejor será la votación."
-    ),
-    "new_cycle_message": (
-        "🔄 <b>¡Nuevo ciclo: {cycle_name}!</b>\n\n"
-        "Comienza un nuevo ciclo de lectura. "
-        "Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
-    ),
-    "winner_announcement_message": (
-        "🏆 <b>¡Tenemos libro del mes!</b>\n\n"
-        "📗 <b>{book_title}</b>\n"
-        "{author_line}"
-        "🗳️ Ganó con <b>{votes} votos</b>\n\n"
-        "¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión."
-    ),
-    "books_open_message": (
-        "📚 <b>¡Hora de proponer libros!</b>\n\n"
-        "{theme_line}"
-        "Propón tus lecturas favoritas para este ciclo:\n"
-        "/proponer título del libro\n\n"
-        "💡 Tienes hasta que el admin cierre las propuestas."
-    ),
-    "reading_reminder_message": (
-        "📖 <b>Recordatorio de lectura</b>\n\n"
-        "📗 Libro actual: <b>{book_title}</b>\n"
-        "{author_line}"
-        "📅 Próxima reunión: <b>{meeting_name}</b> ({meeting_date})\n"
-        "📊 Te quedan <b>{days_left} días</b> para leer <b>{pages} páginas</b>.\n"
-        "¡Unas <b>{daily_pages} páginas al día</b> y llegas al día!"
-    ),
-    "meeting_reminder_message": (
-        "📅 <b>Recordatorio de reunión</b>\n\n"
-        "📗 <b>{meeting_name}</b>\n"
-        "🗓 Fecha: <b>{meeting_date}</b>\n"
-        "{location_line}"
-        "👥 Apuntados: <b>{attendee_count}</b>\n"
-        "📖 Libro: <b>{book_title}</b>\n\n"
-        "✅ /asistir · ❌ /noasistir"
-    ),
-    "trivia_message": (
-        "🎲 <b>Pregunta del club</b>\n\n"
-        "{question}\n\n"
-        "<i>Responde en el grupo para debatir juntos.</i>"
-    ),
-    "theme_tie_message": (
-        "⚖️ <b>¡Empate en la votación de temática!</b>\n\n"
-        "Estas temáticas han quedado empatadas:\n"
-        "{themes_list}\n\n"
-        "🔁 El admin decidirá el siguiente paso."
-    ),
-    "book_tie_message": (
-        "⚖️ <b>¡Empate en la votación de libros!</b>\n\n"
-        "Estos libros han quedado empatados con <b>{votes} votos</b>:\n"
-        "{books_list}\n\n"
-        "🔁 El admin decidirá el siguiente paso."
-    ),
-    "poll_books_question": "📚 ¿Qué libro leemos este ciclo?",
-    "poll_themes_question": "🏷️ ¿Qué temática elegimos para este ciclo?",
-    "poll_dates_question": "📅 ¿Cuándo nos reunimos? · {meeting_name}",
-}
+DEFAULT_MESSAGES = dict(SHARED_DEFAULT_MESSAGES)
 
 
 def get_text(key, **kwargs):
@@ -463,11 +352,12 @@ async def unpin_group_message():
 # WINNER ANNOUNCEMENT
 # --------------------------------------------------
 
-async def announce_winner(book):
+async def announce_winner(book, cycle_key=None):
     """Envía ficha completa del libro ganador al grupo."""
     if not TELEGRAM_CHAT_ID:
         return
     from html import escape as hesc
+    cycle_key = cycle_key or book.get("cycle_key") or db.get_current_cycle_key()
     votes = book.get("votes", 0)
     lines = ["🏆 <b>¡Tenemos libro del mes!</b>"]
     lines.append(f"\n📗 <b>{hesc(book['title'])}</b>")
@@ -486,7 +376,13 @@ async def announce_winner(book):
     lines.append("\n¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión.")
     text = "\n".join(lines)
 
-    next_meeting = db.get_latest_scheduled_meeting()
+    next_meeting = db.get_latest_scheduled_meeting(cycle_key=cycle_key)
+    logger.info(
+        "Anuncio ganador: libro=%s ciclo=%s meeting_id=%s",
+        book.get("title"),
+        cycle_key,
+        next_meeting["id"] if next_meeting else None,
+    )
     if next_meeting:
         keyboard = [[
             InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{next_meeting['id']}"),
@@ -536,8 +432,9 @@ async def start(update, context):
         except Exception:
             pass
         user = update.effective_user.first_name or update.effective_user.username or "miembro"
-        winner = db.get_winner_book()
-        meeting = db.get_latest_scheduled_meeting()
+        current_cycle = db.get_current_cycle_key()
+        winner = db.get_winner_book(current_cycle)
+        meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
 
         libro_line = f"📗 Libro actual: {winner['title']}" + (f" — {winner['author']}" if winner and winner.get('author') else "") if winner else "📗 Aún no hay libro elegido este ciclo"
         reunion_line = ""
@@ -545,20 +442,28 @@ async def start(update, context):
             fecha = str(meeting["final_date"])[:10] if meeting.get("final_date") else "sin fecha"
             reunion_line = f"\n📅 Próxima reunión: {meeting['name']} ({fecha})"
 
+        is_admin = is_admin_user(update)
+        quick_lines = [
+            "📖 /proponer título — Proponer un libro",
+            "🗳️ /propuestas — Ver y votar propuestas",
+            "📅 /reunion — Info de la próxima reunión",
+            "✅ /asistir · ❌ /noasistir — Gestionar asistencia",
+            "🏷️ /temas — Ver y votar temáticas",
+            "📊 /progreso · /estadisticas — Tu actividad",
+            "💡 /recomendar — Recomendaciones de libros",
+            "🐛 /bug — Reportar un problema",
+        ]
+        if is_admin:
+            quick_lines.append("🔐 /admin_ayuda — Comandos de administración")
+
         text = (
             f"📚 ¡Hola, {user}! Bienvenid@ al bot del Club de Lectura.\n\n"
             f"{libro_line}{reunion_line}\n\n"
             f"Aquí puedes usar todos los comandos del club de forma privada "
             f"sin molestar al grupo. Pulsa cualquier botón del menú o escribe "
             f"un comando directamente.\n\n"
-            f"📖 /proponer título — Proponer un libro\n"
-            f"🗳️ /propuestas — Ver y votar propuestas\n"
-            f"📅 /reunion — Info de la próxima reunión\n"
-            f"✅ /asistir · ❌ /noasistir — Gestionar asistencia\n"
-            f"🏷️ /temas — Ver y votar temáticas\n"
-            f"💬 /preguntas — Preguntas de debate con IA\n"
-            f"✨ /cita — Cita literaria del libro actual\n"
-            f"💡 /recomendar — Recomendaciones de libros\n\n"
+            + "\n".join(quick_lines)
+            + "\n\n"
             f"Usa /ayuda para la lista completa."
         )
         keyboard = ReplyKeyboardMarkup(
@@ -1267,9 +1172,10 @@ async def nuevo_ciclo_cmd(update, context):
     name = " ".join(context.args).strip() if context.args else None
     if not name:
         name = _sug()
-    db.set_config("active_cycle_key", name)
-    db.set_config("proposals_locked_for", "")
+    db.add_active_cycle(name)
+    db.unlock_cycle_proposals(name)
     db.set_config("active_theme", "")
+    db.set_config(f"active_theme:{name}", "")
     from app.web.admin.polls import _set_phase
     _set_phase("setup")
     db.log_event("admin", f"Ciclo «{name}» activado vía bot", category="cycle", actor="admin")
@@ -1347,15 +1253,17 @@ async def anunciar_ganador_cmd(update, context):
                 is_anonymous=False,
                 allows_multiple_answers=False,
             )
+            cycle = db.get_current_cycle_key()
             db.save_poll(chat_id=tie_poll.chat_id, message_id=tie_poll.message_id,
-                         poll_id=tie_poll.poll.id, poll_type="books")
+                         poll_id=tie_poll.poll.id, poll_type="books", cycle_key=cycle)
+            db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([b["proposal_id"] for b in tied[:10]]))
         await update.message.reply_text(f"⚖️ Empate detectado. Encuesta de desempate lanzada.", parse_mode=None)
         return
     winner = db.get_winner_book()
     if not winner:
         await update.message.reply_text("📭 No hay libro ganador todavía\\.", parse_mode="MarkdownV2")
         return
-    await announce_winner(winner)
+    await announce_winner(winner, cycle_key=db.get_current_cycle_key())
     await update.message.reply_text("✅ Anuncio enviado al grupo\\.", parse_mode="MarkdownV2")
 
 
@@ -1377,13 +1285,15 @@ async def encuesta_libros_cmd(update, context):
     """Admin: lanza encuesta de libros desde el chat."""
     if not is_admin_user(update): return
     try:
-        books = db.get_book_proposals()
+        cycle = db.get_current_cycle_key()
+        books = db.get_book_proposals(cycle)
         if len(books) < 2:
             await update.message.reply_text("❌ Necesitas al menos 2 propuestas.", parse_mode=None)
             return
         if not TELEGRAM_CHAT_ID:
             await update.message.reply_text("❌ TELEGRAM_CHAT_ID no configurado.", parse_mode=None)
             return
+        db.lock_cycle_proposals(cycle)
         options = []
         for b in books[:10]:
             label = b["title"]
@@ -1398,7 +1308,11 @@ async def encuesta_libros_cmd(update, context):
             allows_multiple_answers=False,
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="books")
+                     poll_id=msg.poll.id, poll_type="books", cycle_key=cycle)
+        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in books[:10]]))
+        from app.web.admin.polls import _set_phase
+        _set_phase("book_voting")
+        logger.info("/encuesta_libros: encuesta lanzada poll_id=%s ciclo=%s opciones=%d", msg.poll.id, cycle, len(options))
         await update.message.reply_text("✅ Encuesta de libros lanzada.", parse_mode=None)
     except Exception:
         logger.exception("Error en /encuesta_libros")
@@ -1409,7 +1323,8 @@ async def encuesta_temas_cmd(update, context):
     """Admin: lanza encuesta de temáticas desde el chat."""
     if not is_admin_user(update): return
     try:
-        themes = db.get_themes()
+        cycle = db.get_current_cycle_key()
+        themes = db.get_themes(cycle)
         if len(themes) < 2:
             await update.message.reply_text("❌ Necesitas al menos 2 temáticas.", parse_mode=None)
             return
@@ -1425,7 +1340,11 @@ async def encuesta_temas_cmd(update, context):
             allows_multiple_answers=False,
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
-                     poll_id=msg.poll.id, poll_type="themes")
+                     poll_id=msg.poll.id, poll_type="themes", cycle_key=cycle)
+        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([t["id"] for t in themes[:10]]))
+        from app.web.admin.polls import _set_phase
+        _set_phase("theme_voting")
+        logger.info("/encuesta_temas: encuesta lanzada poll_id=%s ciclo=%s opciones=%d", msg.poll.id, cycle, len(options))
         await update.message.reply_text("✅ Encuesta de temáticas lanzada.", parse_mode=None)
     except Exception:
         logger.exception("Error en /encuesta_temas")
@@ -2191,14 +2110,14 @@ def admin_dashboard():
     auth = require_admin()
     if auth: return auth
     current_cycle    = db.get_current_cycle_key()
-    books            = db.get_books()
-    meetings         = db.get_meetings(limit=5)
-    themes           = db.get_themes()
+    books            = db.get_books(current_cycle)
+    meetings         = db.get_meetings(limit=5, cycle_key=current_cycle)
+    themes           = db.get_themes(current_cycle)
     ranking          = db.get_book_ranking()
-    open_poll_books  = db.get_open_polls(poll_type="books")   # lista de todas las abiertas
-    open_poll_themes = db.get_open_poll(poll_type="themes")
+    open_poll_books  = db.get_open_polls(poll_type="books", cycle_key=current_cycle)
+    open_poll_themes = db.get_open_poll(poll_type="themes", cycle_key=current_cycle)
     cycle_states     = db.get_active_cycle_states()
-    tied_books       = db.get_tied_books()
+    tied_books       = db.get_tied_books(current_cycle)
     active_cycles    = db.get_active_cycle_keys()
     return render_template(
         "admin.html",
@@ -2461,9 +2380,9 @@ def admin_public_settings():
 def admin_db():
     return render_admin_db(require_admin, logger)
 
-@flask_app.post("/admin/db/<table>/delete/<int:row_id>")
-def admin_db_delete_row(table, row_id):
-    return delete_db_row(require_admin, logger, table, row_id)
+@flask_app.post("/admin/db/<table>/delete")
+def admin_db_delete_row(table):
+    return delete_db_row(require_admin, logger, table)
 
 @flask_app.post("/admin/db/<table>/truncate")
 def admin_db_truncate(table):

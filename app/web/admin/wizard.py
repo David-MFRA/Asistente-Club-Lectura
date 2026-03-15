@@ -16,9 +16,10 @@ async def wizard_new_cycle(require_admin, send_to_group, utcnow, logger):
     if not cycle_name:
         from app.web.admin.site import _suggested_cycle_name
         cycle_name = _suggested_cycle_name()
-    db.set_config("active_cycle_key", cycle_name)
-    db.set_config("proposals_locked_for", "")
+    db.add_active_cycle(cycle_name)
+    db.unlock_cycle_proposals(cycle_name)
     db.set_config("active_theme", "")
+    db.set_config(f"active_theme:{cycle_name}", "")
     db.set_config("cycle_phase", "setup")
 
     try:
@@ -51,10 +52,7 @@ async def wizard_lock_and_poll(require_admin, telegram_app, telegram_chat_id, lo
         return redirect(url_for("admin_dashboard"))
 
     try:
-        locked_now = db.get_config("proposals_locked_for") or ""
-        locked_set = {value.strip() for value in locked_now.split(",") if value.strip()}
-        locked_set.add(cycle)
-        db.set_config("proposals_locked_for", ",".join(sorted(locked_set)))
+        db.lock_cycle_proposals(cycle)
 
         options = []
         for book in books[:10]:
@@ -91,14 +89,14 @@ async def wizard_announce_date(require_admin, send_to_group, logger):
     if auth:
         return auth
 
-    meeting = db.get_latest_scheduled_meeting()
+    cycle = request.form.get("cycle") or db.get_current_cycle_key()
+    meeting = db.get_latest_scheduled_meeting(cycle_key=cycle)
     if not meeting or not meeting.get("final_date"):
         flash("No hay reunion con fecha confirmada.", "danger")
         return redirect(url_for("admin_dashboard"))
 
     try:
         date_text = str(meeting["final_date"])[:16]
-        cycle = request.form.get("cycle") or db.get_current_cycle_key()
         winner = db.get_winner_book(cycle)
         book_line = f"\n📖 Libro: <b>{hesc(winner['title'])}</b>" if winner else ""
         location_line = f"\n📍 <b>{hesc(meeting['location'])}</b>" if meeting.get("location") else ""

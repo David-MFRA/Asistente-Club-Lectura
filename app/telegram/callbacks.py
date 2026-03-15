@@ -5,6 +5,13 @@ class CallbackHandler:
     def __init__(self, logger):
         self.logger = logger
 
+    def _resolve_meeting(self, raw_value):
+        value = (raw_value or "").strip()
+        if value == "next":
+            meeting = db.get_latest_scheduled_meeting()
+            return (meeting["id"], meeting) if meeting else (None, None)
+        return int(value), None
+
     async def handle(self, update, context):
         query = update.callback_query
         await query.answer()
@@ -38,9 +45,13 @@ class CallbackHandler:
                 return
 
             if data.startswith("attend:"):
-                meeting_id = int(data.split(":")[1])
+                meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
+                if not meeting_id:
+                    self.logger.warning("Callback asistencia sin reunión resoluble: data=%r", data)
+                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
+                    return
                 ok = db.add_attendance(meeting_id, user)
-                meeting = db.get_meeting(meeting_id)
+                meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 if ok:
                     self.logger.info("Asistencia (inline): %s → «%s» (meeting_id=%d)", user, meeting_name, meeting_id)
@@ -64,10 +75,14 @@ class CallbackHandler:
                 return
 
             if data.startswith("noattend:"):
-                meeting_id = int(data.split(":")[1])
+                meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
+                if not meeting_id:
+                    self.logger.warning("Callback no asistencia sin reunión resoluble: data=%r", data)
+                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
+                    return
                 self.logger.info("No asistencia (inline): %s → meeting_id=%d", user, meeting_id)
                 db.remove_attendance(meeting_id, user)
-                meeting = db.get_meeting(meeting_id)
+                meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 attendees = db.get_attendance(meeting_id)
                 names = ", ".join(attendees) if attendees else "nadie"

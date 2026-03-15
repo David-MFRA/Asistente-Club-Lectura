@@ -65,12 +65,18 @@
       <tbody>
         {% for row in rows %}
         <tr>
-          {% for cell in row %}<td title="{{ cell }}">{{ cell if cell is not none else '—' }}</td>{% endfor %}
+          {% for col in cols %}{% set cell = row[col] %}<td title="{{ cell }}">{{ cell if cell is not none else '—' }}</td>{% endfor %}
           <td>
-            <form action="/admin/db/{{ table }}/delete/{{ row[0] }}" method="post"
-                  onsubmit="return confirm('¿Borrar fila con id={{ row[0] }}?')">
+            {% if pk_column %}
+            <form action="/admin/db/{{ table }}/delete" method="post"
+                  onsubmit="return confirm('¿Borrar fila con {{ pk_column }}={{ row[pk_column] }}?')">
+              <input type="hidden" name="pk_name" value="{{ pk_column }}">
+              <input type="hidden" name="pk_value" value="{{ row[pk_column] }}">
               <button class="btn btn-danger btn-xs" type="submit">🗑</button>
             </form>
+            {% else %}
+            <span style="color:var(--muted);font-size:.8rem">Solo lectura</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

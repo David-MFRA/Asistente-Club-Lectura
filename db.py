@@ -273,6 +273,45 @@ def get_current_cycle_key():
     return stored if stored else current_cycle_key()
 
 
+def _dedupe_text_values(values):
+    unique = []
+    seen = set()
+    for value in values:
+        item = (value or "").strip()
+        if not item or item in seen:
+            continue
+        unique.append(item)
+        seen.add(item)
+    return unique
+
+
+def get_locked_cycle_keys():
+    raw = get_config("proposals_locked_for") or ""
+    return _dedupe_text_values(raw.split(","))
+
+
+def set_locked_cycle_keys(keys):
+    set_config("proposals_locked_for", ",".join(_dedupe_text_values(keys)))
+
+
+def lock_cycle_proposals(cycle_key):
+    keys = get_locked_cycle_keys()
+    if cycle_key not in keys:
+        keys.append(cycle_key)
+        set_locked_cycle_keys(keys)
+    logger.info("Propuestas bloqueadas para ciclo=%s", cycle_key)
+
+
+def unlock_cycle_proposals(cycle_key=None):
+    if not cycle_key:
+        set_locked_cycle_keys([])
+        logger.info("Propuestas desbloqueadas para todos los ciclos")
+        return
+    keys = [key for key in get_locked_cycle_keys() if key != cycle_key]
+    set_locked_cycle_keys(keys)
+    logger.info("Propuestas desbloqueadas para ciclo=%s", cycle_key)
+
+
 # =========================================================
 # BOOKS
 # =========================================================
@@ -341,14 +380,14 @@ def get_books(cycle_key=None):
         SELECT ROW_NUMBER() OVER (ORDER BY sub.votes DESC, sub.title ASC)::int AS cycle_position, sub.*
         FROM (
             SELECT
-                bp.id AS proposal_id, b.id, b.title, b.author,
+                bp.id AS proposal_id, bp.cycle_key, b.id, b.title, b.author,
                 b.description, b.cover, b.pages, bp.proposed_by,
                 COUNT(bv.id)::int AS votes
             FROM book_proposals bp
             JOIN books b ON b.id = bp.book_id
             LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
             WHERE bp.cycle_key = %s AND bp.is_active = TRUE
-            GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
+            GROUP BY bp.id, bp.cycle_key, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
         ) sub
         ORDER BY sub.votes DESC, sub.title ASC
         """, (cycle_key,))
@@ -362,13 +401,13 @@ def get_book_proposals(cycle_key=None):
 def get_proposal_by_id(proposal_id):
     with get_cursor() as cur:
         cur.execute("""
-        SELECT bp.id AS proposal_id, b.id, b.title, b.author, b.description, b.cover, b.pages,
+        SELECT bp.id AS proposal_id, bp.cycle_key, b.id, b.title, b.author, b.description, b.cover, b.pages,
                bp.proposed_by, COUNT(bv.id)::int AS votes
         FROM book_proposals bp
         JOIN books b ON b.id = bp.book_id
         LEFT JOIN book_votes bv ON bv.proposal_id = bp.id
         WHERE bp.id = %s
-        GROUP BY bp.id, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
+        GROUP BY bp.id, bp.cycle_key, b.id, b.title, b.author, b.description, b.cover, b.pages, bp.proposed_by
         """, (proposal_id,))
         row = cur.fetchone()
         return dict(row) if row else None
@@ -458,6 +497,13 @@ def get_themes(cycle_key=None):
         ORDER BY votes DESC, t.name ASC
         """, (cycle_key,))
         return [dict(r) for r in cur.fetchall()]
+
+
+def get_theme_by_id(theme_id):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM themes WHERE id = %s", (theme_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def vote_theme(theme_id, user_name):
@@ -566,17 +612,23 @@ def get_latest_meeting():
         return dict(row) if row else None
 
 
-def get_latest_scheduled_meeting():
+def get_latest_scheduled_meeting(cycle_key=None):
     """Devuelve la PRÓXIMA reunión (soonest future date). Si no hay con fecha futura, la más reciente."""
     with get_cursor() as cur:
+        params = []
+        cycle_sql = ""
+        if cycle_key:
+            cycle_sql = " AND cycle_key = %s"
+            params.append(cycle_key)
         # Próxima reunión futura (la más cercana)
         cur.execute("""
         SELECT * FROM meetings
         WHERE status IN ('scheduled', 'draft')
+        """ + cycle_sql + """
           AND (final_date IS NULL OR final_date > NOW())
         ORDER BY final_date ASC NULLS LAST, created_at ASC
         LIMIT 1
-        """)
+        """, tuple(params))
         row = cur.fetchone()
         if row:
             return dict(row)
@@ -584,8 +636,9 @@ def get_latest_scheduled_meeting():
         cur.execute("""
         SELECT * FROM meetings
         WHERE status IN ('scheduled', 'draft')
+        """ + cycle_sql + """
         ORDER BY COALESCE(final_date, created_at) DESC LIMIT 1
-        """)
+        """, tuple(params))
         row = cur.fetchone()
         return dict(row) if row else None
 
@@ -924,6 +977,7 @@ def add_active_cycle(key):
     keys = get_active_cycle_keys()
     if key not in keys:
         keys.insert(0, key)
+    keys = _dedupe_text_values(keys)
     set_config("active_cycles", ",".join(keys))
     set_config("active_cycle_key", keys[0])  # el más reciente como primario
 
@@ -932,6 +986,58 @@ def remove_active_cycle(key):
     keys = [k for k in get_active_cycle_keys() if k != key]
     set_config("active_cycles", ",".join(keys))
     set_config("active_cycle_key", keys[0] if keys else "")
+
+
+def cycle_exists(cycle_key):
+    cycle_key = (cycle_key or "").strip()
+    if not cycle_key:
+        return False
+    return cycle_key in set(get_all_cycle_keys()) or cycle_key in set(get_active_cycle_keys())
+
+
+def rename_cycle_key(old_key, new_key):
+    old_key = (old_key or "").strip()
+    new_key = (new_key or "").strip()
+    if not old_key or not new_key:
+        raise ValueError("Nombre de ciclo inválido")
+    if old_key == new_key:
+        return {}
+
+    active_cycles = [new_key if key == old_key else key for key in get_active_cycle_keys()]
+    locked_cycles = [new_key if key == old_key else key for key in get_locked_cycle_keys()]
+    current_cycle = get_config("active_cycle_key")
+    current_theme_value = get_config(f"active_theme:{old_key}")
+    summary = {}
+
+    with get_cursor(commit=True) as cur:
+        for table_name in ("book_proposals", "themes", "meetings", "telegram_polls", "book_waitlist"):
+            cur.execute(f"UPDATE {table_name} SET cycle_key=%s WHERE cycle_key=%s", (new_key, old_key))
+            summary[table_name] = cur.rowcount
+
+        if current_theme_value is not None:
+            cur.execute("""
+            INSERT INTO app_config(key, value) VALUES(%s,%s)
+            ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+            """, (f"active_theme:{new_key}", current_theme_value))
+            cur.execute("DELETE FROM app_config WHERE key=%s", (f"active_theme:{old_key}",))
+            summary["active_theme_config"] = 1
+
+    set_config("active_cycles", ",".join(_dedupe_text_values(active_cycles)))
+    if current_cycle == old_key:
+        set_config("active_cycle_key", new_key)
+    set_locked_cycle_keys(locked_cycles)
+
+    logger.info(
+        "Ciclo renombrado: %s -> %s (propuestas=%d, temas=%d, reuniones=%d, encuestas=%d, waitlist=%d)",
+        old_key,
+        new_key,
+        summary.get("book_proposals", 0),
+        summary.get("themes", 0),
+        summary.get("meetings", 0),
+        summary.get("telegram_polls", 0),
+        summary.get("book_waitlist", 0),
+    )
+    return summary
 
 
 def get_cycle_state(cycle_key):
@@ -1135,56 +1241,83 @@ def delete_scheduled_message(msg_id):
 # UPCOMING MEETINGS
 # =========================================================
 
-def get_upcoming_meetings(limit=5):
+def get_upcoming_meetings(limit=5, cycle_key=None):
     """Devuelve reuniones activas (draft/scheduled) con fecha futura o sin fecha, ordenadas por fecha ascendente."""
     with get_cursor() as cur:
+        params = []
+        cycle_sql = ""
+        if cycle_key:
+            cycle_sql = " AND m.cycle_key = %s"
+            params.append(cycle_key)
+        params.append(limit)
         cur.execute("""
         SELECT m.*, b.title AS book_title
         FROM meetings m
         LEFT JOIN books b ON b.id = m.book_id
         WHERE m.status IN ('draft', 'scheduled')
+        """ + cycle_sql + """
           AND (m.final_date IS NULL OR m.final_date > NOW())
         ORDER BY m.final_date ASC NULLS LAST, m.created_at ASC
         LIMIT %s
-        """, (limit,))
+        """, tuple(params))
         return [dict(r) for r in cur.fetchall()]
 
 
 def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
     """Detecta en qué paso del ciclo estamos para el wizard del dashboard."""
-    if cycle is None or _proposals_locked_for is None:
-        with get_cursor() as cur:
-            cur.execute(
-                "SELECT key, value FROM app_config WHERE key IN ('active_cycle_key', 'proposals_locked_for')"
-            )
-            cfg = {r["key"]: r["value"] for r in cur.fetchall()}
-        if cycle is None:
-            cycle = cfg.get("active_cycle_key") or current_cycle_key()
-        if _proposals_locked_for is None:
-            _proposals_locked_for = cfg.get("proposals_locked_for", "")
-    _locked_set = {x.strip() for x in (_proposals_locked_for or "").split(",") if x.strip()}
+    if cycle is None:
+        cycle = get_current_cycle_key()
+    locked_source = _proposals_locked_for if _proposals_locked_for is not None else ",".join(get_locked_cycle_keys())
+    _locked_set = {x.strip() for x in (locked_source or "").split(",") if x.strip()}
     proposals_locked = cycle in _locked_set
     books = get_book_proposals(cycle)
     open_book_poll = get_open_poll(poll_type="books", cycle_key=cycle)
     winner = get_winner_book(cycle)
-    next_meeting = get_latest_scheduled_meeting()
+    themes = get_themes(cycle)
+    active_theme = get_config(f"active_theme:{cycle}") or ""
+    open_theme_poll = get_open_poll(poll_type="themes", cycle_key=cycle)
+    next_meeting = get_latest_scheduled_meeting(cycle_key=cycle)
     open_dates_poll = None
     if next_meeting:
-        open_dates_poll = get_open_poll(poll_type="dates", meeting_id=next_meeting["id"])
+        open_dates_poll = get_open_poll(poll_type="dates", cycle_key=cycle, meeting_id=next_meeting["id"])
 
-    if not books and not proposals_locked:
+    if open_theme_poll:
+        step = "poll_open"
+        step_label = "Encuesta de temáticas abierta"
+        step_desc = "La encuesta de temáticas está activa en Telegram. Ciérrala cuando haya suficientes votos."
+        step_action = "Cerrar encuesta de temáticas"
+        step_url = f"/admin/encuesta/temas/{open_theme_poll['id']}/cerrar"
+        step_color = "danger"
+    elif themes and not active_theme and not winner and not books:
+        enough_themes = len(themes) >= 2
+        step = "collecting_proposals"
+        step_label = "Temáticas listas para votar" if enough_themes else "Faltan temáticas"
+        step_desc = (
+            f"Hay {len(themes)} temática(s) preparadas. Lanza la encuesta para elegir la del ciclo."
+            if enough_themes
+            else f"Solo hay {len(themes)} temática(s). Añade al menos 2 antes de votar."
+        )
+        step_action = "Lanzar encuesta de temáticas" if enough_themes else "Añadir más temáticas"
+        step_url = "/admin/encuesta/temas/crear" if enough_themes else "#themes"
+        step_color = "warning"
+    elif not themes and not books and not proposals_locked and not winner:
         step = "new_cycle"
         step_label = "Nuevo ciclo"
-        step_desc = "Anuncia el inicio del ciclo y pide propuestas de libros al grupo."
-        step_action = "Iniciar ciclo y pedir propuestas"
+        step_desc = "Crea el ciclo, define temáticas y prepara la primera votación."
+        step_action = "Crear ciclo"
         step_url = "/admin/wizard/new-cycle"
         step_color = "primary"
-    elif books and not proposals_locked and not open_book_poll:
+    elif books and not proposals_locked and not open_book_poll and not winner:
+        enough_books = len(books) >= 2
         step = "collecting_proposals"
         step_label = "Recogiendo propuestas"
-        step_desc = f"Hay {len(books)} propuesta(s). Cuando estés listo, cierra las propuestas y lanza la encuesta."
-        step_action = "Cerrar propuestas y lanzar encuesta"
-        step_url = "/admin/wizard/lock-and-poll"
+        step_desc = (
+            f"Hay {len(books)} propuesta(s). Cuando estés listo, cierra las propuestas y lanza la encuesta."
+            if enough_books
+            else f"Hay {len(books)} propuesta(s). Necesitas al menos 2 para abrir la votación."
+        )
+        step_action = "Cerrar propuestas y lanzar encuesta" if enough_books else "Añadir más propuestas"
+        step_url = "/admin/wizard/lock-and-poll" if enough_books else "#books"
         step_color = "warning"
     elif open_book_poll:
         step = "poll_open"
@@ -1193,6 +1326,13 @@ def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
         step_action = f"Cerrar encuesta y anunciar ganador"
         step_url = f"/admin/encuesta/{open_book_poll['id']}/cerrar"
         step_color = "danger"
+    elif winner and open_dates_poll:
+        step = "dates_poll_open"
+        step_label = "Encuesta de fechas activa"
+        step_desc = "La encuesta de fechas está activa en Telegram."
+        step_action = "Cerrar encuesta de fechas"
+        step_url = f"/admin/encuesta/fechas/{next_meeting['id']}/cerrar/{open_dates_poll['id']}"
+        step_color = "danger"
     elif winner and (not next_meeting or not next_meeting.get("final_date")):
         step = "awaiting_date"
         step_label = "Esperando fecha de reunión"
@@ -1200,13 +1340,6 @@ def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
         step_action = "Gestionar fecha de reunión"
         step_url = f"/meeting/{next_meeting['id']}" if next_meeting else "/meetings"
         step_color = "warning"
-    elif open_dates_poll:
-        step = "dates_poll_open"
-        step_label = "Encuesta de fechas activa"
-        step_desc = "La encuesta de fechas está activa en Telegram."
-        step_action = "Cerrar encuesta de fechas"
-        step_url = f"/admin/encuesta/fechas/{next_meeting['id']}/cerrar/{open_dates_poll['id']}"
-        step_color = "danger"
     elif winner and next_meeting and next_meeting.get("final_date"):
         step = "meeting_scheduled"
         step_label = "Reunión programada"
@@ -1316,13 +1449,56 @@ ALLOWED_TABLES = [
     "themes", "theme_votes",
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
-    "message_templates", "sent_messages", "scheduled_messages",
+    "app_config", "reading_progress", "message_templates", "sent_messages", "scheduled_messages",
     "book_waitlist", "club_members", "app_events", "bug_reports",
 ]
 
 
 def get_table_names():
     return list(ALLOWED_TABLES)
+
+
+def get_table_primary_key(table_name):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = %s
+              AND tc.constraint_type = 'PRIMARY KEY'
+            ORDER BY kcu.ordinal_position
+            """,
+            (table_name,),
+        )
+        rows = [row["column_name"] for row in cur.fetchall()]
+        if rows:
+            return rows[0]
+
+        cur.execute(
+            """
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = %s
+              AND tc.constraint_type = 'UNIQUE'
+            GROUP BY tc.constraint_name, kcu.column_name
+            HAVING COUNT(*) = 1
+            ORDER BY MIN(kcu.ordinal_position)
+            LIMIT 1
+            """,
+            (table_name,),
+        )
+        row = cur.fetchone()
+        return row["column_name"] if row else None
 
 
 def get_table_rows(table_name, limit=200):
@@ -1339,10 +1515,11 @@ def get_table_rows(table_name, limit=200):
         )
         column_names = {row["column_name"] for row in cur.fetchall()}
         order_column = None
-        for candidate in ("id", "created_at", "updated_at"):
+        for candidate in ("id", "created_at", "updated_at", "key", "user_id"):
             if candidate in column_names:
                 order_column = candidate
                 break
+        primary_key = get_table_primary_key(table_name)
 
         query = f"SELECT * FROM {table_name}"
         if order_column:
@@ -1350,18 +1527,24 @@ def get_table_rows(table_name, limit=200):
         query += " LIMIT %s"
 
         cur.execute(query, (limit,))
-        rows = cur.fetchall()
+        rows = [dict(row) for row in cur.fetchall()]
         if not rows:
-            return [], []
+            return [], [], primary_key
         cols = list(rows[0].keys())
-        return cols, [list(r.values()) for r in rows]
+        return cols, rows, primary_key
 
 
-def delete_table_row(table_name, row_id):
+def delete_table_row(table_name, pk_column, pk_value):
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Tabla no permitida: {table_name}")
+    real_pk = get_table_primary_key(table_name)
+    if not real_pk:
+        raise ValueError(f"La tabla {table_name} no tiene una clave utilizable para borrar filas")
+    if pk_column != real_pk:
+        raise ValueError(f"Clave inválida para {table_name}: {pk_column}")
     with get_cursor(commit=True) as cur:
-        cur.execute(f"DELETE FROM {table_name} WHERE id = %s", (row_id,))
+        cur.execute(f"DELETE FROM {table_name} WHERE {real_pk} = %s", (pk_value,))
+        return cur.rowcount
 
 
 def truncate_table(table_name):

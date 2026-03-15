@@ -223,6 +223,7 @@
     <div class="action-desc">{{ cycle.themes|length }} temáticas disponibles.</div>
     <form action="/admin/encuesta/temas/crear" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="cycle" value="{{ cycle.cycle_key }}">
       <button class="action-btn" type="submit">📊 Lanzar encuesta en Telegram</button>
     </form>
     {% endif %}
@@ -235,6 +236,7 @@
     <div class="action-desc">Tienes {{ cycle.books|length }} propuestas. Puedes lanzar la encuesta o esperar más.</div>
     <form action="/admin/encuesta/libros/crear" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="cycle" value="{{ cycle.cycle_key }}">
       <button class="action-btn" type="submit">📊 Lanzar encuesta de libros</button>
     </form>
     {% else %}
@@ -316,6 +318,7 @@
 <form action="/admin/book/add" method="post" class="add-book-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="_next" value="/admin/ciclo/easy">
+  <input type="hidden" name="cycle" value="{{ cycle.cycle_key }}">
   <input name="title" type="text" placeholder="Añadir libro…" required>
   <button class="btn btn-success" type="submit">➕</button>
 </form>

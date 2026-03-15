@@ -34,10 +34,7 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
             flash("TELEGRAM_CHAT_ID no configurado en variables de entorno", "danger")
             return redirect(url_for("admin_dashboard"))
         # Lock proposals
-        locked_now = db.get_config("proposals_locked_for") or ""
-        locked_set = {v.strip() for v in locked_now.split(",") if v.strip()}
-        locked_set.add(cycle)
-        db.set_config("proposals_locked_for", ",".join(sorted(locked_set)))
+        db.lock_cycle_proposals(cycle)
 
         # Split into at most 2 polls if > 10 proposals
         chunks = [books[:10]] if len(books) <= 10 else [books[:10], books[10:20]]
@@ -109,7 +106,7 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                 return redirect(url_for("admin_dashboard"))
 
             # All polls closed — now determine winner from accumulated book_votes
-            tied = db.get_tied_books()
+            tied = db.get_tied_books(cycle_key)
             if len(tied) > 1:
                 books_list = "\n".join(
                     f"  • <b>{hesc(b['title'])}</b>" + (f" — {hesc(b['author'])}" if b.get("author") else "")
@@ -148,11 +145,11 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                 flash(f"Todas las encuestas cerradas. Empate entre {len(tied)} libros. Encuesta de desempate lanzada.", "warning")
                 return redirect(url_for("admin_dashboard"))
 
-            winner = db.get_winner_book()
+            winner = db.get_winner_book(cycle_key)
             if winner:
                 logger.info("Admin: ganador encuesta libros → «%s» (%d votos)", winner["title"], winner.get("votes", 0))
-                await announce_winner(winner)
-                next_meeting = db.get_latest_scheduled_meeting()
+                await announce_winner(winner, cycle_key=cycle_key)
+                next_meeting = db.get_latest_scheduled_meeting(cycle_key=cycle_key)
                 if next_meeting and not next_meeting.get("book_id"):
                     db.update_meeting(meeting_id=next_meeting["id"], book_id=winner["id"])
                 _set_phase("date_voting")
@@ -176,8 +173,9 @@ async def pick_book_winner(require_admin, proposal_id, announce_winner_fn, logge
     if not book:
         flash("Propuesta no encontrada", "danger")
         return redirect(url_for("admin_ciclo"))
-    await announce_winner_fn(book)
-    next_meeting = db.get_latest_scheduled_meeting()
+    cycle_key = book.get("cycle_key") or db.get_current_cycle_key()
+    await announce_winner_fn(book, cycle_key=cycle_key)
+    next_meeting = db.get_latest_scheduled_meeting(cycle_key=cycle_key)
     if next_meeting and not next_meeting.get("book_id"):
         db.update_meeting(meeting_id=next_meeting["id"], book_id=book["id"])
     _set_phase("date_voting")
@@ -192,8 +190,9 @@ async def create_theme_poll(require_admin, telegram_app, telegram_chat_id, logge
     if auth:
         return auth
     try:
-        themes = db.get_themes()
-        logger.info("Admin: crear encuesta temáticas (%d temáticas)", len(themes))
+        cycle = request.form.get("cycle", "").strip() or db.get_current_cycle_key()
+        themes = db.get_themes(cycle)
+        logger.info("Admin: crear encuesta temáticas (%d temáticas, ciclo=%s)", len(themes), cycle)
         if len(themes) < 2:
             flash("Necesitas al menos 2 temáticas para crear una encuesta", "danger")
             return redirect(url_for("admin_ciclo"))
@@ -209,7 +208,7 @@ async def create_theme_poll(require_admin, telegram_app, telegram_chat_id, logge
             is_anonymous=False,
             allows_multiple_answers=False,
         )
-        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="themes")
+        db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="themes", cycle_key=cycle)
         # Store option→theme_id mapping for real-time vote tracking
         db.set_config(f"poll_options_{msg.poll.id}", json.dumps([t["id"] for t in themes[:10]]))
         _set_phase("theme_voting")
@@ -244,7 +243,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             theme_ids = []
 
         # Build ranked list: [{id, name, votes}] from tg_poll.options + theme_ids mapping
-        all_themes_db = {t["id"]: t for t in db.get_themes()}
+        all_themes_db = {t["id"]: t for t in db.get_themes(cycle_key)}
         ranked = []
         if tg_poll and tg_poll.options and theme_ids:
             for i, opt in enumerate(tg_poll.options):
@@ -255,7 +254,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             ranked.sort(key=lambda x: x["votes"], reverse=True)
         # Fallback to DB counts if mapping unavailable
         if not ranked:
-            ranked = db.get_themes()
+            ranked = db.get_themes(cycle_key)
 
         total_votes = sum(r["votes"] for r in ranked)
         logger.info("Admin: encuesta temáticas cerrada — %d votos totales, %d opciones", total_votes, len(ranked))
@@ -290,6 +289,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
                     message_id=tie_poll.message_id,
                     poll_id=tie_poll.poll.id,
                     poll_type="themes",
+                    cycle_key=cycle_key,
                 )
                 # Guardar mapeo opción→theme_id para seguimiento de votos en tiempo real
                 db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([t["id"] for t in tied[:10]]))
@@ -300,10 +300,11 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
         top = ranked[0] if ranked else None
         if top:
             logger.info("Admin: temática ganadora → «%s» (%d votos)", top["name"], top["votes"])
-            db.set_config("active_theme", top["name"])
+            if cycle_key == db.get_current_cycle_key():
+                db.set_config("active_theme", top["name"])
             db.set_config(f"active_theme:{cycle_key}", top["name"])
             _set_phase("books")
-            db.set_config("proposals_locked_for", "")
+            db.unlock_cycle_proposals(cycle_key)
             # Try to get AI book suggestion
             ai_suggestion = ""
             try:
@@ -342,6 +343,7 @@ async def create_dates_poll(require_admin, meeting_id, telegram_app, telegram_ch
             flash("Reunión no encontrada", "danger")
             return redirect(url_for("meetings_admin"))
 
+        cycle_key = meeting.get("cycle_key") or db.get_current_cycle_key()
         date_options = db.get_meeting_date_options(meeting_id)
         if len(date_options) < 2:
             flash("Añade al menos 2 opciones de fecha primero", "warning")
@@ -363,8 +365,10 @@ async def create_dates_poll(require_admin, meeting_id, telegram_app, telegram_ch
             message_id=msg.message_id,
             poll_id=msg.poll.id,
             poll_type="dates",
+            cycle_key=cycle_key,
             meeting_id=meeting_id,
         )
+        logger.info("Admin: encuesta fechas lanzada poll_id=%s meeting_id=%d ciclo=%s opciones=%d", msg.poll.id, meeting_id, cycle_key, len(poll_options))
         flash("Encuesta de fechas lanzada en el grupo", "success")
     except Exception:
         logger.exception("Error creando encuesta fechas")
@@ -408,6 +412,7 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
                     message_id=tie_poll.message_id,
                     poll_id=tie_poll.poll.id,
                     poll_type="dates",
+                    cycle_key=poll.get("cycle_key") or db.get_current_cycle_key(),
                     meeting_id=meeting_id,
                 )
                 flash(f"Empate entre {len(tied_opts)} fechas. Encuesta de desempate lanzada.", "warning")
@@ -429,7 +434,7 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
                     if meeting_obj and meeting_obj.get("book_id"):
                         book = db.get_book_by_id(meeting_obj["book_id"])
                     if not book:
-                        book = db.get_winner_book()
+                        book = db.get_winner_book(meeting_obj.get("cycle_key") if meeting_obj else None)
                     if book and book.get("pages"):
                         try:
                             final_dt = option["option_date"]

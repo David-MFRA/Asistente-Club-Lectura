@@ -110,7 +110,7 @@
         {% if cs.step == 'new_cycle' %}
         <a href="/admin/ciclo" class="btn btn-soft" style="font-size:.88rem">Gestionar ciclos →</a>
         <small style="color:var(--muted);font-size:.78rem">Crea y gestiona el ciclo desde la sección de ciclos</small>
-        {% elif cs.step_url and cs.step_url != '#books' %}
+        {% elif cs.step_url and not cs.step_url.startswith('#') %}
         <form action="{{ cs.step_url }}" method="post">
           <input type="hidden" name="cycle" value="{{ cs.cycle }}">
           <button type="submit" class="btn btn-primary" style="font-size:.88rem">{{ cs.step_action }} →</button>

@@ -248,6 +248,7 @@
           <form action="/admin/book/add" method="post" style="display:flex;gap:6px;margin-top:8px;align-items:center">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="_next" value="/admin/ciclo">
+            <input type="hidden" name="cycle" value="{{ ck }}">
             <input name="title" type="text" placeholder="Añadir libro…" style="flex:1;font-size:.82rem" required>
             <button class="btn btn-success btn-sm" type="submit">➕</button>
           </form>
@@ -257,6 +258,7 @@
         <form action="/admin/book/add" method="post" style="display:flex;gap:6px;margin-bottom:12px;align-items:center">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="_next" value="/admin/ciclo">
+          <input type="hidden" name="cycle" value="{{ ck }}">
           <input name="title" type="text" placeholder="Añadir libro al ciclo…" style="flex:1;font-size:.82rem" required>
           <button class="btn btn-success btn-sm" type="submit">➕</button>
         </form>
@@ -280,6 +282,7 @@
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <form action="/admin/encuesta/temas/crear" method="post" style="margin:0">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="cycle" value="{{ ck }}">
                   <button class="btn btn-primary" type="submit">📊 {% if c.phase == 'theme_voting' %}Re-lanzar{% else %}Lanzar{% endif %} encuesta temas</button>
                 </form>
                 <small style="color:var(--muted);font-size:.78rem">{{ c.themes | length }} temáticas disponibles</small>
@@ -297,6 +300,7 @@
             {% if c.books | length >= 2 %}
               <form action="/admin/encuesta/libros/crear" method="post" style="margin:0">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="cycle" value="{{ ck }}">
                 <button class="btn btn-primary" type="submit">📊 Lanzar encuesta libros ({{ c.books | length }} propuestas)</button>
               </form>
             {% else %}
@@ -324,6 +328,7 @@
             {% elif not c.winner and c.books | length >= 2 %}
               <form action="/admin/encuesta/libros/crear" method="post" style="margin:0">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="cycle" value="{{ ck }}">
                 <button class="btn btn-primary" type="submit">📊 Re-lanzar encuesta libros</button>
               </form>
             {% endif %}

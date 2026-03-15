@@ -103,6 +103,7 @@ from app.web.admin.catalog import (
     render_waitlist,
     save_gallery_notes,
     suggest_waitlist_to_group,
+    execute_sql_query,
     truncate_db_table,
     update_db_row,
     update_meeting as update_meeting_page,
@@ -2290,6 +2291,7 @@ def robots_txt():
 
 
 @flask_app.get("/sitemap.xml")
+@flask_app.get("/publico/sitemap.xml")
 def sitemap_xml():
     canonical = db.get_config("public_canonical_url", "").strip()
     if not canonical:
@@ -2304,6 +2306,7 @@ def sitemap_xml():
     return Response(xml, mimetype="application/xml")
 
 @flask_app.get("/google8715cced54138a71.html")
+@flask_app.get("/publico/google8715cced54138a71.html")
 def google_site_verification():
     return Response("google-site-verification: google8715cced54138a71.html", mimetype="text/html")
 
@@ -2686,6 +2689,10 @@ def admin_db_update_row(table):
 @flask_app.post("/admin/db/<table>/truncate")
 def admin_db_truncate(table):
     return truncate_db_table(require_admin, logger, table)
+
+@flask_app.post("/admin/db/sql")
+def admin_db_sql():
+    return execute_sql_query(require_admin, logger)
 
 # --------------------------------------------------
 # FLASK — BOOK EDIT (admin)

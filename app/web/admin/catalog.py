@@ -502,6 +502,32 @@ def truncate_db_table(require_admin, logger, table):
     return redirect(url_for("admin_db", table=table))
 
 
+def execute_sql_query(require_admin, logger):
+    auth = require_admin()
+    if auth:
+        return auth
+    sql = (request.form.get("sql") or "").strip()
+    if not sql:
+        return Response(json.dumps({"error": "SQL vacío"}), mimetype="application/json", status=400)
+    logger.info("Admin DB SQL: ejecutando query (len=%d)", len(sql))
+    try:
+        cols, rows, rowcount, is_select = db.execute_raw_sql(sql)
+        prepare_admin_audit(
+            action="db_raw_sql",
+            target_type="sql",
+            target_id="manual",
+            before={},
+            after={"sql": sql[:500], "rowcount": rowcount},
+        )
+        return Response(
+            json.dumps({"cols": cols, "rows": rows, "rowcount": rowcount, "is_select": is_select}),
+            mimetype="application/json",
+        )
+    except Exception as exc:
+        logger.warning("Admin DB SQL error: %s", exc)
+        return Response(json.dumps({"error": str(exc)}), mimetype="application/json", status=400)
+
+
 def edit_book(require_admin, logger, book_id):
     auth = require_admin()
     if auth:

@@ -28,6 +28,15 @@
   .field textarea { min-height: 92px; resize: vertical; }
   .field input[disabled] { opacity: .75; }
   .null-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; }
+  .sql-card { margin-bottom: 18px; }
+  .sql-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .sql-textarea { width: 100%; min-height: 100px; resize: vertical; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(10,15,30,.6); color: var(--text); padding: 12px 14px; font-family: 'Courier New', monospace; font-size: .88rem; line-height: 1.55; }
+  .sql-result { margin-top: 14px; }
+  .sql-meta { font-size: .83rem; color: var(--muted); margin-bottom: 8px; }
+  .sql-error { color: #fca5a5; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: 10px; padding: 10px 14px; font-size: .88rem; margin-top: 10px; white-space: pre-wrap; word-break: break-all; }
+  .sql-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .sql-quick button { padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: var(--muted); font-size: .78rem; cursor: pointer; font-family: 'Courier New', monospace; }
+  .sql-quick button:hover { background: rgba(255,255,255,.1); color: var(--text); }
   .editor-actions, .row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .row-actions { justify-content: flex-end; }
   .row-selected td { background: rgba(59,130,246,.08); }
@@ -50,6 +59,30 @@
     <h1>Visor de base de datos</h1>
     <div class="sub">Consulta, edita, elimina filas o vacia tablas directamente</div>
   </div>
+</div>
+
+<div class="card card--blur sql-card">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <span style="font-size:1.2rem">🖥️</span>
+    <div>
+      <div style="font-weight:700;font-size:1rem">Consola SQL</div>
+      <div style="color:var(--muted);font-size:.83rem">Ejecuta SELECT, INSERT, UPDATE, DELETE directamente</div>
+    </div>
+  </div>
+  <div class="sql-quick">
+    <button onclick="setSql('SELECT * FROM books LIMIT 20')">SELECT books</button>
+    <button onclick="setSql('SELECT * FROM meetings ORDER BY created_at DESC LIMIT 10')">SELECT meetings</button>
+    <button onclick="setSql('SELECT * FROM meeting_attendance LIMIT 20')">SELECT attendance</button>
+    <button onclick="setSql('SELECT * FROM book_proposals ORDER BY created_at DESC LIMIT 20')">SELECT proposals</button>
+    <button onclick="setSql('SELECT * FROM app_config ORDER BY key')">SELECT config</button>
+  </div>
+  <textarea id="sql-input" class="sql-textarea" placeholder="SELECT * FROM books WHERE ...&#10;INSERT INTO ...&#10;UPDATE ... SET ... WHERE ..."></textarea>
+  <div class="sql-toolbar">
+    <button class="btn btn-primary btn-sm" onclick="runSql()">▶ Ejecutar</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('sql-input').value='';clearSqlResult()">Limpiar</button>
+    <span id="sql-running" style="display:none;color:var(--muted);font-size:.83rem">Ejecutando…</span>
+  </div>
+  <div id="sql-result" class="sql-result"></div>
 </div>
 
 <div class="table-selector">
@@ -175,4 +208,66 @@
   <div class="empty">Esta tabla no tiene registros para mostrar.</div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function setSql(q) {
+  document.getElementById('sql-input').value = q;
+  document.getElementById('sql-input').focus();
+}
+function clearSqlResult() {
+  document.getElementById('sql-result').innerHTML = '';
+}
+async function runSql() {
+  const sql = document.getElementById('sql-input').value.trim();
+  if (!sql) return;
+  const resultEl = document.getElementById('sql-result');
+  const runEl = document.getElementById('sql-running');
+  resultEl.innerHTML = '';
+  runEl.style.display = 'inline';
+  try {
+    const fd = new FormData();
+    fd.append('sql', sql);
+    const r = await fetch('/admin/db/sql', { method: 'POST', body: fd });
+    const data = await r.json();
+    runEl.style.display = 'none';
+    if (data.error) {
+      resultEl.innerHTML = '<div class="sql-error">❌ ' + escHtml(data.error) + '</div>';
+      return;
+    }
+    if (data.is_select) {
+      const meta = '<div class="sql-meta">' + data.rows.length + ' fila(s) devueltas</div>';
+      if (!data.rows.length) {
+        resultEl.innerHTML = meta + '<div class="empty">Sin resultados.</div>';
+        return;
+      }
+      let html = meta + '<div class="table-wrap"><table><thead><tr>';
+      data.cols.forEach(c => { html += '<th>' + escHtml(c) + '</th>'; });
+      html += '</tr></thead><tbody>';
+      data.rows.forEach(row => {
+        html += '<tr>';
+        data.cols.forEach(c => {
+          const v = row[c];
+          html += '<td title="' + escHtml(String(v ?? '')) + '">' + escHtml(v === null ? 'NULL' : String(v)) + '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      resultEl.innerHTML = html;
+    } else {
+      resultEl.innerHTML = '<div class="sql-meta" style="color:#6ee7b7">✅ Completado — ' + data.rowcount + ' fila(s) afectadas</div>';
+    }
+  } catch(e) {
+    runEl.style.display = 'none';
+    resultEl.innerHTML = '<div class="sql-error">❌ Error de red: ' + escHtml(e.message) + '</div>';
+  }
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+document.getElementById('sql-input').addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runSql(); }
+});
+</script>
 {% endblock %}

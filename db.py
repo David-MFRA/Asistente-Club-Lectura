@@ -1883,6 +1883,22 @@ def truncate_table(table_name):
         cur.execute(f"TRUNCATE TABLE {table_name} CASCADE")
 
 
+def execute_raw_sql(sql):
+    """Execute arbitrary SQL. Returns (columns, rows, rowcount, is_select)."""
+    sql = sql.strip()
+    is_select = sql.upper().startswith("SELECT")
+    with get_cursor(commit=not is_select) as cur:
+        cur.execute(sql)
+        if is_select:
+            rows = [dict(r) for r in cur.fetchall()]
+            cols = list(rows[0].keys()) if rows else (
+                [desc[0] for desc in cur.description] if cur.description else []
+            )
+            return cols, rows, len(rows), True
+        else:
+            return [], [], cur.rowcount, False
+
+
 # =========================================================
 # BOOK WAITLIST
 # =========================================================

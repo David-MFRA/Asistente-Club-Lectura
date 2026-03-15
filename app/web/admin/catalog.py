@@ -4,6 +4,7 @@ import logging
 from flask import Response, flash, redirect, render_template, request, url_for
 
 import db
+from app.services.admin_audit import prepare_admin_audit
 
 logger = logging.getLogger(__name__)
 
@@ -403,8 +404,17 @@ def delete_db_row(require_admin, logger, table):
     pk_value = request.form.get("pk_value")
     logger.info("Admin DB: eliminando fila tabla=%s pk=%s valor=%r", table, pk_name, pk_value)
     try:
+        before = db.get_table_row(table, pk_name, pk_value)
         deleted = db.delete_table_row(table, pk_name, pk_value)
         if deleted:
+            prepare_admin_audit(
+                action="db_row_delete",
+                target_type=table,
+                target_id=pk_value,
+                before=before,
+                after={"deleted": True},
+                extra={"pk_name": pk_name},
+            )
             flash(f"Fila eliminada de {table}.", "success")
         else:
             flash(f"No se encontro la fila seleccionada en {table}.", "warning")
@@ -423,6 +433,7 @@ def update_db_row(require_admin, logger, table):
     pk_value = request.form.get("pk_value")
 
     try:
+        before = db.get_table_row(table, pk_name, pk_value)
         columns = db.get_table_columns(table)
         updates = {}
         for column in columns:
@@ -443,6 +454,15 @@ def update_db_row(require_admin, logger, table):
         )
         updated = db.update_table_row(table, pk_name, pk_value, updates)
         if updated:
+            after = db.get_table_row(table, pk_name, pk_value)
+            prepare_admin_audit(
+                action="db_row_update",
+                target_type=table,
+                target_id=pk_value,
+                before=before,
+                after=after,
+                extra={"pk_name": pk_name},
+            )
             flash(f"Fila actualizada en {table}.", "success")
         else:
             flash(f"No se encontro la fila seleccionada en {table}.", "warning")
@@ -467,6 +487,13 @@ def truncate_db_table(require_admin, logger, table):
         return auth
     logger.warning("Admin DB: vaciando tabla=%s", table)
     try:
+        prepare_admin_audit(
+            action="db_table_truncate",
+            target_type="table",
+            target_id=table,
+            before={"table": table},
+            after={"truncated": True},
+        )
         db.truncate_table(table)
         flash(f"Tabla {table} vaciada.", "success")
     except Exception:
@@ -485,8 +512,17 @@ def edit_book(require_admin, logger, book_id):
     description = request.form.get("description", "").strip() or None
     pages = request.form.get("pages", "").strip() or None
     cover = request.form.get("cover", "").strip() or None
+    before = db.get_book_by_id(book_id)
     try:
         db.update_book(book_id, title=title, author=author, description=description, pages=pages, cover=cover)
+        after = db.get_book_by_id(book_id)
+        prepare_admin_audit(
+            action="book_update",
+            target_type="book",
+            target_id=book_id,
+            before=before,
+            after=after,
+        )
         flash("Libro actualizado correctamente", "success")
     except Exception:
         logger.exception("Error editando libro")

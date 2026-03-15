@@ -12,11 +12,10 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
 GROQ_MODELS = [
+    "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
-    "llama3-8b-8192",
-    "gemma2-9b-it",
-    "mixtral-8x7b-32768",
+    "qwen/qwen3-32b",
+    "llama-3.1-8b-instant",
 ]
 
 
@@ -199,6 +198,21 @@ def generate_book_quote(book_title: str, author: str = "") -> str:
         return result
 
     return f"«Los libros son espejos: solo ves en ellos lo que ya llevas dentro.» — Sobre «{book_title}»"
+
+
+def suggest_book_for_theme(theme: str, pages_hint: int = 500) -> str | None:
+    """Sugiere UN libro ideal para el tema dado, preferiblemente en español, ~pages_hint páginas."""
+    prompt = (
+        f"Eres un experto en clubs de lectura. "
+        f"Para la temática '{theme}', sugiere UN SOLO libro que sea ideal para debatir en un club de lectura. "
+        f"Requisitos: preferiblemente título en español o traducido al español, "
+        f"unas {pages_hint} páginas (entre 300 y 700), "
+        f"interesante para debate grupal. "
+        f"Responde SOLO con: «Título del libro» de Autor (Año). "
+        f"Ejemplo: «El nombre del viento» de Patrick Rothfuss (2007). "
+        f"Sin explicaciones adicionales."
+    )
+    return _groq_chat(prompt, max_tokens=100)
 
 
 def generate_discussion_questions(book_title: str, author: str = "", synopsis: str = "") -> str:

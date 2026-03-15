@@ -94,7 +94,37 @@ def render_scheduler(require_admin):
     if auth:
         return auth
     scheduled = db.get_all_scheduled_messages()
-    return render_template("admin_scheduler.html", scheduled=scheduled)
+    reminders = [
+        {
+            "key": "reminder_weekly_enabled",
+            "title": "📅 Recordatorio semanal de reunión",
+            "desc": "Se envía cada lunes a las 10:00. Incluye días restantes, libro actual y ritmo de lectura.",
+            "schedule": "Lunes 10:00",
+            "enabled": db.get_config("reminder_weekly_enabled", "1") == "1",
+        },
+        {
+            "key": "reminder_reading_enabled",
+            "title": "📖 Recordatorio de lectura",
+            "desc": "Se envía cada 2 días. Recuerda el libro del ciclo y la fecha de reunión.",
+            "schedule": "Cada 2 días",
+            "enabled": db.get_config("reminder_reading_enabled", "1") == "1",
+        },
+        {
+            "key": "reminder_daybefore_enabled",
+            "title": "⏰ Aviso día antes/mismo día",
+            "desc": "Se envía diariamente a las 10:00 pero solo actúa si la reunión es hoy o mañana.",
+            "schedule": "Diario 10:00 (activo si reunión es hoy/mañana)",
+            "enabled": db.get_config("reminder_daybefore_enabled", "1") == "1",
+        },
+        {
+            "key": "reminder_keepalive_enabled",
+            "title": "💓 Keep-alive ping",
+            "desc": "Hace ping a /health cada 10 minutos para mantener el servicio activo en Render.",
+            "schedule": "Cada 10 minutos",
+            "enabled": db.get_config("reminder_keepalive_enabled", "1") == "1",
+        },
+    ]
+    return render_template("admin_scheduler.html", scheduled=scheduled, reminders=reminders)
 
 
 def add_scheduled_message(require_admin, logger):

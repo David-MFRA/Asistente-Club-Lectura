@@ -118,6 +118,7 @@ from app.web.admin.site import (
     close_cycle,
     handle_public_settings,
     pick_theme_winner,
+    rename_cycle,
     render_admin_cycle,
     render_admin_help,
     render_admin_poster,
@@ -182,6 +183,65 @@ DEFAULT_MESSAGES = {
     "attendance_join_message": "🎉 *{user_name}* se apuntó a *{meeting_name}*\n\n👥 Apuntados ({count}): {names}",
     "attendance_leave_message": "👋 *{user_name}* se ha quitado de *{meeting_name}*\n\n👥 Quedan ({count}): {names}",
     "attendance_prompt_message": "📅 ¿A qué reunión te apuntas? Elige una:",
+    "theme_chosen_message": (
+        "🏷️ <b>Temática elegida: {theme_name}</b>\n\n"
+        "¡Es hora de proponer libros para este ciclo!\n\n"
+        "📝 Propón con el comando /proponer\n"
+        "💡 Cuantas más propuestas tengamos, mejor será la votación."
+    ),
+    "new_cycle_message": (
+        "🔄 <b>¡Nuevo ciclo: {cycle_name}!</b>\n\n"
+        "Comienza un nuevo ciclo de lectura. "
+        "Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
+    ),
+    "winner_announcement_message": (
+        "🏆 <b>¡Tenemos libro del mes!</b>\n\n"
+        "📗 <b>{book_title}</b>\n"
+        "{author_line}"
+        "🗳️ Ganó con <b>{votes} votos</b>\n\n"
+        "¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión."
+    ),
+    "books_open_message": (
+        "📚 <b>¡Hora de proponer libros!</b>\n\n"
+        "{theme_line}"
+        "Propón tus lecturas favoritas para este ciclo:\n"
+        "/proponer título del libro\n\n"
+        "💡 Tienes hasta que el admin cierre las propuestas."
+    ),
+    "reading_reminder_message": (
+        "📖 <b>Recordatorio de lectura</b>\n\n"
+        "📗 Libro actual: <b>{book_title}</b>\n"
+        "{author_line}"
+        "📅 Próxima reunión: <b>{meeting_name}</b> ({meeting_date})\n"
+        "📊 Te quedan <b>{days_left} días</b> para leer <b>{pages} páginas</b>.\n"
+        "¡Unas <b>{daily_pages} páginas al día</b> y llegas al día!"
+    ),
+    "meeting_reminder_message": (
+        "📅 <b>Recordatorio de reunión</b>\n\n"
+        "📗 <b>{meeting_name}</b>\n"
+        "🗓 Fecha: <b>{meeting_date}</b>\n"
+        "{location_line}"
+        "👥 Apuntados: <b>{attendee_count}</b>\n"
+        "📖 Libro: <b>{book_title}</b>\n\n"
+        "✅ /asistir · ❌ /noasistir"
+    ),
+    "trivia_message": (
+        "🎲 <b>Pregunta del club</b>\n\n"
+        "{question}\n\n"
+        "<i>Responde en el grupo para debatir juntos.</i>"
+    ),
+    "theme_tie_message": (
+        "⚖️ <b>¡Empate en la votación de temática!</b>\n\n"
+        "Estas temáticas han quedado empatadas:\n"
+        "{themes_list}\n\n"
+        "🔁 El admin decidirá el siguiente paso."
+    ),
+    "book_tie_message": (
+        "⚖️ <b>¡Empate en la votación de libros!</b>\n\n"
+        "Estos libros han quedado empatados con <b>{votes} votos</b>:\n"
+        "{books_list}\n\n"
+        "🔁 El admin decidirá el siguiente paso."
+    ),
 }
 
 
@@ -1363,6 +1423,8 @@ async def encuesta_temas_cmd(update, context):
 
 async def send_meeting_reminder():
     """Recordatorio semanal con días restantes y ritmo de páginas. Incluye todas las reuniones activas."""
+    if db.get_config("reminder_weekly_enabled", "1") == "0":
+        return
     all_meetings = db.get_meetings(limit=10)
     now = datetime.utcnow()
     upcoming = []
@@ -1476,6 +1538,8 @@ async def send_meeting_reminder():
 
 async def send_reading_reminder():
     """Recordatorio de lectura cada 2 días."""
+    if db.get_config("reminder_reading_enabled", "1") == "0":
+        return
     meeting = db.get_latest_scheduled_meeting()
     # Usar el libro de la reunión, no el ganador del ciclo
     book = None
@@ -1529,6 +1593,8 @@ async def send_reading_reminder():
 
 async def send_day_before_reminder():
     """Recordatorio cuando la reunión es mañana o hoy."""
+    if db.get_config("reminder_daybefore_enabled", "1") == "0":
+        return
     meeting = db.get_latest_scheduled_meeting()
     if not meeting or not meeting.get("final_date"):
         return
@@ -1888,7 +1954,30 @@ async def private_text_handler(update, context):
         )
         return
 
-    text_lower = (update.message.text or "").lower().strip()
+    text = (update.message.text or "").strip()
+    text_lower = text.lower()
+
+    # Handle pending /proponer state
+    if context.user_data.get("pending_proponer"):
+        context.user_data.pop("pending_proponer", None)
+        if text:
+            # Reuse proponer logic with the text as title
+            context.args = text.split()
+            await book_handlers.proponer(update, context)
+        else:
+            await update.message.reply_text("Escribe el título del libro para proponerlo.", parse_mode=None)
+        return
+
+    # Handle pending /tema state
+    if context.user_data.get("pending_tema"):
+        context.user_data.pop("pending_tema", None)
+        if text:
+            context.args = [text]
+            await theme_handlers.tema(update, context)
+        else:
+            await update.message.reply_text("Escribe el nombre de la temática para proponerla.", parse_mode=None)
+        return
+
     # Saludos
     if any(w in text_lower for w in ("hola", "hi", "hello", "buenas", "hey", "ola")):
         await start(update, context)
@@ -2359,6 +2448,28 @@ def admin_scheduler_add():
 def admin_scheduler_delete(msg_id):
     return delete_scheduled_message(require_admin, logger, msg_id)
 
+@flask_app.post("/admin/scheduler/reminder/toggle")
+def admin_reminder_toggle():
+    auth = require_admin()
+    if auth:
+        return auth
+    from flask import request, redirect, url_for, flash
+    key = request.form.get("key", "")
+    # key must be one of the known reminder keys
+    allowed_keys = {
+        "reminder_weekly_enabled", "reminder_reading_enabled",
+        "reminder_daybefore_enabled", "reminder_keepalive_enabled"
+    }
+    if key not in allowed_keys:
+        flash("Clave inválida", "danger")
+        return redirect(url_for("admin_scheduler"))
+    current = db.get_config(key, "1")
+    new_val = "0" if current == "1" else "1"
+    db.set_config(key, new_val)
+    state = "activado" if new_val == "1" else "desactivado"
+    flash(f"Recordatorio {state}", "success")
+    return redirect(url_for("admin_scheduler"))
+
 # --------------------------------------------------
 # FLASK — AI FEATURES
 # --------------------------------------------------
@@ -2438,6 +2549,10 @@ def admin_ciclo_pick_theme(theme_id):
 @flask_app.post("/admin/ciclo/pick-book/<int:proposal_id>")
 def admin_ciclo_pick_book(proposal_id):
     return _run_async(pick_book_winner(require_admin, proposal_id, announce_winner, logger))
+
+@flask_app.post("/admin/ciclo/<cycle_key>/rename")
+def admin_ciclo_rename(cycle_key):
+    return rename_cycle(require_admin)
 
 @flask_app.post("/admin/encuesta/temas/<int:poll_db_id>/cerrar")
 def admin_cerrar_encuesta_temas(poll_db_id):
@@ -2549,6 +2664,8 @@ def webhook():
 
 async def _keep_alive_ping():
     """Hace ping a /health para mantener el servicio activo en Render."""
+    if db.get_config("reminder_keepalive_enabled", "1") == "0":
+        return
     import urllib.request
     url = f"{WEBHOOK_URL}/health"
     loop = asyncio.get_event_loop()

@@ -134,6 +134,17 @@
           <span class="cycle-title">{{ ck }}</span>
           {% if loop.first %}<span class="primary-badge">⭐ Principal</span>{% endif %}
           {% if c.is_locked %}<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:7px;padding:3px 9px;font-size:.78rem;font-weight:700">🔒 Bloqueado</span>{% endif %}
+          <button class="btn btn-soft btn-xs" onclick="document.getElementById('edit-cycle-{{ ck }}').style.display='block'" title="Renombrar ciclo">✏️</button>
+        </div>
+
+        <!-- Edit cycle name -->
+        <div id="edit-cycle-{{ ck }}" style="display:none;margin-bottom:12px">
+          <form action="/admin/ciclo/{{ ck }}/rename" method="post" style="display:flex;gap:8px;align-items:center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="new_name" value="{{ ck }}" style="flex:1;font-size:.9rem" required>
+            <button class="btn btn-success btn-sm" type="submit">✓ Guardar</button>
+            <button class="btn btn-soft btn-sm" type="button" onclick="document.getElementById('edit-cycle-{{ ck }}').style.display='none'">Cancelar</button>
+          </form>
         </div>
 
         <!-- Phase stepper -->

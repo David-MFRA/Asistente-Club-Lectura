@@ -2,6 +2,7 @@ from html import escape as hesc
 
 from flask import flash, redirect, url_for
 
+import ai_features
 import db
 
 
@@ -230,11 +231,20 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             db.set_config("active_theme", top["name"])
             _set_phase("books")
             db.set_config("proposals_locked_for", "")
+            # Try to get AI book suggestion
+            ai_suggestion = ""
+            try:
+                suggestion = ai_features.suggest_book_for_theme(top["name"])
+                if suggestion:
+                    ai_suggestion = f"\n\n💡 <b>Sugerencia IA:</b> {hesc(suggestion)}"
+            except Exception:
+                pass
             theme_text = (
                 f"🏷️ <b>Temática elegida: {hesc(top['name'])}</b>\n\n"
                 f"¡Es hora de proponer libros para este ciclo!\n\n"
-                f"📝 Propón con: <code>/proponer título del libro</code>\n"
-                f"💡 Cuantas más propuestas tengamos, mejor será la votación."
+                f"📝 Propón con el comando /proponer"
+                + ai_suggestion
+                + f"\n\n💡 Cuantas más propuestas tengamos, mejor será la votación."
             )
             await send_to_group(theme_text, parse_mode="HTML", message_type="theme_chosen")
             flash(f"Temática «{top['name']}» ganadora. Fase de propuestas abierta.", "success")

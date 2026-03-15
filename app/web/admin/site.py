@@ -3,6 +3,7 @@ from html import escape as hesc
 
 from flask import flash, redirect, render_template, request, url_for
 
+import ai_features
 import db
 
 # Nombres de mes en español
@@ -241,17 +242,48 @@ async def pick_theme_winner(require_admin, theme_id, send_to_group_fn, logger):
     db.set_config("proposals_locked_for", "")
 
     try:
+        ai_suggestion = ""
+        try:
+            suggestion = ai_features.suggest_book_for_theme(theme["name"])
+            if suggestion:
+                ai_suggestion = f"\n\n💡 <b>Sugerencia IA:</b> {hesc(suggestion)}"
+        except Exception:
+            pass
         text = (
             f"🏷️ <b>Temática elegida: {hesc(theme['name'])}</b>\n\n"
             f"¡Es hora de proponer libros para este ciclo!\n\n"
-            f"📝 Propón con: <code>/proponer título del libro</code>\n"
-            f"💡 Cuantas más propuestas, mejor votación."
+            f"📝 Propón con el comando /proponer"
+            + ai_suggestion
+            + f"\n\n💡 Cuantas más propuestas, mejor votación."
         )
         await send_to_group_fn(text, parse_mode="HTML", message_type="theme_chosen")
     except Exception:
         logger.exception("Error enviando mensaje tema ganador al grupo")
 
     flash(f"Temática «{theme['name']}» seleccionada. Mensaje enviado al grupo.", "success")
+    return redirect(url_for("admin_ciclo"))
+
+
+def rename_cycle(require_admin):
+    auth = require_admin()
+    if auth:
+        return auth
+    from flask import request
+    cycle_key = request.view_args.get("cycle_key") or ""
+    new_name = request.form.get("new_name", "").strip()
+    if not new_name or not cycle_key:
+        flash("Nombre inválido", "danger")
+        return redirect(url_for("admin_ciclo"))
+    # Update active_cycles list
+    active_keys = db.get_active_cycle_keys()
+    if cycle_key in active_keys:
+        # Remove old, add new
+        db.remove_active_cycle(cycle_key)
+        db.add_active_cycle(new_name)
+    # Update active_cycle_key if it was the primary
+    if db.get_config("active_cycle_key") == cycle_key:
+        db.set_config("active_cycle_key", new_name)
+    flash(f"Ciclo renombrado a «{new_name}»", "success")
     return redirect(url_for("admin_ciclo"))
 
 

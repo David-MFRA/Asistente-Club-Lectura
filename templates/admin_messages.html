@@ -48,7 +48,33 @@
         <button type="button" class="fmt-btn" onclick="fmtBullet('ta-{{ t.key }}')" title="Punto de lista">• lista</button>
       </div>
       <textarea name="value" id="ta-{{ t.key }}" rows="4">{{ t.value }}</textarea>
-      <div class="placeholders">Placeholders: {user_name} {book_title} {author} {meeting_name} {meeting_date} {location} {attendee_count} {count} {names}</div>
+      <details style="margin-top:6px">
+        <summary style="font-size:.74rem;color:var(--muted);cursor:pointer">📋 Ver todos los placeholders disponibles</summary>
+        <div style="font-size:.72rem;color:var(--muted);font-family:monospace;margin-top:6px;line-height:1.8;background:rgba(0,0,0,.2);border-radius:8px;padding:10px 12px">
+          <b style="color:#a5b4fc">Placeholders disponibles:</b><br>
+          <b>{user_name}</b> — Nombre del usuario que realiza la acción<br>
+          <b>{book_title}</b> — Título del libro<br>
+          <b>{author}</b> — Autor del libro<br>
+          <b>{author_line}</b> — Línea "✍️ Autor\n" (vacío si no hay autor)<br>
+          <b>{meeting_name}</b> — Nombre de la reunión<br>
+          <b>{meeting_date}</b> — Fecha y hora de la reunión (YYYY-MM-DD HH:MM)<br>
+          <b>{location}</b> — Lugar de la reunión<br>
+          <b>{location_line}</b> — Línea "📍 Lugar\n" (vacío si no hay lugar)<br>
+          <b>{attendee_count}</b> — Número de asistentes confirmados<br>
+          <b>{count}</b> — Número de elementos (asistentes, votos, etc.)<br>
+          <b>{names}</b> — Lista de nombres separados por coma<br>
+          <b>{theme_name}</b> — Nombre de la temática ganadora<br>
+          <b>{cycle_name}</b> — Nombre del ciclo de lectura<br>
+          <b>{votes}</b> — Número de votos<br>
+          <b>{days_left}</b> — Días restantes hasta la reunión<br>
+          <b>{pages}</b> — Número de páginas del libro<br>
+          <b>{daily_pages}</b> — Páginas por día necesarias<br>
+          <b>{theme_line}</b> — Línea con la temática (vacío si no hay tema)<br>
+          <b>{books_list}</b> — Lista de libros empatados<br>
+          <b>{themes_list}</b> — Lista de temáticas empatadas<br>
+          <b>{question}</b> — Pregunta de trivia o debate
+        </div>
+      </details>
       <div class="actions">
         <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
         <button type="button" class="btn btn-soft btn-sm" onclick="previewMsg('{{ t.key }}')">👁 Vista previa</button>

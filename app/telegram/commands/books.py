@@ -27,9 +27,10 @@ class BookHandlers:
             return
         title = " ".join(context.args).strip()
         if not title:
+            context.user_data["pending_proponer"] = True
             await update.message.reply_text(
-                f"Usa {self.code('/proponer titulo del libro')}",
-                parse_mode="MarkdownV2",
+                "📚 ¿Qué libro quieres proponer?\n\nEscribe el título del libro y lo buscaré:",
+                parse_mode=None,
             )
             return
         wait_msg = await update.message.reply_text(

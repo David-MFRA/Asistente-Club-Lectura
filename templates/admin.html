@@ -98,8 +98,8 @@
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         {% if cs.step == 'new_cycle' %}
-        <button type="button" class="btn btn-primary" style="font-size:.88rem" onclick="openNewCycleModal()">{{ cs.step_action }} →</button>
-        <small style="color:var(--muted);font-size:.78rem">O crea el ciclo manualmente en <a href="/admin/ciclo" style="color:#a5b4fc">Gestión de Ciclo</a></small>
+        <a href="/admin/ciclo" class="btn btn-primary" style="font-size:.88rem">{{ cs.step_action }} →</a>
+        <small style="color:var(--muted);font-size:.78rem">Configura las temáticas antes de iniciar el ciclo</small>
         {% elif cs.step_url and cs.step_url != '#books' %}
         <form action="{{ cs.step_url }}" method="post">
           <input type="hidden" name="cycle" value="{{ cs.cycle }}">
@@ -163,6 +163,7 @@
       <div class="alert-poll-sub">Ciérrala para anunciar el ganador y asignarlo automáticamente a la próxima reunión.</div>
     </div>
     <form action="/admin/encuesta/{{ open_poll_books.id }}/cerrar" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-danger" type="submit" data-tip="Cierra la encuesta y anuncia el libro ganador">🔒 Cerrar y anunciar</button>
     </form>
   </div>
@@ -174,7 +175,8 @@
       <div class="alert-poll-title">Encuesta de temáticas activa</div>
       <div class="alert-poll-sub">Ciérrala cuando terminen las votaciones.</div>
     </div>
-    <form action="/admin/encuesta/{{ open_poll_themes.id }}/cerrar" method="post">
+    <form action="/admin/encuesta/temas/{{ open_poll_themes.id }}/cerrar" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-danger" type="submit">🔒 Cerrar</button>
     </form>
   </div>
@@ -424,39 +426,10 @@
 {% endblock %}
 
 {% block extra_modals %}
-<!-- ── MODAL: Nombre del nuevo ciclo ── -->
-<div id="new-cycle-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:700;backdrop-filter:blur(4px)" onclick="closeNewCycleModal()"></div>
-<div id="new-cycle-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:800;width:min(420px,92vw);background:#1e2738;border:1px solid rgba(99,102,241,.35);border-radius:18px;padding:26px 24px 20px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
-  <div style="font-size:1.1rem;font-weight:800;margin-bottom:6px">🆕 Nuevo ciclo de lectura</div>
-  <div style="color:var(--muted);font-size:.88rem;margin-bottom:18px">Elige un nombre para el ciclo, por ejemplo <em>LECTURA MARZO</em> o <em>CICLO PRIMAVERA</em>.</div>
-  <form action="/admin/wizard/new-cycle" method="post" id="new-cycle-form">
-    <div class="field">
-      <label for="new-cycle-name">Nombre del ciclo</label>
-      <input type="text" id="new-cycle-name" name="cycle_name" placeholder="LECTURA MARZO" maxlength="40" autocomplete="off" style="text-transform:uppercase">
-    </div>
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <button type="button" class="btn btn-soft" style="flex:1" onclick="closeNewCycleModal()">Cancelar</button>
-      <button type="submit" class="btn btn-primary" style="flex:1">Crear ciclo →</button>
-    </div>
-  </form>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-function openNewCycleModal() {
-  document.getElementById('new-cycle-backdrop').style.display = 'block';
-  document.getElementById('new-cycle-modal').style.display = 'block';
-  setTimeout(() => document.getElementById('new-cycle-name').focus(), 50);
-}
-function closeNewCycleModal() {
-  document.getElementById('new-cycle-backdrop').style.display = 'none';
-  document.getElementById('new-cycle-modal').style.display = 'none';
-}
-document.getElementById('new-cycle-form').addEventListener('submit', function() {
-  var inp = document.getElementById('new-cycle-name');
-  inp.value = inp.value.trim().toUpperCase() || '';
-});
 // ── BOOK / THEME EDIT ─────────────────────────────────
 function toggleEdit(id) {
   const row = document.getElementById(id + '-row');
@@ -487,10 +460,35 @@ window.PAGE_TOUR = [
   { selector: 'details:nth-of-type(1)',title: '📚 Gestión de libros',      desc: 'Añade libros al ciclo, lanza encuestas de votación y anuncia al ganador desde aquí.' },
   { selector: 'details:nth-of-type(2)',title: '🏷️ Temáticas',             desc: 'Gestiona las temáticas del club y lanza encuestas para elegir la siguiente.' },
   { selector: 'details:nth-of-type(3)',title: '📅 Reuniones',              desc: 'Crea reuniones, gestiona fechas y envía recordatorios al grupo.' },
-  { selector: '.reminder-grid',        title: '🔔 Recordatorios',          desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
-  { selector: 'details:nth-of-type(4)',title: '🔄 Ciclo activo',           desc: 'Gestiona el ciclo actual: ciérralo cuando haya ganador o inicia uno nuevo.' },
+  { selector: 'details:nth-of-type(4)',title: '📣 Mensajes y recordatorios', desc: 'Envía recordatorios de reunión o lectura al grupo con un solo clic.' },
+  { selector: 'details:nth-of-type(5)',title: '🔄 Ciclo activo',           desc: 'Gestiona el ciclo actual: entra en Gestión de Ciclos para iniciar o cerrar ciclos.' },
   { selector: '.header-nav',           title: '🧭 Navegación',             desc: 'Accede al historial, BD, mensajes, programador, cartel y lista de espera desde aquí.' },
   { selector: '.ai-fab',               title: '🤖 Asistente IA',           desc: 'El botón morado lanza el asistente IA contextual. Tiene acceso a todos los datos del club.' },
 ];
+
+// Auto-refresh stats every 5 seconds
+(function autoRefresh() {
+  setTimeout(function() {
+    fetch(window.location.href + '?_refresh=1', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(r => r.text())
+      .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        // Update stats bar
+        const newStats = doc.querySelector('.stats-bar');
+        const curStats = document.querySelector('.stats-bar');
+        if (newStats && curStats) curStats.innerHTML = newStats.innerHTML;
+        // Update poll alerts
+        const newAlerts = doc.querySelectorAll('.alert-poll');
+        const curAlerts = document.querySelectorAll('.alert-poll');
+        // Update vote counts in book table
+        const newTbl = doc.querySelector('tbody');
+        const curTbl = document.querySelector('tbody');
+        if (newTbl && curTbl) curTbl.innerHTML = newTbl.innerHTML;
+      })
+      .catch(() => {})
+      .finally(autoRefresh);
+  }, 5000);
+})();
 </script>
 {% endblock %}

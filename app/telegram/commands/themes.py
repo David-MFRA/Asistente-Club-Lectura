@@ -14,14 +14,12 @@ class ThemeHandlers:
     async def tema(self, update, context):
         if not await self.allowed(update):
             return
-        if not self.check_cooldown(update.effective_user.id, "tema", 30):
-            await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-            return
         name = " ".join(context.args).strip()
         if not name:
+            context.user_data["pending_tema"] = True
             await update.message.reply_text(
-                f"Usa {self.code('/tema nombre de la tematica')}",
-                parse_mode="MarkdownV2",
+                "🏷️ ¿Cómo se llama la temática que quieres proponer?\n\nEscríbela a continuación:",
+                parse_mode=None,
             )
             return
         try:

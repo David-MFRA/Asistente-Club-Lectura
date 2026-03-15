@@ -1,3 +1,4 @@
+import logging
 from html import escape as hesc
 
 from flask import flash, redirect, request, url_for
@@ -5,11 +6,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db
 
+logger = logging.getLogger(__name__)
+
 
 async def send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: enviando recordatorio de reunión manualmente")
     try:
         await send_meeting_reminder()
         db.log_event("admin", "Recordatorio de reunion enviado manualmente", category="meeting", actor="admin")
@@ -50,6 +54,7 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: enviando DMs para meeting_id=%d", meeting_id)
 
     meeting = db.get_meeting(meeting_id)
     if not meeting:
@@ -82,8 +87,10 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
             )
             sent += 1
         except Exception:
+            logger.warning("DM fallido para user_id=%s (%s)", member.get("user_id"), name)
             failed += 1
 
+    logger.info("Admin: DMs reunión: %d enviados, %d fallidos", sent, failed)
     flash(
         f"Recordatorios enviados: {sent} enviados, {failed} no alcanzados.",
         "success" if sent > 0 else "warning",

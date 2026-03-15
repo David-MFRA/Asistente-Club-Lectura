@@ -14,6 +14,8 @@ class ThemeHandlers:
     async def tema(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/tema: user=%s id=%d args=%r", u.first_name or u.username, u.id, context.args)
         name = " ".join(context.args).strip()
         if not name:
             context.user_data["pending_tema"] = True
@@ -81,6 +83,8 @@ class ThemeHandlers:
     async def votar_tema(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/votar_tema: user=%s id=%d args=%r", u.first_name or u.username, u.id, context.args)
         if not self.check_cooldown(update.effective_user.id, "votar_tema", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
@@ -95,11 +99,13 @@ class ThemeHandlers:
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             ok = db.vote_theme(theme_id, user)
             if ok:
+                self.logger.info("/votar_tema: éxito %s → theme_id=%d", user, theme_id)
                 await update.message.reply_text(
                     f"{self.bold('Voto de tematica registrado')}\\! Usa /temas para ver el ranking\\.",
                     parse_mode="MarkdownV2",
                 )
             else:
+                self.logger.debug("/votar_tema: duplicado %s → theme_id=%d", user, theme_id)
                 await update.message.reply_text("Ya habias votado esa tematica\\.", parse_mode="MarkdownV2")
         except ValueError:
             await update.message.reply_text("El ID debe ser un numero\\.", parse_mode="MarkdownV2")

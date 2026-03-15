@@ -1,4 +1,5 @@
 import json
+import logging
 from html import escape as hesc
 
 from flask import flash, redirect, url_for
@@ -6,6 +7,8 @@ from flask import flash, redirect, url_for
 import ai_features
 import db
 from app.messages import get_text
+
+logger = logging.getLogger(__name__)
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -22,6 +25,7 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
         return auth
     try:
         books = db.get_book_proposals()
+        logger.info("Admin: crear encuesta libros (%d propuestas)", len(books))
         if len(books) < 2:
             flash("Necesitas al menos 2 propuestas para crear una encuesta", "danger")
             return redirect(url_for("admin_dashboard"))
@@ -62,6 +66,7 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
 
         _set_phase("book_voting")
         suffix = f" (en {len(chunks)} partes)" if len(chunks) > 1 else ""
+        logger.info("Admin: encuesta libros lanzada (%d partes, ciclo=%s)", len(chunks), cycle)
         flash(f"Propuestas bloqueadas. Encuesta de libros lanzada{suffix}.", "success")
     except Exception:
         logger.exception("Error creando encuesta libros")
@@ -73,6 +78,7 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: cerrar encuesta db_id=%d", poll_db_id)
     try:
         poll = db.get_poll_by_id(poll_db_id)
         if not poll:
@@ -92,6 +98,8 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
             closed = sum(1 for p in all_cycle_polls if p["is_closed"])
 
             if remaining_open:
+                logger.info("Admin: encuesta cerrada (%d/%d), quedan %d abiertas en ciclo=%s",
+                            closed, total, len(remaining_open), cycle_key)
                 # Still more polls to close — don't determine winner yet
                 flash(
                     f"Encuesta cerrada ({closed}/{total}). "
@@ -136,11 +144,14 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                     poll_type="books",
                     cycle_key=cycle_key,
                 )
+                # Guardar mapeo opción→proposal_id para seguimiento de votos en tiempo real
+                db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([b["proposal_id"] for b in tied[:10]]))
                 flash(f"Todas las encuestas cerradas. Empate entre {len(tied)} libros. Encuesta de desempate lanzada.", "warning")
                 return redirect(url_for("admin_dashboard"))
 
             winner = db.get_winner_book()
             if winner:
+                logger.info("Admin: ganador encuesta libros → «%s» (%d votos)", winner["title"], winner.get("votes", 0))
                 await announce_winner(winner)
                 next_meeting = db.get_latest_scheduled_meeting()
                 if next_meeting and not next_meeting.get("book_id"):
@@ -183,6 +194,7 @@ async def create_theme_poll(require_admin, telegram_app, telegram_chat_id, logge
         return auth
     try:
         themes = db.get_themes()
+        logger.info("Admin: crear encuesta temáticas (%d temáticas)", len(themes))
         if len(themes) < 2:
             flash("Necesitas al menos 2 temáticas para crear una encuesta", "danger")
             return redirect(url_for("admin_ciclo"))
@@ -214,12 +226,14 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: cerrar encuesta temáticas db_id=%d", poll_db_id)
     try:
         poll = db.get_poll_by_id(poll_db_id)
         if not poll:
             flash("Encuesta no encontrada", "danger")
             return redirect(url_for("admin_ciclo"))
 
+        cycle_key = poll.get("cycle_key") or db.get_current_cycle_key()
         tg_poll = await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
         db.close_poll(poll_db_id)
 
@@ -245,6 +259,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
             ranked = db.get_themes()
 
         total_votes = sum(r["votes"] for r in ranked)
+        logger.info("Admin: encuesta temáticas cerrada — %d votos totales, %d opciones", total_votes, len(ranked))
         if total_votes == 0:
             flash("Encuesta de temáticas cerrada, pero no se registró ningún voto.", "warning")
             return redirect(url_for("admin_ciclo"))
@@ -277,13 +292,17 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
                     poll_id=tie_poll.poll.id,
                     poll_type="themes",
                 )
+                # Guardar mapeo opción→theme_id para seguimiento de votos en tiempo real
+                db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([t["id"] for t in tied[:10]]))
             flash(f"Empate entre {len(tied)} temáticas. Encuesta de desempate lanzada.", "warning")
             return redirect(url_for("admin_ciclo"))
 
         # No tie → winner is ranked[0]
         top = ranked[0] if ranked else None
         if top:
+            logger.info("Admin: temática ganadora → «%s» (%d votos)", top["name"], top["votes"])
             db.set_config("active_theme", top["name"])
+            db.set_config(f"active_theme:{cycle_key}", top["name"])
             _set_phase("books")
             db.set_config("proposals_locked_for", "")
             # Try to get AI book suggestion
@@ -317,6 +336,7 @@ async def create_dates_poll(require_admin, meeting_id, telegram_app, telegram_ch
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: crear encuesta fechas meeting_id=%d", meeting_id)
     try:
         meeting = db.get_meeting(meeting_id)
         if not meeting:
@@ -358,6 +378,7 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: cerrar encuesta fechas db_id=%d meeting_id=%d", poll_db_id, meeting_id)
     try:
         poll = db.get_poll_by_id(poll_db_id)
         if not poll:
@@ -370,7 +391,10 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
         if tg_poll.options:
             # Check tie on dates
             max_votes = max(o.voter_count for o in tg_poll.options)
-            tied_opts = [o for o in tg_poll.options if o.voter_count == max_votes and max_votes > 0]
+            if max_votes == 0:
+                flash("Encuesta de fechas cerrada sin votos. Selecciona la fecha manualmente.", "warning")
+                return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
+            tied_opts = [o for o in tg_poll.options if o.voter_count == max_votes]
             if len(tied_opts) > 1:
                 opts = [o.text for o in tied_opts[:10]]
                 tie_poll = await telegram_app.bot.send_poll(
@@ -443,6 +467,7 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
                         reply_markup=InlineKeyboardMarkup(keyboard),
                         message_type="meeting_date_closed",
                     )
+                    logger.info("Admin: fecha ganadora → %s para reunión «%s»", opt_str[:16], meeting_name)
                     _set_phase("reading")
                     flash(f"Fecha confirmada: {opt_str[:16]}. Fase de lectura iniciada.", "success")
                     break

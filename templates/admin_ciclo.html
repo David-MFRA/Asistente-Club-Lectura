@@ -214,6 +214,7 @@
         <div id="edit-theme-{{ ck }}" style="display:none;margin-bottom:10px">
           <form action="/admin/ciclo/tema" method="post" style="display:flex;gap:8px;align-items:center">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="cycle_key" value="{{ ck }}">
             <input name="active_theme" value="{{ c.active_theme or '' }}" placeholder="Nombre de la temática" style="flex:1;font-size:.88rem">
             <button class="btn btn-success btn-sm" type="submit">✓</button>
             <button class="btn btn-soft btn-sm" type="button" onclick="document.getElementById('edit-theme-{{ ck }}').style.display='none'">✕</button>

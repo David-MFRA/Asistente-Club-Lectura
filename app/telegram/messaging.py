@@ -16,6 +16,7 @@ class TelegramMessagingService:
         if not self.chat_id:
             self.logger.warning("TELEGRAM_CHAT_ID no configurado")
             return False
+        self.logger.info("send_to_group: tipo=%s chat_id=%s (%d chars)", message_type, self.chat_id, len(text))
         try:
             msg = await self.get_bot().send_message(
                 chat_id=self.chat_id,
@@ -23,6 +24,7 @@ class TelegramMessagingService:
                 parse_mode=parse_mode,
                 reply_markup=reply_markup,
             )
+            self.logger.debug("send_to_group: enviado message_id=%d", msg.message_id)
             try:
                 db.log_sent_message(message_type, self.chat_id, text, msg.message_id)
             except Exception:
@@ -56,6 +58,7 @@ class TelegramMessagingService:
     async def send_and_pin(self, text, parse_mode=None, reply_markup=None):
         if not self.chat_id:
             return False, False
+        self.logger.info("send_and_pin: chat_id=%s (%d chars)", self.chat_id, len(text))
         try:
             msg = await self.get_bot().send_message(
                 chat_id=self.chat_id,

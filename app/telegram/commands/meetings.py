@@ -16,6 +16,7 @@ class MeetingHandlers:
     async def reunion(self, update, context):
         if not await self.allowed(update):
             return
+        self.logger.info("/reunion: user_id=%d args=%r", update.effective_user.id, context.args)
         try:
             if context.args:
                 query = " ".join(context.args)
@@ -67,6 +68,8 @@ class MeetingHandlers:
     async def asistir(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/asistir: user=%s id=%d", u.first_name or u.username, u.id)
         if not self.check_cooldown(update.effective_user.id, "asistir", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
@@ -78,7 +81,12 @@ class MeetingHandlers:
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             if len(meetings) == 1:
                 meeting = meetings[0]
-                db.add_attendance(meeting["id"], user)
+                ok = db.add_attendance(meeting["id"], user)
+                if not ok:
+                    await update.message.reply_text(
+                        f"Ya estás apuntado a {meeting['name']}.", parse_mode=None
+                    )
+                    return
                 db.log_event("bot", f"{user} se apunto a «{meeting['name']}»", category="meeting", actor=user)
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees)
@@ -105,6 +113,8 @@ class MeetingHandlers:
     async def noasistir(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/noasistir: user=%s id=%d", u.first_name or u.username, u.id)
         if not self.check_cooldown(update.effective_user.id, "noasistir", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return

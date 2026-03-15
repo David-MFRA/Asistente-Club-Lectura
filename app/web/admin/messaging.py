@@ -1,8 +1,11 @@
 import json
+import logging
 
 from flask import flash, jsonify, redirect, render_template, request, url_for
 
 import db
+
+logger = logging.getLogger(__name__)
 
 
 def render_admin_messages(require_admin, default_messages):
@@ -44,6 +47,7 @@ def update_admin_message(require_admin, default_messages, key):
         return "Clave no valida", 400
     value = request.form.get("value", "").strip()
     if value:
+        logger.info("Admin: mensaje editado clave=%s (%d chars)", key, len(value))
         db.set_message_template(key, value)
         flash("Mensaje actualizado", "success")
     return redirect(url_for("admin_messages"))
@@ -53,6 +57,7 @@ def reset_admin_message(require_admin, key):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: mensaje restablecido a default clave=%s", key)
     db.delete_message_template(key)
     flash("Mensaje restablecido al valor por defecto", "success")
     return redirect(url_for("admin_messages"))
@@ -144,6 +149,7 @@ def add_scheduled_message(require_admin, logger):
         return redirect(url_for("admin_scheduler"))
     try:
         db.schedule_message(text, send_at)
+        logger.info("Admin: mensaje programado para %s (%d chars)", send_at, len(text))
         flash("Mensaje programado correctamente", "success")
     except Exception:
         logger.exception("Error programando mensaje")
@@ -169,6 +175,7 @@ async def send_custom_message(require_admin, logger, send_to_group):
     if auth:
         return auth
     text = request.form.get("message", "").strip()
+    logger.info("Admin: enviando mensaje custom al grupo (%d chars)", len(text))
     if not text:
         flash("El mensaje no puede estar vacio", "danger")
         return redirect(url_for("admin_dashboard"))

@@ -486,9 +486,15 @@ async def announce_winner(book):
     lines.append("\n¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión.")
     text = "\n".join(lines)
 
-    keyboard = [[InlineKeyboardButton("✅ Asistir", callback_data="attend:next"),
-                 InlineKeyboardButton("❌ No asistir", callback_data="noattend:next")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    next_meeting = db.get_latest_scheduled_meeting()
+    if next_meeting:
+        keyboard = [[
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{next_meeting['id']}"),
+            InlineKeyboardButton("❌ No asistir", callback_data=f"noattend:{next_meeting['id']}"),
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+    else:
+        reply_markup = None
 
     try:
         if book.get("cover"):
@@ -1010,12 +1016,10 @@ async def recomendar(update, context):
 # --------------------------------------------------
 
 async def button_handler(update, context):
-    return await callback_handler_service.handle(update, context)
-    query = update.callback_query
-    # Security: only allow group members (same check as bot commands)
     if not await _allowed(update):
-        await query.answer("⛔ No tienes permiso para usar esta función.", show_alert=True)
+        await update.callback_query.answer("⛔ No tienes permiso para usar esta función.", show_alert=True)
         return
+    return await callback_handler_service.handle(update, context)
     data = query.data
     user = query.from_user.first_name or query.from_user.username or "alguien"
     try:
@@ -1241,6 +1245,7 @@ async def admin_ayuda_cmd(update, context):
 
 async def ciclo_cmd(update, context):
     if not is_admin_user(update): return
+    logger.info("/ciclo: solicitado por admin user_id=%d", update.effective_user.id)
     cycle = db.get_current_cycle_key()
     books = db.get_book_proposals()
     themes = db.get_themes()
@@ -1257,6 +1262,7 @@ async def ciclo_cmd(update, context):
 
 async def nuevo_ciclo_cmd(update, context):
     if not is_admin_user(update): return
+    logger.info("/nuevo_ciclo: admin user_id=%d args=%r", update.effective_user.id, context.args)
     from app.web.admin.site import _suggested_cycle_name as _sug
     name = " ".join(context.args).strip() if context.args else None
     if not name:
@@ -1290,6 +1296,7 @@ async def nuevo_ciclo_cmd(update, context):
 async def cerrar_ciclo_cmd(update, context):
     if not is_admin_user(update): return
     cycle = db.get_current_cycle_key()
+    logger.info("/cerrar_ciclo: admin user_id=%d ciclo=%s", update.effective_user.id, cycle)
     db.close_cycle(cycle)
     await update.message.reply_text(
         f"🔒 {bold('Ciclo cerrado')}: {code(cycle)}\n"
@@ -1302,6 +1309,7 @@ async def cerrar_ciclo_cmd(update, context):
 async def anuncio_cmd(update, context):
     if not is_admin_user(update): return
     text = " ".join(context.args).strip() if context.args else ""
+    logger.info("/anuncio: admin user_id=%d (%d chars)", update.effective_user.id, len(text))
     if not text:
         await update.message.reply_text("❌ Usa: /anuncio <texto del mensaje>", parse_mode=None)
         return
@@ -1314,6 +1322,7 @@ async def anuncio_cmd(update, context):
 
 async def anunciar_ganador_cmd(update, context):
     if not is_admin_user(update): return
+    logger.info("/anunciar_ganador: admin user_id=%d", update.effective_user.id)
     tied = db.get_tied_books()
     if len(tied) > 1:
         tie_msg = (
@@ -1352,12 +1361,14 @@ async def anunciar_ganador_cmd(update, context):
 
 async def enviar_recordatorio_cmd(update, context):
     if not is_admin_user(update): return
+    logger.info("/enviar_recordatorio: admin user_id=%d", update.effective_user.id)
     await send_meeting_reminder()
     await update.message.reply_text("✅ Recordatorio de reunión enviado\\.", parse_mode="MarkdownV2")
 
 
 async def enviar_lectura_cmd(update, context):
     if not is_admin_user(update): return
+    logger.info("/enviar_lectura: admin user_id=%d", update.effective_user.id)
     await send_reading_reminder()
     await update.message.reply_text("✅ Recordatorio de lectura enviado\\.", parse_mode="MarkdownV2")
 
@@ -1428,6 +1439,7 @@ async def encuesta_temas_cmd(update, context):
 async def send_meeting_reminder():
     """Recordatorio semanal con días restantes y ritmo de páginas. Incluye todas las reuniones activas."""
     if db.get_config("reminder_weekly_enabled", "1") == "0":
+        logger.debug("Recordatorio semanal deshabilitado, saltando")
         return
     all_meetings = db.get_meetings(limit=10)
     now = datetime.utcnow()
@@ -1437,7 +1449,9 @@ async def send_meeting_reminder():
             continue
         upcoming.append(m)
     if not upcoming:
+        logger.debug("Recordatorio semanal: no hay reuniones activas")
         return
+    logger.info("Recordatorio semanal: enviando para %d reunión(es)", len(upcoming))
 
     if len(upcoming) == 1:
         # Modo reunión única (comportamiento original)
@@ -1543,6 +1557,7 @@ async def send_meeting_reminder():
 async def send_reading_reminder():
     """Recordatorio de lectura cada 2 días."""
     if db.get_config("reminder_reading_enabled", "1") == "0":
+        logger.debug("Recordatorio de lectura deshabilitado, saltando")
         return
     meeting = db.get_latest_scheduled_meeting()
     # Usar el libro de la reunión, no el ganador del ciclo
@@ -1552,7 +1567,9 @@ async def send_reading_reminder():
     if not book:
         book = db.get_winner_book()
     if not book:
+        logger.debug("Recordatorio de lectura: sin libro activo, saltando")
         return
+    logger.info("Recordatorio de lectura: enviando para «%s»", book["title"])
     days_left = None
     if meeting and meeting.get("final_date"):
         try:
@@ -1598,6 +1615,7 @@ async def send_reading_reminder():
 async def send_day_before_reminder():
     """Recordatorio cuando la reunión es mañana o hoy."""
     if db.get_config("reminder_daybefore_enabled", "1") == "0":
+        logger.debug("Recordatorio día-antes deshabilitado, saltando")
         return
     meeting = db.get_latest_scheduled_meeting()
     if not meeting or not meeting.get("final_date"):
@@ -1607,7 +1625,9 @@ async def send_day_before_reminder():
         final_dt = datetime.fromisoformat(final_dt)
     days_left = (final_dt - datetime.utcnow()).days
     if days_left not in (0, 1):
+        logger.debug("Recordatorio día-antes: reunión en %d días, no aplica", days_left)
         return
+    logger.info("Recordatorio día-antes: días_restantes=%d reunión=%s", days_left, meeting["name"])
     from html import escape as hesc
     winner = db.get_winner_book()
     asistentes = db.get_attendance(meeting["id"])
@@ -1960,11 +1980,14 @@ async def private_text_handler(update, context):
 
     text = (update.message.text or "").strip()
     text_lower = text.lower()
+    u = update.effective_user
+    logger.debug("private_text: user=%s id=%d text=%r", u.first_name or u.username, u.id, text[:80])
 
     # Handle pending /proponer state
     if context.user_data.get("pending_proponer"):
         context.user_data.pop("pending_proponer", None)
         if text:
+            logger.info("private_text: pending_proponer resuelto con «%s» por user_id=%d", text, u.id)
             # Reuse proponer logic with the text as title
             context.args = text.split()
             await book_handlers.proponer(update, context)
@@ -1976,6 +1999,7 @@ async def private_text_handler(update, context):
     if context.user_data.get("pending_tema"):
         context.user_data.pop("pending_tema", None)
         if text:
+            logger.info("private_text: pending_tema resuelto con «%s» por user_id=%d", text, u.id)
             context.args = [text]
             await theme_handlers.tema(update, context)
         else:
@@ -2007,24 +2031,30 @@ async def handle_poll_answer(update, context):
         return
     poll_id = answer.poll_id
     user_id = str(answer.user.id)
+    user_name = answer.user.first_name or answer.user.username or user_id
     new_option_ids = list(answer.option_ids)  # list of selected option indices
+    logger.info("poll_answer: poll_id=%s user=%s(%s) opciones=%s", poll_id, user_name, user_id, new_option_ids)
 
     # Find poll in our DB
     poll = db.get_poll_by_telegram_id(poll_id)
     if not poll or poll.get("is_closed"):
+        logger.debug("poll_answer: encuesta no encontrada o cerrada poll_id=%s", poll_id)
         return
 
     poll_type = poll.get("poll_type")
     if poll_type not in ("books", "themes"):
+        logger.debug("poll_answer: tipo de encuesta ignorado poll_type=%s", poll_type)
         return
 
     # Get option→entity_id mapping
     options_json = db.get_config(f"poll_options_{poll_id}")
     if not options_json:
+        logger.warning("poll_answer: sin mapeo de opciones para poll_id=%s", poll_id)
         return
     try:
         options = json.loads(options_json)  # list of proposal_id or theme_id
     except Exception:
+        logger.exception("poll_answer: error parseando opciones poll_id=%s", poll_id)
         return
 
     # Get previous selection for this user (to remove old votes)
@@ -2056,10 +2086,11 @@ async def handle_poll_answer(update, context):
                 else:
                     db.vote_theme(entity_id, user_id)
             except Exception:
-                pass
+                logger.exception("poll_answer: error registrando voto entity_id=%s", entity_id)
 
     # Persist new selection
     db.set_config(prev_key, json.dumps(new_option_ids))
+    logger.debug("poll_answer: procesado OK poll_id=%s user=%s", poll_id, user_name)
 
 
 # --------------------------------------------------

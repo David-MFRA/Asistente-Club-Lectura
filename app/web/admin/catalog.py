@@ -1,8 +1,11 @@
 import json
+import logging
 
 from flask import Response, flash, redirect, render_template, request, url_for
 
 import db
+
+logger = logging.getLogger(__name__)
 
 
 def render_meetings(require_admin):
@@ -36,8 +39,10 @@ def render_meetings(require_admin):
             meeting = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
             if location:
                 db.update_meeting(meeting_id=meeting["id"], location=location)
+            logger.info("Admin: reunión «%s» creada (id=%d)", name, meeting["id"])
             flash(f"Reunión «{name}» creada", "success")
         except Exception:
+            logger.exception("Error creando reunión «%s»", name)
             flash("Error creando la reunión", "danger")
         return redirect(url_for("meetings_admin"))
 
@@ -93,6 +98,7 @@ def update_meeting(require_admin, meeting_id):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: actualizando reunión meeting_id=%d", meeting_id)
     name = request.form.get("name", "").strip()
     final_date = request.form.get("final_date", "").strip() or None
     summary = request.form.get("summary", "").strip() or None
@@ -119,10 +125,12 @@ def delete_meeting(require_admin, meeting_id):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: eliminando reunión meeting_id=%d", meeting_id)
     try:
         db.delete_meeting(meeting_id)
         flash("Reunión eliminada", "success")
     except Exception:
+        logger.exception("Error eliminando reunión meeting_id=%d", meeting_id)
         flash("Error eliminando la reunión", "danger")
     return redirect(url_for("meetings_admin"))
 
@@ -132,6 +140,7 @@ def add_meeting_date_option(require_admin, meeting_id):
     if auth:
         return auth
     option_date = request.form.get("option_date", "").strip()
+    logger.info("Admin: añadiendo opción de fecha meeting_id=%d → %s", meeting_id, option_date)
     if not option_date:
         flash("La fecha es obligatoria", "danger")
         return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
@@ -269,6 +278,7 @@ def delete_db_row(require_admin, logger, table, row_id):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin DB: eliminando fila tabla=%s id=%s", table, row_id)
     try:
         db.delete_table_row(table, row_id)
     except Exception:
@@ -280,6 +290,7 @@ def truncate_db_table(require_admin, logger, table):
     auth = require_admin()
     if auth:
         return auth
+    logger.warning("Admin DB: vaciando tabla=%s", table)
     try:
         db.truncate_table(table)
     except Exception:
@@ -291,6 +302,7 @@ def edit_book(require_admin, logger, book_id):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: editando libro book_id=%d", book_id)
     title = request.form.get("title", "").strip() or None
     author = request.form.get("author", "").strip() or None
     description = request.form.get("description", "").strip() or None
@@ -329,6 +341,7 @@ def add_waitlist_entry(require_admin):
     if auth:
         return auth
     book_id = request.form.get("book_id", type=int)
+    logger.info("Admin: añadiendo book_id=%s a lista de espera", book_id)
     cycle_theme = request.form.get("cycle_theme", "").strip() or None
     notes = request.form.get("notes", "").strip() or None
     if not book_id:
@@ -344,6 +357,7 @@ def delete_waitlist_entry(require_admin, wl_id):
     auth = require_admin()
     if auth:
         return auth
+    logger.info("Admin: eliminando wl_id=%d de lista de espera", wl_id)
     db.remove_from_waitlist(wl_id)
     flash("Eliminado de la lista de espera", "success")
     return redirect(url_for("admin_waitlist"))

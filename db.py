@@ -1,7 +1,10 @@
+import logging
 import os
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow():
@@ -306,14 +309,27 @@ def insert_book(book, proposed_by="telegram", cycle_key=None):
         cur.execute("""
         INSERT INTO book_proposals(book_id, proposed_by, cycle_key)
         VALUES(%s,%s,%s)
-        ON CONFLICT (book_id, cycle_key) DO UPDATE SET proposed_by = EXCLUDED.proposed_by
+        ON CONFLICT (book_id, cycle_key) DO NOTHING
         RETURNING *
         """, (book_row["id"], proposed_by, cycle_key))
-        return dict(cur.fetchone())
+        row = cur.fetchone()
+        if row:
+            logger.info("Libro propuesto: «%s» por %s en ciclo %s (book_id=%d, proposal_id=%d)",
+                        book_row["title"], proposed_by, cycle_key, book_row["id"], row["id"])
+            return {"inserted": True, **dict(row)}
+        # Already proposed — return existing
+        logger.warning("Libro duplicado ignorado: «%s» por %s en ciclo %s (book_id=%d)",
+                       book_row["title"], proposed_by, cycle_key, book_row["id"])
+        cur.execute(
+            "SELECT * FROM book_proposals WHERE book_id=%s AND cycle_key=%s",
+            (book_row["id"], cycle_key)
+        )
+        return {"inserted": False, **dict(cur.fetchone())}
 
 
 def remove_book_proposal(proposal_id):
     """Elimina una propuesta del ciclo (el admin puede quitarla)."""
+    logger.info("Propuesta eliminada: proposal_id=%d", proposal_id)
     with get_cursor(commit=True) as cur:
         cur.execute("DELETE FROM book_proposals WHERE id = %s", (proposal_id,))
 
@@ -364,7 +380,12 @@ def vote_book(proposal_id, user_name):
         INSERT INTO book_votes(proposal_id, user_name)
         VALUES(%s,%s) ON CONFLICT (proposal_id, user_name) DO NOTHING RETURNING id
         """, (proposal_id, user_name))
-        return cur.fetchone() is not None
+        ok = cur.fetchone() is not None
+        if ok:
+            logger.info("Voto libro registrado: proposal_id=%d, user=%s", proposal_id, user_name)
+        else:
+            logger.warning("Voto libro duplicado ignorado: proposal_id=%d, user=%s", proposal_id, user_name)
+        return ok
 
 
 def get_cycle_results(cycle_key=None):
@@ -418,6 +439,10 @@ def create_theme(name, created_by=None, cycle_key=None):
         VALUES(%s,%s,%s) ON CONFLICT (name, cycle_key) DO NOTHING RETURNING *
         """, (name.strip(), cycle_key, created_by))
         row = cur.fetchone()
+        if row:
+            logger.info("Temática creada: «%s» por %s en ciclo %s (id=%d)", name, created_by, cycle_key, row["id"])
+        else:
+            logger.warning("Temática duplicada ignorada: «%s» en ciclo %s", name, cycle_key)
         return dict(row) if row else None
 
 
@@ -441,7 +466,12 @@ def vote_theme(theme_id, user_name):
         INSERT INTO theme_votes(theme_id, user_name)
         VALUES(%s,%s) ON CONFLICT (theme_id, user_name) DO NOTHING RETURNING id
         """, (theme_id, user_name))
-        return cur.fetchone() is not None
+        ok = cur.fetchone() is not None
+        if ok:
+            logger.info("Voto temática registrado: theme_id=%d, user=%s", theme_id, user_name)
+        else:
+            logger.warning("Voto temática duplicado ignorado: theme_id=%d, user=%s", theme_id, user_name)
+        return ok
 
 
 def get_top_theme(cycle_key=None):
@@ -487,7 +517,9 @@ def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_
         INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status)
         VALUES(%s,%s,%s,%s,%s,%s) RETURNING *
         """, (name.strip(), cycle_key, final_date, created_by, book_id, status))
-        return dict(cur.fetchone())
+        row = dict(cur.fetchone())
+        logger.info("Reunión creada: «%s» (id=%d) en ciclo %s por %s", name, row["id"], cycle_key, created_by)
+        return row
 
 
 def get_meetings(limit=50):
@@ -549,6 +581,7 @@ def get_latest_scheduled_meeting():
 
 
 def add_meeting_date_option(meeting_id, option_date):
+    logger.info("Opción de fecha añadida: meeting_id=%d fecha=%s", meeting_id, option_date)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO meeting_date_options(meeting_id, option_date)
@@ -581,6 +614,7 @@ def vote_meeting_date(option_id, user_name):
 
 
 def set_meeting_final_date(meeting_id, final_date):
+    logger.info("Fecha reunión fijada: meeting_id=%d → %s", meeting_id, final_date)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         UPDATE meetings SET final_date=%s, status='scheduled', updated_at=NOW()
@@ -606,6 +640,7 @@ def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=
 
 
 def delete_meeting(meeting_id):
+    logger.info("Reunión eliminada: meeting_id=%d", meeting_id)
     with get_cursor(commit=True) as cur:
         cur.execute("DELETE FROM meetings WHERE id = %s", (meeting_id,))
 
@@ -616,10 +651,16 @@ def add_attendance(meeting_id, user_name):
         INSERT INTO meeting_attendance(meeting_id, user_name)
         VALUES(%s,%s) ON CONFLICT (meeting_id, user_name) DO NOTHING RETURNING id
         """, (meeting_id, user_name))
-        return cur.fetchone() is not None
+        ok = cur.fetchone() is not None
+        if ok:
+            logger.info("Asistencia añadida: %s a reunion_id=%d", user_name, meeting_id)
+        else:
+            logger.warning("Asistencia duplicada ignorada: %s ya en reunion_id=%d", user_name, meeting_id)
+        return ok
 
 
 def remove_attendance(meeting_id, user_name):
+    logger.info("Asistencia eliminada: %s de reunion_id=%d", user_name, meeting_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         DELETE FROM meeting_attendance WHERE meeting_id=%s AND user_name=%s
@@ -649,6 +690,7 @@ def get_meeting_attendance_count(meeting_id):
 # =========================================================
 
 def rate_book(book_id, user_name, score, review=None):
+    logger.info("Valoración libro: book_id=%d user=%s score=%d", book_id, user_name, score)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO book_ratings(book_id, user_name, score, review)
@@ -694,6 +736,8 @@ def save_poll(chat_id, message_id, poll_id, poll_type="books", cycle_key=None, m
         VALUES(%s,%s,%s,%s,%s,%s) RETURNING *
         """, (cycle_key, chat_id, message_id, poll_id, poll_type, meeting_id))
         row = cur.fetchone()
+        if row:
+            logger.info("Encuesta guardada: tipo=%s ciclo=%s poll_id=%s db_id=%d", poll_type, cycle_key, poll_id, row["id"])
         return dict(row) if row else None
 
 
@@ -748,6 +792,7 @@ def get_poll_by_id(poll_db_id):
 
 
 def close_poll(poll_db_id):
+    logger.info("Encuesta cerrada: db_id=%d", poll_db_id)
     with get_cursor(commit=True) as cur:
         cur.execute("UPDATE telegram_polls SET is_closed=TRUE WHERE id=%s", (poll_db_id,))
 
@@ -889,10 +934,7 @@ def get_cycle_state(cycle_key):
     locked_cycles = {c.strip() for c in proposals_locked_for.split(",") if c.strip()}
     is_locked = cycle_key in locked_cycles
 
-    active_theme = (
-        get_config(f"active_theme:{cycle_key}") or
-        get_config("active_theme") or ""
-    )
+    active_theme = get_config(f"active_theme:{cycle_key}") or ""
 
     open_theme_poll = get_open_poll("themes", cycle_key=cycle_key)
     open_book_polls = get_open_polls("books", cycle_key=cycle_key)
@@ -944,10 +986,18 @@ def get_cycle_state(cycle_key):
 
 def close_cycle(cycle_key=None):
     cycle_key = cycle_key or get_current_cycle_key()
+    logger.info("Cerrando ciclo: %s", cycle_key)
     with get_cursor(commit=True) as cur:
         cur.execute("UPDATE book_proposals SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
         cur.execute("UPDATE themes SET is_active=FALSE WHERE cycle_key=%s", (cycle_key,))
+        # Cancel meetings from this cycle that haven't happened yet
+        cur.execute("""
+            UPDATE meetings SET status='cancelled'
+            WHERE cycle_key=%s AND status IN ('scheduled','draft')
+              AND (final_date IS NULL OR final_date > NOW())
+        """, (cycle_key,))
     remove_active_cycle(cycle_key)
+    logger.info("Ciclo cerrado: %s", cycle_key)
 
 
 def get_all_cycle_keys():
@@ -1449,6 +1499,7 @@ def get_galeria_data(limit: int = None):
 
 def log_event(event_type: str, description: str, category: str = None, actor: str = None, extra: dict = None):
     """Registra un evento en app_events. Nunca lanza excepción."""
+    logger.info("EVENT [%s/%s] actor=%s — %s", event_type, category or "-", actor or "-", description)
     try:
         with get_cursor(commit=True) as cur:
             cur.execute(
@@ -1457,8 +1508,7 @@ def log_event(event_type: str, description: str, category: str = None, actor: st
                  json.dumps(extra, ensure_ascii=False) if extra else None)
             )
     except Exception as e:
-        import logging as _log
-        _log.getLogger(__name__).warning("log_event failed: %s", e)
+        logger.warning("log_event DB write failed: %s", e)
 
 
 def get_events(limit: int = 300, event_type: str = None, category: str = None):

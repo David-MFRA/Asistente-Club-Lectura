@@ -1,8 +1,11 @@
+import logging
 import requests
 import html
 import re
 
 from deep_translator import GoogleTranslator
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_BOOKS_URL = "https://www.googleapis.com/books/v1/volumes"
 
@@ -46,6 +49,7 @@ def google_books(title):
     Busca libro en Google Books.
     Devuelve datos normalizados compatibles con db.py
     """
+    logger.info("Google Books: buscando «%s»", title)
 
     try:
         params = {
@@ -61,16 +65,19 @@ def google_books(title):
         )
 
         if r.status_code != 200:
+            logger.warning("Google Books: HTTP %d para «%s»", r.status_code, title)
             return None
 
         data = r.json()
 
     except Exception:
+        logger.exception("Google Books: error de red buscando «%s»", title)
         return None
 
     items = data.get("items")
 
     if not items:
+        logger.info("Google Books: sin resultados para «%s»", title)
         return None
 
     v = items[0].get("volumeInfo", {})
@@ -78,6 +85,7 @@ def google_books(title):
     title = v.get("title")
 
     if not title:
+        logger.warning("Google Books: primer resultado sin título para la búsqueda original")
         return None
 
     authors = v.get("authors") or []
@@ -89,6 +97,7 @@ def google_books(title):
     language = v.get("language")
 
     if description and language != "es":
+        logger.debug("Google Books: traduciendo descripción (idioma=%s)", language)
         description = traducir(description)
 
     image_links = v.get("imageLinks") or {}
@@ -100,6 +109,7 @@ def google_books(title):
 
     pages = v.get("pageCount")
 
+    logger.info("Google Books: encontrado «%s» de %s (%s págs)", title, author, pages)
     return {
         "title": title.strip(),
         "author": author,

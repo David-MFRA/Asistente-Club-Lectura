@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from html import escape as hesc
 
@@ -6,6 +7,8 @@ from flask import flash, redirect, render_template, request, url_for
 import ai_features
 import db
 from app.messages import get_text
+
+logger = logging.getLogger(__name__)
 
 # Nombres de mes en español
 _MONTHS_ES = [
@@ -155,6 +158,7 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
         flash("Añade al menos 2 temáticas para crear el ciclo.", "danger")
         return redirect(url_for("admin_ciclo"))
 
+    logger.info("Admin: activando ciclo «%s» con %d temáticas", name, len(candidate_themes))
     db.add_active_cycle(name)
 
     # Create predefined themes
@@ -214,6 +218,7 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
 
     themes_msg = f" con {len(created_themes)} temática{'s' if len(created_themes) != 1 else ''}" if created_themes else ""
     poll_msg = " y encuesta lanzada" if poll_launched else ""
+    logger.info("Admin: ciclo «%s» activado%s%s", name, themes_msg, poll_msg)
     flash(f"Ciclo «{name}» activado{themes_msg}{poll_msg}. Mensaje enviado al grupo.", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -223,6 +228,7 @@ def close_cycle(require_admin, logger, cycle_key=None):
     if auth:
         return auth
     cycle = cycle_key or request.form.get("cycle_key") or db.get_current_cycle_key()
+    logger.info("Admin: cerrando ciclo «%s»", cycle)
     cycle_theme = db.get_config(f"active_theme:{cycle}") or db.get_config("active_theme") or None
     db.close_cycle(cycle)  # also calls remove_active_cycle internally
     try:
@@ -239,7 +245,10 @@ def set_cycle_theme(require_admin):
     if auth:
         return auth
     theme = request.form.get("active_theme", "").strip()
+    cycle_key = request.form.get("cycle_key", "").strip() or db.get_current_cycle_key()
+    logger.info("Admin: temática del ciclo «%s» → «%s»", cycle_key, theme or "(borrada)")
     db.set_config("active_theme", theme)
+    db.set_config(f"active_theme:{cycle_key}", theme)
     flash(f"Temática del ciclo {'actualizada a «' + theme + '»' if theme else 'borrada'}", "success")
     return redirect(url_for("admin_ciclo"))
 
@@ -324,6 +333,7 @@ async def advance_to_books(require_admin, send_to_group_fn, logger):
     if auth:
         return auth
     active_theme = db.get_config("active_theme") or ""
+    logger.info("Admin: avanzando a fase 'books' (temática activa: «%s»)", active_theme or "ninguna")
     _set_phase("books")
     db.set_config("proposals_locked_for", "")
 

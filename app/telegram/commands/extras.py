@@ -21,6 +21,7 @@ class ExtraHandlers:
     async def trivia_cmd(self, update, context):
         if not await self.allowed(update):
             return
+        self.logger.info("/trivia: user_id=%d", update.effective_user.id)
         if not self.check_cooldown(update.effective_user.id, "trivia", 15):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
@@ -34,6 +35,8 @@ class ExtraHandlers:
     async def recomendar(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/recomendar: user=%s id=%d", u.first_name or u.username, u.id)
         if not self.check_cooldown(update.effective_user.id, "recomendar", 60):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
@@ -61,6 +64,8 @@ class ExtraHandlers:
     async def preguntas_cmd(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/preguntas: user=%s id=%d", u.first_name or u.username, u.id)
         if not self._is_admin(update):
             await update.message.reply_text("⛔ Este comando es solo para administradores del club.", parse_mode=None)
             return
@@ -72,6 +77,7 @@ class ExtraHandlers:
             if not winner:
                 await update.message.reply_text("No hay libro del ciclo activo.", parse_mode=None)
                 return
+            self.logger.info("/preguntas: generando para «%s»", winner["title"])
             wait = await update.message.reply_text("Generando preguntas de debate...", parse_mode=None)
             questions = ai_features.generate_discussion_questions(
                 winner["title"],
@@ -79,6 +85,7 @@ class ExtraHandlers:
                 winner.get("description", ""),
             )
             await wait.delete()
+            self.logger.info("/preguntas: respuesta generada (%d chars)", len(questions))
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             db.log_event("bot", f"/preguntas solicitado para «{winner['title']}»", category="ai", actor=user)
             await update.message.reply_text(
@@ -92,6 +99,8 @@ class ExtraHandlers:
     async def cita_cmd(self, update, context):
         if not await self.allowed(update):
             return
+        u = update.effective_user
+        self.logger.info("/cita: user=%s id=%d", u.first_name or u.username, u.id)
         if not self._is_admin(update):
             await update.message.reply_text("⛔ Este comando es solo para administradores del club.", parse_mode=None)
             return

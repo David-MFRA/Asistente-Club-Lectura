@@ -38,6 +38,12 @@ from app.config import (
 )
 from app.formatting import bold, code, esc, italic
 from app.messages import DEFAULT_MESSAGES as SHARED_DEFAULT_MESSAGES, get_text as shared_get_text
+from app.services.bot_context import (
+    build_help_text,
+    build_private_keyboard,
+    build_welcome_text,
+    get_contextual_commands,
+)
 from app.services.meeting_lookup import find_meeting_by_text
 from app.telegram.access import TelegramAccessControl
 from app.telegram.callbacks import CallbackHandler
@@ -459,61 +465,28 @@ async def start(update, context):
             )
         except Exception:
             pass
-        user = update.effective_user.first_name or update.effective_user.username or "miembro"
-        current_cycle = db.get_current_cycle_key()
-        winner = db.get_winner_book(current_cycle)
-        meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
-
-        libro_line = f"📗 Libro actual: {winner['title']}" + (f" — {winner['author']}" if winner and winner.get('author') else "") if winner else "📗 Aún no hay libro elegido este ciclo"
-        reunion_line = ""
-        if meeting:
-            fecha = str(meeting["final_date"])[:10] if meeting.get("final_date") else "sin fecha"
-            reunion_line = f"\n📅 Próxima reunión: {meeting['name']} ({fecha})"
-
         is_admin = is_admin_user(update)
-        quick_lines = [
-            "📖 /proponer título — Proponer un libro",
-            "🗳️ /propuestas — Ver y votar propuestas",
-            "📅 /reunion — Info de la próxima reunión",
-            "✅ /asistir · ❌ /noasistir — Gestionar asistencia",
-            "🏷️ /temas — Ver y votar temáticas",
-            "📊 /progreso · /estadisticas — Tu actividad",
-            "💡 /recomendar — Recomendaciones de libros",
-            "🐛 /bug — Reportar un problema",
-        ]
-        if is_admin:
-            quick_lines.append("🔐 /admin_ayuda — Comandos de administración")
-
-        text = (
-            f"📚 ¡Hola, {user}! Bienvenid@ al bot del Club de Lectura.\n\n"
-            f"{libro_line}{reunion_line}\n\n"
-            f"Aquí puedes usar todos los comandos del club de forma privada "
-            f"sin molestar al grupo. Pulsa cualquier botón del menú o escribe "
-            f"un comando directamente.\n\n"
-            + "\n".join(quick_lines)
-            + "\n\n"
-            f"Usa /ayuda para la lista completa."
-        )
+        user = update.effective_user.first_name or update.effective_user.username or "miembro"
+        text, commands = build_welcome_text(user, is_admin=is_admin)
         keyboard = ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("📚 /propuestas"), KeyboardButton("📅 /reunion")],
-                [KeyboardButton("✅ /asistir"),    KeyboardButton("🏷️ /temas")],
-                [KeyboardButton("📗 /libro"),      KeyboardButton("💡 /recomendar")],
-                [KeyboardButton("❓ /ayuda")],
-            ],
+            [[KeyboardButton(item) for item in row] for row in build_private_keyboard(commands)] + [[KeyboardButton("❓ /ayuda")]],
             resize_keyboard=True,
             input_field_placeholder="Elige una opción o escribe un comando…"
         )
-        await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
         return
 
-    raw = get_text("welcome_message")
+    raw = get_text("welcome_message", audience="group", cycle_key=db.get_current_cycle_key())
     await update.message.reply_text(raw, parse_mode="HTML")
 
 
 async def ayuda_cmd(update, context):
     if not await _allowed(update): return
-    raw = get_text("help_message")
+    raw = build_help_text(
+        is_admin=is_admin_user(update),
+        cycle_key=db.get_current_cycle_key(),
+        audience="private" if update.effective_chat.type == "private" else "group",
+    )
     await update.message.reply_text(raw, parse_mode="HTML")
 
 
@@ -2125,6 +2098,11 @@ def sitemap_xml():
     )
     return Response(xml, mimetype="application/xml")
 
+@flask_app.get("/google8715cced54138a71.html")
+def google_site_verification():
+    return Response("google-site-verification: google8715cced54138a71.html", mimetype="text/html")
+
+
 @flask_app.get("/favicon.ico")
 def favicon():
     return Response(
@@ -2923,6 +2901,30 @@ async def _keep_alive_ping():
         logger.warning("Keep-alive ping falló → %s", url)
 
 
+async def refresh_bot_command_menu():
+    current_cycle = db.get_current_cycle_key()
+    user_commands = [BotCommand("start", "👋 Bienvenida y opciones útiles")]
+    contextual = get_contextual_commands("private", cycle_key=current_cycle, is_admin=False)
+    user_commands.extend([
+        BotCommand(item["id"], f"{item['emoji']} {item['desc']}")
+        for item in contextual[:12]
+        if item["id"] in {
+            "ayuda", "proponer", "propuestas", "votar", "resultados", "libro",
+            "tema", "temas", "reunion", "asistir", "noasistir", "asistencia",
+            "acta", "progreso", "estadisticas", "recomendar", "lista_espera",
+            "proponer_fecha", "bug", "votar_tema", "trivia"
+        }
+    ])
+    if not any(cmd.command == "ayuda" for cmd in user_commands):
+        user_commands.insert(0, BotCommand("ayuda", "❓ Ver el menú contextual"))
+    try:
+        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
+        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
+        logger.info("Comandos del bot actualizados para ciclo=%s (%d comandos)", current_cycle, len(user_commands))
+    except Exception:
+        logger.warning("No se pudieron actualizar los comandos contextuales del bot")
+
+
 async def startup():
     await telegram_app.initialize()
     await telegram_app.start()
@@ -2932,33 +2934,7 @@ async def startup():
     )
 
     # Registrar comandos del bot en Telegram
-    user_commands = [
-        BotCommand("start", "👋 Bienvenida y menú de comandos"),
-        BotCommand("ayuda", "❓ Ver todos los comandos disponibles"),
-        BotCommand("proponer", "📚 Proponer un libro para el ciclo"),
-        BotCommand("propuestas", "📋 Ver propuestas y votar"),
-        BotCommand("votar", "🗳️ Votar una propuesta por número"),
-        BotCommand("resultados", "🏆 Ver ranking de votos"),
-        BotCommand("libro", "📖 Ver el libro del ciclo actual"),
-        BotCommand("tema", "🎭 Proponer una temática"),
-        BotCommand("temas", "🎨 Ver temáticas y votar"),
-        BotCommand("reunion", "📅 Info de la próxima reunión"),
-        BotCommand("asistir", "✅ Apuntarse a la reunión"),
-        BotCommand("noasistir", "❌ Quitarse de la reunión"),
-        BotCommand("asistencia", "👥 Ver lista de asistentes"),
-        BotCommand("acta", "📝 Acta de la última reunión"),
-        BotCommand("progreso", "📈 Mi progreso de lectura"),
-        BotCommand("estadisticas", "📊 Estadísticas del club"),
-        BotCommand("recomendar", "💡 Recomendaciones según temática"),
-        BotCommand("lista_espera", "⏳ Libros en lista de espera"),
-        BotCommand("bug", "🐛 Reportar un problema o bug"),
-    ]
-    try:
-        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
-        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
-        logger.info("Comandos del bot registrados en Telegram")
-    except Exception:
-        logger.warning("No se pudieron registrar los comandos del bot")
+    await refresh_bot_command_menu()
 
     # Comandos extra para admins (con scope por chat individual)
     admin_extra = [
@@ -2987,6 +2963,10 @@ async def startup():
             logger.warning("No se pudieron registrar comandos admin para %s", _admin_id)
 
     # Recordatorio semanal — lunes 10:00
+    scheduler.add_job(
+        refresh_bot_command_menu, "interval",
+        minutes=15, id="refresh_command_menu", replace_existing=True
+    )
     scheduler.add_job(
         send_meeting_reminder, "cron",
         day_of_week="mon", hour=10, minute=0,

@@ -1,6 +1,10 @@
+from time import time
+
 import books_api
 import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.services.bot_context import get_soft_guidance
 
 
 class BookHandlers:
@@ -19,20 +23,25 @@ class BookHandlers:
         user = update.effective_user
         self.logger.info("/proponer: user=%s id=%d args=%r", user.first_name or user.username, user.id, context.args)
         if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
+            guidance = get_soft_guidance("proponer")
             self.logger.warning("/proponer: propuestas cerradas, rechazado user=%s", user.first_name or user.username)
             await update.message.reply_text(
-                "❌ Las propuestas para este ciclo están cerradas. ¡Espera al siguiente ciclo!",
+                guidance or "Las propuestas para este ciclo estan cerradas. Espera al siguiente ciclo.",
                 parse_mode=None,
             )
             return
+
         title = " ".join(context.args).strip()
         if not title:
             context.user_data["pending_proponer"] = True
+            context.user_data["pending_proponer_started_at"] = time()
+            db.log_event("bot", "Flujo /proponer pendiente iniciado", category="command", actor=user.first_name or user.username or str(user.id))
             await update.message.reply_text(
-                "📚 ¿Qué libro quieres proponer?\n\nEscribe el título del libro y lo buscaré:",
+                "Que libro quieres proponer?\n\nEscribe el titulo del libro y lo buscare:",
                 parse_mode=None,
             )
             return
+
         wait_msg = await update.message.reply_text(
             f"Buscando _{self.esc(title)}_\\.\\.\\.",
             parse_mode="MarkdownV2",
@@ -43,20 +52,22 @@ class BookHandlers:
                 self.logger.warning("/proponer: libro no encontrado en Google Books, query=%r", title)
                 await wait_msg.edit_text("No encontre ese libro\\.", parse_mode="MarkdownV2")
                 return
+
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
             result = db.insert_book(book, user_name)
             await wait_msg.delete()
 
             if not result.get("inserted", True):
+                db.log_event("bot", f"Propuesta duplicada: {book['title']}", category="command", actor=user_name)
                 await update.message.reply_text(
-                    f"⚠️ {self.esc(book['title'])} ya está propuesto en este ciclo\\.",
+                    f"{self.esc(book['title'])} ya esta propuesto en este ciclo\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
 
-            db.log_event("bot", f"Libro propuesto: «{book['title']}»", category="book", actor=user_name)
-            self.logger.info("/proponer: éxito «%s» por %s", book['title'], user_name)
-            lines = [f"{self.bold('¡Libro propuesto!')} por {self.italic(user_name)}\n"]
+            db.log_event("bot", f"Libro propuesto: {book['title']}", category="book", actor=user_name)
+            self.logger.info("/proponer: exito '%s' por %s", book["title"], user_name)
+            lines = [f"{self.bold('Libro propuesto')} por {self.italic(user_name)}\n"]
             lines.append(f"{self.bold(book['title'])}")
             if book.get("author"):
                 lines.append(self.italic(book["author"]))
@@ -67,14 +78,13 @@ class BookHandlers:
                 if len(description) > 300:
                     description = description[:297] + "..."
                 lines.append(f"\n_{self.esc(description)}_")
-            lines.append("\n_Usa /propuestas y /votar para votar\\._")
+            lines.append("\n_Usa /propuestas y /votar para participar._")
             caption = "\n".join(lines)
 
             if book.get("cover"):
                 await update.message.reply_photo(photo=book["cover"], caption=caption, parse_mode="MarkdownV2")
             else:
                 await update.message.reply_text(caption, parse_mode="MarkdownV2")
-
         except Exception:
             self.logger.exception("Error en /proponer")
             await update.message.reply_text("Error anadiendo el libro\\.", parse_mode="MarkdownV2")
@@ -86,16 +96,18 @@ class BookHandlers:
         try:
             books = db.get_book_proposals()
             if not books:
+                guidance = get_soft_guidance("propuestas")
                 await update.message.reply_text(
-                    "No hay propuestas todavia\\. Usa /proponer para anadir la primera\\.",
+                    guidance or "No hay propuestas todavia\\. Usa /proponer para anadir la primera\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
+
             lines = [f"{self.bold('Propuestas del ciclo')}\n"]
             for book in books:
                 pos = book.get("cycle_position", book["proposal_id"])
                 author_str = f" - _{self.esc(book['author'])}_" if book.get("author") else ""
-                stars = "⭐" * min(book["votes"], 5) if book["votes"] > 0 else "·"
+                stars = "*" * min(book["votes"], 5) if book["votes"] > 0 else "."
                 lines.append(
                     f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
                     f"   {stars} {self.bold(str(book['votes']))} voto{'s' if book['votes'] != 1 else ''}"
@@ -136,25 +148,27 @@ class BookHandlers:
             if not proposal:
                 proposal = db.get_proposal_by_id(num)
             if not proposal:
+                guidance = get_soft_guidance("votar")
                 await update.message.reply_text(
-                    f"No existe la propuesta \\#{self.bold(str(num))}\\. Usa /propuestas para ver la lista\\.",
+                    guidance or f"No existe la propuesta \\#{self.bold(str(num))}\\. Usa /propuestas para ver la lista\\.",
                     parse_mode="MarkdownV2",
                 )
                 return
+
             proposal_id = proposal["proposal_id"]
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
             ok = db.vote_book(proposal_id, user_name)
             if ok:
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
-                self.logger.info("/votar: éxito %s → «%s» (proposal_id=%d)", user_name, book_name, proposal_id)
+                self.logger.info("/votar: exito %s -> '%s' (proposal_id=%d)", user_name, book_name, proposal_id)
                 await update.message.reply_text(
-                    f"{self.bold('Voto registrado')} para _{self.esc(book_name)}_\\.\n"
-                    "Usa /propuestas para ver el ranking\\.",
+                    f"{self.bold('Voto registrado')} para _{self.esc(book_name)}_\\.\nUsa /propuestas para ver el ranking\\.",
                     parse_mode="MarkdownV2",
                 )
             else:
-                self.logger.debug("/votar: duplicado %s → proposal_id=%d", user_name, proposal_id)
+                self.logger.debug("/votar: duplicado %s -> proposal_id=%d", user_name, proposal_id)
+                db.log_event("bot", f"Voto duplicado sobre propuesta #{proposal_id}", category="command", actor=user_name)
                 await update.message.reply_text("Ya habias votado esa propuesta\\.", parse_mode="MarkdownV2")
         except ValueError:
             await update.message.reply_text("El ID debe ser un numero\\.", parse_mode="MarkdownV2")
@@ -170,7 +184,7 @@ class BookHandlers:
             if not books:
                 await update.message.reply_text("No hay resultados todavia\\.", parse_mode="MarkdownV2")
                 return
-            medals = ["🥇", "🥈", "🥉"]
+            medals = ["1.", "2.", "3."]
             lines = [f"{self.bold('Resultados del ciclo')}\n"]
             for index, book in enumerate(books):
                 medal = medals[index] if index < 3 else f"{index + 1}\\."

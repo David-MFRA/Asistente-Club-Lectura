@@ -44,7 +44,14 @@ def render_public_page(group_invite_link):
     attendees = db.get_attendance(meeting["id"]) if meeting else []
     galeria = db.get_galeria_data(limit=3)
     invite_link = db.get_config("public_invite_link", "") or group_invite_link
-    canonical_url = db.get_config("public_canonical_url", "").strip() or None
+    canonical_url = (
+        db.get_config("public_canonical_url", "").strip()
+        or "https://asistente-club-lectura-1.onrender.com"
+    )
+    default_description = (
+        "Club de lectura mensual en León. Elegimos libros juntos, debatimos y quedamos "
+        "en persona cada mes. Únete gratis y propón el próximo libro."
+    )
     return render_template(
         "public.html",
         winner=winner,
@@ -56,7 +63,7 @@ def render_public_page(group_invite_link):
         group_invite_link=invite_link,
         club_name=db.get_config("public_club_name", "Tribu de Libros"),
         city=db.get_config("public_city", "León, España"),
-        description=db.get_config("public_description", ""),
+        description=db.get_config("public_description", "") or default_description,
         pub_theme=db.get_config("public_theme", "amber"),
         hero_title=db.get_config("public_hero_title", "Leemos, debatimos y crecemos."),
         section_libro=db.get_config("public_section_libro", "El libro que estamos leyendo"),

@@ -242,6 +242,9 @@ DEFAULT_MESSAGES = {
         "{books_list}\n\n"
         "🔁 El admin decidirá el siguiente paso."
     ),
+    "poll_books_question": "📚 ¿Qué libro leemos este ciclo?",
+    "poll_themes_question": "🏷️ ¿Qué temática elegimos para este ciclo?",
+    "poll_dates_question": "📅 ¿Cuándo nos reunimos? · {meeting_name}",
 }
 
 
@@ -1996,6 +1999,68 @@ async def private_text_handler(update, context):
     )
 
 
+async def handle_poll_answer(update, context):
+    """Recibe votos en tiempo real de encuestas de Telegram (non-anonymous polls)."""
+    answer = update.poll_answer
+    if not answer:
+        return
+    poll_id = answer.poll_id
+    user_id = str(answer.user.id)
+    new_option_ids = list(answer.option_ids)  # list of selected option indices
+
+    # Find poll in our DB
+    poll = db.get_poll_by_telegram_id(poll_id)
+    if not poll or poll.get("is_closed"):
+        return
+
+    poll_type = poll.get("poll_type")
+    if poll_type not in ("books", "themes"):
+        return
+
+    # Get option→entity_id mapping
+    options_json = db.get_config(f"poll_options_{poll_id}")
+    if not options_json:
+        return
+    try:
+        options = json.loads(options_json)  # list of proposal_id or theme_id
+    except Exception:
+        return
+
+    # Get previous selection for this user (to remove old votes)
+    prev_key = f"poll_uv_{poll_id}_{user_id}"
+    try:
+        prev_option_ids = json.loads(db.get_config(prev_key, "[]") or "[]")
+    except Exception:
+        prev_option_ids = []
+
+    # Remove previous votes
+    for old_idx in prev_option_ids:
+        if old_idx < len(options):
+            entity_id = options[old_idx]
+            try:
+                if poll_type == "books":
+                    db.remove_book_vote(entity_id, user_id)
+                else:
+                    db.remove_theme_vote(entity_id, user_id)
+            except Exception:
+                pass
+
+    # Add new votes
+    for new_idx in new_option_ids:
+        if new_idx < len(options):
+            entity_id = options[new_idx]
+            try:
+                if poll_type == "books":
+                    db.vote_book(entity_id, user_id)
+                else:
+                    db.vote_theme(entity_id, user_id)
+            except Exception:
+                pass
+
+    # Persist new selection
+    db.set_config(prev_key, json.dumps(new_option_ids))
+
+
 # --------------------------------------------------
 # REGISTER HANDLERS
 # --------------------------------------------------
@@ -2039,6 +2104,7 @@ register_handlers(telegram_app, {
     "bug_cmd": bug_cmd,
     "handle_my_chat_member": handle_my_chat_member,
     "button_handler": button_handler,
+    "handle_poll_answer": handle_poll_answer,
     "private_text_handler": private_text_handler,
 })
 
@@ -2448,6 +2514,79 @@ def admin_scheduler_add():
 def admin_scheduler_delete(msg_id):
     return delete_scheduled_message(require_admin, logger, msg_id)
 
+@flask_app.post("/admin/scheduler/custom/add")
+def admin_custom_reminder_add():
+    import uuid
+    auth = require_admin()
+    if auth:
+        return auth
+    title = request.form.get("title", "").strip()
+    message = request.form.get("message", "").strip()
+    schedule_type = request.form.get("schedule_type", "interval")
+    if not title or not message:
+        flash("Título y mensaje son obligatorios", "danger")
+        return redirect(url_for("admin_scheduler"))
+    try:
+        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
+    except Exception:
+        reminders = []
+    new_id = str(uuid.uuid4())[:8]
+    reminder = {"id": new_id, "title": title, "message": message, "schedule_type": schedule_type, "enabled": True}
+    if schedule_type == "cron":
+        reminder["day_of_week"] = request.form.get("day_of_week", "")
+        try:
+            reminder["hour"] = int(request.form.get("hour", 10))
+            reminder["minute"] = int(request.form.get("minute", 0))
+        except ValueError:
+            reminder["hour"] = 10
+            reminder["minute"] = 0
+    else:
+        try:
+            reminder["hours"] = max(1, int(request.form.get("hours", 24)))
+        except ValueError:
+            reminder["hours"] = 24
+    reminders.append(reminder)
+    db.set_config("custom_reminders", json.dumps(reminders))
+    _reload_custom_reminders()
+    flash(f"Recordatorio «{title}» añadido", "success")
+    return redirect(url_for("admin_scheduler"))
+
+
+@flask_app.post("/admin/scheduler/custom/<reminder_id>/delete")
+def admin_custom_reminder_delete(reminder_id):
+    auth = require_admin()
+    if auth:
+        return auth
+    try:
+        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
+    except Exception:
+        reminders = []
+    reminders = [r for r in reminders if r.get("id") != reminder_id]
+    db.set_config("custom_reminders", json.dumps(reminders))
+    _reload_custom_reminders()
+    flash("Recordatorio eliminado", "success")
+    return redirect(url_for("admin_scheduler"))
+
+
+@flask_app.post("/admin/scheduler/custom/<reminder_id>/toggle")
+def admin_custom_reminder_toggle(reminder_id):
+    auth = require_admin()
+    if auth:
+        return auth
+    try:
+        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
+    except Exception:
+        reminders = []
+    for r in reminders:
+        if r.get("id") == reminder_id:
+            r["enabled"] = not r.get("enabled", True)
+            break
+    db.set_config("custom_reminders", json.dumps(reminders))
+    _reload_custom_reminders()
+    flash("Recordatorio actualizado", "success")
+    return redirect(url_for("admin_scheduler"))
+
+
 @flask_app.post("/admin/scheduler/reminder/toggle")
 def admin_reminder_toggle():
     auth = require_admin()
@@ -2553,6 +2692,24 @@ def admin_ciclo_pick_book(proposal_id):
 @flask_app.post("/admin/ciclo/<cycle_key>/rename")
 def admin_ciclo_rename(cycle_key):
     return rename_cycle(require_admin)
+
+
+@flask_app.post("/admin/ciclo/meeting/<int:meeting_id>/set-date")
+def admin_ciclo_meeting_set_date(meeting_id):
+    auth = require_admin()
+    if auth:
+        return auth
+    final_date = request.form.get("final_date", "").strip()
+    if not final_date:
+        flash("Fecha inválida", "danger")
+        return redirect(url_for("admin_ciclo"))
+    try:
+        db.set_meeting_final_date(meeting_id, final_date)
+        flash("Fecha de reunión actualizada", "success")
+    except Exception:
+        logger.exception("Error actualizando fecha de reunión %s", meeting_id)
+        flash("Error actualizando la fecha", "danger")
+    return redirect(url_for("admin_ciclo"))
 
 @flask_app.post("/admin/encuesta/temas/<int:poll_db_id>/cerrar")
 def admin_cerrar_encuesta_temas(poll_db_id):
@@ -2662,6 +2819,55 @@ def webhook():
 # STARTUP / SHUTDOWN
 # --------------------------------------------------
 
+def _make_custom_reminder_job(message_text):
+    """Crea una función async que envía el mensaje de recordatorio al grupo."""
+    async def _job():
+        await send_to_group(message_text, parse_mode="HTML", message_type="custom_reminder")
+    return _job
+
+
+def _reload_custom_reminders():
+    """Carga/recarga todos los recordatorios personalizados desde la BD al scheduler."""
+    # Eliminar jobs custom existentes
+    for job in scheduler.get_jobs():
+        if job.id.startswith("custom_reminder_"):
+            try:
+                scheduler.remove_job(job.id)
+            except Exception:
+                pass
+    # Cargar desde BD
+    try:
+        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
+    except Exception:
+        reminders = []
+    for r in reminders:
+        if not r.get("enabled", True):
+            continue
+        job_id = f"custom_reminder_{r['id']}"
+        message = r.get("message", "")
+        if not message:
+            continue
+        stype = r.get("schedule_type", "interval")
+        try:
+            if stype == "cron":
+                kwargs = {"hour": r.get("hour", 10), "minute": r.get("minute", 0)}
+                dow = r.get("day_of_week", "")
+                if dow:
+                    kwargs["day_of_week"] = dow
+                scheduler.add_job(
+                    _make_custom_reminder_job(message), "cron",
+                    id=job_id, timezone="Europe/Madrid", replace_existing=True, **kwargs
+                )
+            else:
+                scheduler.add_job(
+                    _make_custom_reminder_job(message), "interval",
+                    hours=max(1, r.get("hours", 24)),
+                    id=job_id, replace_existing=True
+                )
+        except Exception:
+            logger.exception("Error cargando recordatorio personalizado %s", r.get("id"))
+
+
 async def _keep_alive_ping():
     """Hace ping a /health para mantener el servicio activo en Render."""
     if db.get_config("reminder_keepalive_enabled", "1") == "0":
@@ -2768,6 +2974,7 @@ async def startup():
         id="auto_close_cycle", replace_existing=True
     )
     scheduler.start()
+    _reload_custom_reminders()
 
 
 async def main():

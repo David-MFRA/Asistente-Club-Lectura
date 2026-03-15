@@ -1,9 +1,11 @@
+import json
 from html import escape as hesc
 
 from flask import flash, redirect, url_for
 
 import ai_features
 import db
+from app.messages import get_text
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -43,9 +45,9 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
                 if book.get("author"):
                     label = f"{book['title']} - {book['author']}"
                 options.append(label[:100])
-            question = "📚 ¿Qué libro leemos este ciclo?"
+            question = get_text("poll_books_question")
             if len(chunks) > 1:
-                question = f"📚 ¿Qué libro leemos? (parte {i+1}/{len(chunks)})"
+                question = get_text("poll_books_question") + f" (parte {i+1}/{len(chunks)})"
             msg = await telegram_app.bot.send_poll(
                 chat_id=telegram_chat_id,
                 question=question,
@@ -54,6 +56,8 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
                 allows_multiple_answers=False,
             )
             db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="books")
+            # Store option→proposal_id mapping for real-time vote tracking
+            db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in chunk]))
 
         _set_phase("book_voting")
         suffix = f" (en {len(chunks)} partes)" if len(chunks) > 1 else ""
@@ -168,12 +172,14 @@ async def create_theme_poll(require_admin, telegram_app, telegram_chat_id, logge
         options = [theme["name"][:100] for theme in themes[:10]]
         msg = await telegram_app.bot.send_poll(
             chat_id=telegram_chat_id,
-            question="🏷️ ¿Qué temática elegimos para este ciclo?",
+            question=get_text("poll_themes_question"),
             options=options,
             is_anonymous=False,
             allows_multiple_answers=False,
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="themes")
+        # Store option→theme_id mapping for real-time vote tracking
+        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([t["id"] for t in themes[:10]]))
         _set_phase("theme_voting")
         flash("Encuesta de temáticas lanzada en el grupo", "success")
     except Exception:
@@ -279,7 +285,7 @@ async def create_dates_poll(require_admin, meeting_id, telegram_app, telegram_ch
         poll_options = [str(option["option_date"])[:20] for option in date_options[:10]]
         msg = await telegram_app.bot.send_poll(
             chat_id=telegram_chat_id,
-            question=f"📅 ¿Cuándo nos reunimos? · {meeting['name']}",
+            question=get_text("poll_dates_question", meeting_name=meeting["name"])[:300],
             options=poll_options,
             is_anonymous=False,
             allows_multiple_answers=False,

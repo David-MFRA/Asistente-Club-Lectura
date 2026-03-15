@@ -173,9 +173,19 @@
             <div class="stat-value">{{ c.books | sum(attribute='votes') }}</div>
           </div>
           {% if c.meeting %}
-          <div class="stat-box">
-            <div class="stat-label">Reunión</div>
+          <div class="stat-box" style="position:relative">
+            <div class="stat-label">Reunión <button type="button" class="btn btn-soft" style="padding:1px 5px;font-size:.65rem;margin-left:4px" onclick="document.getElementById('edit-date-{{ c.meeting.id }}').style.display='block'" title="Editar fecha">✏️</button></div>
             <div class="stat-value" style="font-size:.95rem">{{ c.meeting.final_date | string | truncate(10, killwords=True, end='') if c.meeting.final_date else '—' }}</div>
+            <div id="edit-date-{{ c.meeting.id }}" style="display:none;margin-top:6px">
+              <form action="/admin/ciclo/meeting/{{ c.meeting.id }}/set-date" method="post" style="display:flex;flex-direction:column;gap:4px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="datetime-local" name="final_date" value="{{ c.meeting.final_date | string | replace(' ', 'T') | truncate(16, killwords=True, end='') if c.meeting.final_date else '' }}" style="font-size:.78rem">
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-success btn-xs" type="submit">✓</button>
+                  <button class="btn btn-soft btn-xs" type="button" onclick="document.getElementById('edit-date-{{ c.meeting.id }}').style.display='none'">✕</button>
+                </div>
+              </form>
+            </div>
           </div>
           {% endif %}
         </div>
@@ -192,12 +202,23 @@
         {% endif %}
 
         <!-- Active theme -->
-        {% if c.active_theme %}
         <div class="theme-row">
+          {% if c.active_theme %}
           <span class="theme-label">🏷️ Temática:</span>
           <span style="font-weight:700;color:#a5b4fc">{{ c.active_theme }}</span>
+          {% else %}
+          <span class="theme-label" style="color:var(--muted)">🏷️ Sin temática asignada</span>
+          {% endif %}
+          <button class="btn btn-soft btn-xs" style="margin-left:auto" onclick="document.getElementById('edit-theme-{{ ck }}').style.display='block'" title="Editar temática">✏️</button>
         </div>
-        {% endif %}
+        <div id="edit-theme-{{ ck }}" style="display:none;margin-bottom:10px">
+          <form action="/admin/ciclo/tema" method="post" style="display:flex;gap:8px;align-items:center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="active_theme" value="{{ c.active_theme or '' }}" placeholder="Nombre de la temática" style="flex:1;font-size:.88rem">
+            <button class="btn btn-success btn-sm" type="submit">✓</button>
+            <button class="btn btn-soft btn-sm" type="button" onclick="document.getElementById('edit-theme-{{ ck }}').style.display='none'">✕</button>
+          </form>
+        </div>
 
         <!-- Open polls -->
         {% if c.open_theme_poll %}

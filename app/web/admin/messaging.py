@@ -1,3 +1,5 @@
+import json
+
 from flask import flash, jsonify, redirect, render_template, request, url_for
 
 import db
@@ -124,7 +126,11 @@ def render_scheduler(require_admin):
             "enabled": db.get_config("reminder_keepalive_enabled", "1") == "1",
         },
     ]
-    return render_template("admin_scheduler.html", scheduled=scheduled, reminders=reminders)
+    try:
+        custom_reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
+    except Exception:
+        custom_reminders = []
+    return render_template("admin_scheduler.html", scheduled=scheduled, reminders=reminders, custom_reminders=custom_reminders)
 
 
 def add_scheduled_message(require_admin, logger):

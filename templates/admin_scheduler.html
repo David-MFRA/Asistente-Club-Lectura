@@ -17,6 +17,10 @@
   .fmt-btn { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: .8rem; color: var(--text); cursor: pointer; line-height: 1; transition: background .15s; }
   .fmt-btn:hover { background: rgba(99,102,241,.25); border-color: var(--primary); }
   .fmt-hint { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
+  .custom-rem-row { background: var(--panel); border: 1px solid var(--border); border-radius: 11px; padding: 13px 15px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .custom-rem-row.enabled { border-color: rgba(99,102,241,.3); }
+  .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media(max-width:540px) { .sched-grid { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
@@ -30,10 +34,10 @@
 <h1>⏰ Programador de Mensajes</h1>
 <p class="sub">Programa mensajes para enviarlos automáticamente al grupo en una fecha y hora específica.</p>
 
-<!-- RECORDATORIOS AUTOMÁTICOS -->
+<!-- RECORDATORIOS AUTOMÁTICOS DEL SISTEMA -->
 <div class="card" style="margin-bottom:16px">
-  <h2 style="margin:0 0 4px;font-size:1rem">🔔 Recordatorios automáticos</h2>
-  <p style="color:var(--muted);font-size:.83rem;margin:0 0 14px">Estos recordatorios se envían automáticamente. Puedes activarlos o desactivarlos.</p>
+  <h2 style="margin:0 0 4px;font-size:1rem">🔔 Recordatorios automáticos del sistema</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin:0 0 14px">Estos recordatorios se envían automáticamente según su programación. Puedes activarlos o desactivarlos.</p>
   {% for r in reminders %}
   <div style="background:var(--panel);border:1px solid {% if r.enabled %}rgba(16,185,129,.3){% else %}var(--border){% endif %};border-radius:11px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <div style="flex:1;min-width:200px">
@@ -53,9 +57,117 @@
   {% endfor %}
 </div>
 
+<!-- RECORDATORIOS PERSONALIZADOS -->
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin:0 0 4px;font-size:1rem">⚙️ Recordatorios personalizados</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin:0 0 14px">Crea recordatorios recurrentes con tu propio mensaje y programación.</p>
+
+  {% if custom_reminders %}
+  {% for r in custom_reminders %}
+  <div class="custom-rem-row {% if r.enabled %}enabled{% endif %}">
+    <div style="flex:1;min-width:180px">
+      <div style="font-weight:700;font-size:.9rem;margin-bottom:2px">{{ r.title }}</div>
+      <div style="color:var(--muted);font-size:.78rem;margin-bottom:4px;white-space:pre-wrap;max-height:48px;overflow:hidden">{{ r.message[:120] }}{% if r.message|length > 120 %}…{% endif %}</div>
+      <div style="font-size:.72rem;color:#a5b4fc;font-weight:600">
+        {% if r.schedule_type == 'cron' %}
+          ⏱ Cron: {% if r.day_of_week %}{{ r.day_of_week }} {% endif %}{{ r.hour | default(10) }}:{{ '%02d' % (r.minute | default(0)) }}
+        {% else %}
+          ⏱ Cada {{ r.hours | default(24) }} horas
+        {% endif %}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap">
+      <span style="font-size:.78rem;font-weight:700;color:{% if r.enabled %}#6ee7b7{% else %}#f87171{% endif %}">{% if r.enabled %}✅{% else %}❌{% endif %}</span>
+      <form method="post" action="/admin/scheduler/custom/{{ r.id }}/toggle" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn {% if r.enabled %}btn-danger{% else %}btn-success{% endif %} btn-xs">{% if r.enabled %}Pausar{% else %}Activar{% endif %}</button>
+      </form>
+      <form method="post" action="/admin/scheduler/custom/{{ r.id }}/delete" style="margin:0"
+            onsubmit="return confirm('¿Eliminar este recordatorio?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger btn-xs">🗑</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty" style="margin-bottom:12px">📭 No hay recordatorios personalizados aún.</div>
+  {% endif %}
+
+  <!-- Formulario para añadir nuevo recordatorio personalizado -->
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;font-size:.88rem;font-weight:700;color:var(--primary);padding:8px 0">➕ Añadir recordatorio personalizado</summary>
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:14px">
+      <form method="post" action="/admin/scheduler/custom/add">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+          <label>Título del recordatorio</label>
+          <input type="text" name="title" placeholder="Ej: Recordatorio de progreso semanal" required>
+        </div>
+        <div class="field">
+          <label>Mensaje a enviar al grupo</label>
+          <div class="fmt-bar">
+            <button type="button" class="fmt-btn" onclick="fmtWrap('custom-msg','<b>','</b>')"><b>B</b></button>
+            <button type="button" class="fmt-btn" onclick="fmtWrap('custom-msg','<i>','</i>')"><i>I</i></button>
+            <button type="button" class="fmt-btn" onclick="fmtWrap('custom-msg','<u>','</u>')"><u>U</u></button>
+            <button type="button" class="fmt-btn" onclick="fmtBullet('custom-msg')">• lista</button>
+          </div>
+          <textarea id="custom-msg" name="message" rows="3" placeholder="Escribe el mensaje del recordatorio..." required></textarea>
+        </div>
+
+        <div class="field">
+          <label>Tipo de programación</label>
+          <select name="schedule_type" id="custom-stype" onchange="toggleScheduleFields()" style="width:100%">
+            <option value="interval">Intervalo (cada N horas)</option>
+            <option value="cron">Horario fijo (día y hora)</option>
+          </select>
+        </div>
+
+        <!-- Intervalo -->
+        <div id="field-interval" class="field">
+          <label>Cada cuántas horas</label>
+          <input type="number" name="hours" value="24" min="1" max="720" placeholder="24">
+          <div style="font-size:.75rem;color:var(--muted);margin-top:3px">Ejemplos: 24 = diario · 48 = cada 2 días · 168 = semanal</div>
+        </div>
+
+        <!-- Cron -->
+        <div id="field-cron" style="display:none">
+          <div class="sched-grid">
+            <div class="field">
+              <label>Día de la semana (opcional)</label>
+              <select name="day_of_week" style="width:100%">
+                <option value="">Todos los días</option>
+                <option value="mon">Lunes</option>
+                <option value="tue">Martes</option>
+                <option value="wed">Miércoles</option>
+                <option value="thu">Jueves</option>
+                <option value="fri">Viernes</option>
+                <option value="sat">Sábado</option>
+                <option value="sun">Domingo</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Hora</label>
+              <input type="number" name="hour" value="10" min="0" max="23">
+            </div>
+          </div>
+          <div class="field">
+            <label>Minuto</label>
+            <input type="number" name="minute" value="0" min="0" max="59">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">✅ Crear recordatorio</button>
+      </form>
+    </div>
+  </details>
+</div>
+
+<!-- NUEVO MENSAJE PROGRAMADO (puntual) -->
 <div class="card">
   <h2>➕ Nuevo mensaje programado</h2>
   <form method="post" action="/admin/scheduler/add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
       <label>Mensaje</label>
       <div class="fmt-bar" data-target="sched-text">
@@ -92,6 +204,7 @@
         {% else %}
           <span class="badge-pending">⏳ Pendiente</span>
           <form method="post" action="/admin/scheduler/{{ msg.id }}/delete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-danger btn-xs">Cancelar</button>
           </form>
         {% endif %}
@@ -120,10 +233,16 @@ function fmtBullet(id) {
   ta.setRangeText('• ', lineStart, lineStart, 'end');
   ta.focus();
 }
+function toggleScheduleFields() {
+  const type = document.getElementById('custom-stype').value;
+  document.getElementById('field-interval').style.display = type === 'interval' ? '' : 'none';
+  document.getElementById('field-cron').style.display = type === 'cron' ? '' : 'none';
+}
 window.PAGE_TOUR = [
   { selector: '.page-head',  title: '⏰ Programador de mensajes', desc: 'Programa mensajes para que se envíen automáticamente al grupo en una fecha y hora específica.' },
-  { selector: '.card:first-of-type', title: '➕ Programar mensaje', desc: 'Escribe el mensaje, elige la fecha/hora y pulsa Programar. El bot lo enviará automáticamente.' },
-  { selector: '.msg-row',    title: '📋 Mensajes pendientes',    desc: 'Lista de mensajes en cola. Cada uno muestra cuándo se enviará y puedes cancelarlo si es necesario.' },
+  { selector: '.card:first-of-type', title: '🔔 Recordatorios del sistema', desc: 'Los recordatorios automáticos del bot. Actívalos o desactívalos según necesites.' },
+  { selector: '.card:nth-of-type(2)', title: '⚙️ Recordatorios personalizados', desc: 'Crea tus propios recordatorios recurrentes con mensaje y horario personalizados.' },
+  { selector: '.msg-row',    title: '📋 Mensajes pendientes',    desc: 'Lista de mensajes puntuales en cola. Cada uno muestra cuándo se enviará y puedes cancelarlo.' },
 ];
 </script>
 {% endblock %}

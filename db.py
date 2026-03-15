@@ -728,6 +728,35 @@ def close_poll(poll_db_id):
         cur.execute("UPDATE telegram_polls SET is_closed=TRUE WHERE id=%s", (poll_db_id,))
 
 
+def get_poll_by_telegram_id(telegram_poll_id):
+    """Find a poll by its Telegram poll_id string."""
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM telegram_polls WHERE poll_id=%s ORDER BY created_at DESC LIMIT 1",
+            (telegram_poll_id,)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def remove_book_vote(proposal_id, user_name):
+    """Remove a specific user's vote for a book."""
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM book_votes WHERE proposal_id=%s AND user_name=%s",
+            (proposal_id, user_name)
+        )
+
+
+def remove_theme_vote(theme_id, user_name):
+    """Remove a specific user's vote for a theme."""
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM theme_votes WHERE theme_id=%s AND user_name=%s",
+            (theme_id, user_name)
+        )
+
+
 # =========================================================
 # THEMES MANAGEMENT (admin)
 # =========================================================

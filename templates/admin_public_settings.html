@@ -23,6 +23,7 @@
     transition: .15s;
   }
   .preview-link:hover { background: rgba(99,102,241,.1); }
+  .section-label { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; display: block; }
 </style>
 {% endblock %}
 
@@ -32,6 +33,10 @@
 
 <div class="card">
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Identidad del club -->
+    <span class="section-label">🏷️ Identidad del club</span>
     <div class="field">
       <label>Nombre del club</label>
       <input type="text" name="club_name" value="{{ club_name }}" placeholder="Tribu de Libros" required>
@@ -41,7 +46,7 @@
       <input type="text" name="city" value="{{ city }}" placeholder="León, España">
     </div>
     <div class="field">
-      <label>Descripción corta</label>
+      <label>Descripción corta (subtítulo del hero)</label>
       <textarea name="description" rows="2" placeholder="Un club de lectura íntimo gestionado en Telegram...">{{ description }}</textarea>
     </div>
     <div class="field">
@@ -49,8 +54,52 @@
       <input type="url" name="invite_link" value="{{ invite_link }}" placeholder="https://t.me/+...">
       <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Se usa en el botón "Unirse" y en el QR de la página pública.</div>
     </div>
+
+    <!-- Textos del hero -->
+    <span class="section-label" style="margin-top:20px">🖼️ Sección Hero (portada)</span>
     <div class="field">
-      <label>Tema de color</label>
+      <label>Título principal del hero</label>
+      <input type="text" name="hero_title" value="{{ hero_title }}" placeholder="Leemos, debatimos y crecemos.">
+      <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Texto grande de la portada. La descripción corta de arriba se usa como subtítulo.</div>
+    </div>
+
+    <!-- Títulos de secciones -->
+    <span class="section-label" style="margin-top:20px">📑 Títulos de secciones</span>
+    <div class="field">
+      <label>Sección "Libro actual"</label>
+      <input type="text" name="section_libro" value="{{ section_libro }}" placeholder="El libro que estamos leyendo">
+    </div>
+    <div class="field">
+      <label>Sección "Próxima reunión"</label>
+      <input type="text" name="section_reunion" value="{{ section_reunion }}" placeholder="Próxima reunión">
+    </div>
+    <div class="field">
+      <label>Sección "Propuestas"</label>
+      <input type="text" name="section_propuestas" value="{{ section_propuestas }}" placeholder="Propuestas en votación">
+    </div>
+    <div class="field">
+      <label>Sección "Cómo funciona el bot"</label>
+      <input type="text" name="section_bot" value="{{ section_bot }}" placeholder="¿Cómo funciona el bot?">
+    </div>
+    <div class="field">
+      <label>Sección "Historia del club"</label>
+      <input type="text" name="section_historia" value="{{ section_historia }}" placeholder="Lo que hemos leído juntos">
+    </div>
+
+    <!-- Sección de unirse -->
+    <span class="section-label" style="margin-top:20px">🤝 Sección "Únete al club"</span>
+    <div class="field">
+      <label>Título de la sección</label>
+      <input type="text" name="join_title" value="{{ join_title }}" placeholder="¿Te unes al club?">
+    </div>
+    <div class="field">
+      <label>Texto descriptivo</label>
+      <textarea name="join_body" rows="2" placeholder="Somos un grupo de lectores apasionados...">{{ join_body }}</textarea>
+    </div>
+
+    <!-- Tema de color -->
+    <span class="section-label" style="margin-top:20px">🎨 Tema de color</span>
+    <div class="field">
       <div class="theme-chips">
         <label class="theme-chip">
           <input type="radio" name="theme" value="amber" {% if pub_theme == 'amber' %}checked{% endif %}>
@@ -74,6 +123,7 @@
         </label>
       </div>
     </div>
+
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px">
       <button type="submit" class="btn btn-primary">💾 Guardar cambios</button>
       <a class="preview-link" href="/publico" target="_blank">🔗 Ver página pública</a>

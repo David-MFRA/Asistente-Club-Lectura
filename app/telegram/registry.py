@@ -1,4 +1,4 @@
-from telegram.ext import CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
+from telegram.ext import CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, PollAnswerHandler, filters
 
 
 def register_handlers(telegram_app, handlers):
@@ -46,6 +46,7 @@ def register_handlers(telegram_app, handlers):
         )
     )
     telegram_app.add_handler(CallbackQueryHandler(handlers["button_handler"]))
+    telegram_app.add_handler(PollAnswerHandler(handlers["handle_poll_answer"]))
     telegram_app.add_handler(
         MessageHandler(
             filters.TEXT & filters.ChatType.PRIVATE & ~filters.COMMAND,

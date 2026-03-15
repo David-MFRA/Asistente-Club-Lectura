@@ -564,7 +564,7 @@ footer a:hover{color:var(--amber)}
     <div class="hero-text">
       <div class="hero-eyebrow">📖 &nbsp; {{ club_name }}{% if city %} &nbsp;·&nbsp; {{ city }}{% endif %}</div>
       <h1 class="hero-h1">
-        Leemos,<br><em>debatimos</em><br>y crecemos.
+        {{ hero_title | default("Leemos, debatimos y crecemos.", true) }}
       </h1>
       <p class="hero-sub">
         {{ description or "Un club de lectura íntimo gestionado en Telegram. Votamos juntos el libro, quedamos para debatirlo y dejamos huella de cada encuentro." }}
@@ -615,7 +615,7 @@ footer a:hover{color:var(--amber)}
 <div class="divider" style="margin-top:0">§ Lectura del ciclo</div>
 <section class="section" id="libro">
   <span class="section-label reveal">Ciclo actual</span>
-  <h2 class="section-title reveal">El libro que estamos leyendo</h2>
+  <h2 class="section-title reveal">{{ section_libro | default("El libro que estamos leyendo", true) }}</h2>
   <p class="section-sub reveal">Elegido por votación del grupo. Cada ciclo proponemos títulos y votamos el favorito.</p>
 
   {% if winner %}
@@ -653,7 +653,7 @@ footer a:hover{color:var(--amber)}
 <div class="divider">§ Próxima cita</div>
 <section class="section" id="reunion">
   <span class="section-label reveal">Agenda</span>
-  <h2 class="section-title reveal">Próxima reunión</h2>
+  <h2 class="section-title reveal">{{ section_reunion | default("Próxima reunión", true) }}</h2>
   <p class="section-sub reveal">Quedamos para hablar del libro, compartir opiniones y pasar un buen rato.</p>
 
   <div class="meeting-card reveal">
@@ -699,7 +699,7 @@ footer a:hover{color:var(--amber)}
 <div class="divider">§ Vota el próximo</div>
 <section class="section" id="propuestas">
   <span class="section-label reveal">Ciclo actual</span>
-  <h2 class="section-title reveal">Propuestas en votación</h2>
+  <h2 class="section-title reveal">{{ section_propuestas | default("Propuestas en votación", true) }}</h2>
   <p class="section-sub reveal">Únete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para votar el siguiente libro.</p>
 
   {% set max_votes = proposals[0].votes if proposals[0].votes > 0 else 1 %}
@@ -726,7 +726,7 @@ footer a:hover{color:var(--amber)}
 <div class="divider">§ El bot</div>
 <section class="section" id="bot">
   <span class="section-label reveal">Telegram Bot</span>
-  <h2 class="section-title reveal">¿Cómo funciona el bot?</h2>
+  <h2 class="section-title reveal">{{ section_bot | default("¿Cómo funciona el bot?", true) }}</h2>
   <p class="section-sub reveal">El bot vive en el grupo de Telegram y también en privado. Es tu asistente del club: propones libros, votas, te apuntas a reuniones y mucho más con simples comandos.</p>
 
   <div class="commands-grid">
@@ -806,7 +806,7 @@ footer a:hover{color:var(--amber)}
 <div class="divider">§ Historia del club</div>
 <section class="section" id="historia">
   <span class="section-label reveal">Encuentros pasados</span>
-  <h2 class="section-title reveal">Lo que hemos leído juntos</h2>
+  <h2 class="section-title reveal">{{ section_historia | default("Lo que hemos leído juntos", true) }}</h2>
   <p class="section-sub reveal">Cada reunión es un capítulo de la historia del club. Aquí quedan registrados todos nuestros encuentros.</p>
 
   <div class="past-scroll reveal">
@@ -844,10 +844,10 @@ footer a:hover{color:var(--amber)}
 <section class="section" id="unirse" style="padding-bottom:80px">
   <div class="join-section reveal">
     <div style="font-size:2.5rem;margin-bottom:16px">📚</div>
-    <div class="join-title">¿Te unes al club?</div>
+    <div class="join-title">{{ join_title | default("¿Te unes al club?", true) }}</div>
     <p class="join-sub">
       {% if group_invite_link %}
-        Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros.
+        {{ join_body | default("Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros.", true) }}
       {% else %}
         Habla con el bot en Telegram para empezar a participar. Propón libros, vota y queda con el club.
       {% endif %}

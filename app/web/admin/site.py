@@ -5,6 +5,7 @@ from flask import flash, redirect, render_template, request, url_for
 
 import ai_features
 import db
+from app.messages import get_text
 
 # Nombres de mes en español
 _MONTHS_ES = [
@@ -53,6 +54,14 @@ def render_public_page(group_invite_link):
         city=db.get_config("public_city", "León, España"),
         description=db.get_config("public_description", ""),
         pub_theme=db.get_config("public_theme", "amber"),
+        hero_title=db.get_config("public_hero_title", "Leemos, debatimos y crecemos."),
+        section_libro=db.get_config("public_section_libro", "El libro que estamos leyendo"),
+        section_reunion=db.get_config("public_section_reunion", "Próxima reunión"),
+        section_propuestas=db.get_config("public_section_propuestas", "Propuestas en votación"),
+        section_bot=db.get_config("public_section_bot", "¿Cómo funciona el bot?"),
+        section_historia=db.get_config("public_section_historia", "Lo que hemos leído juntos"),
+        join_title=db.get_config("public_join_title", "¿Te unes al club?"),
+        join_body=db.get_config("public_join_body", "Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros."),
     )
 
 
@@ -66,6 +75,14 @@ def handle_public_settings(require_admin, group_invite_link):
         db.set_config("public_description", request.form.get("description", "").strip())
         db.set_config("public_invite_link", request.form.get("invite_link", "").strip())
         db.set_config("public_theme", request.form.get("theme", "amber"))
+        db.set_config("public_hero_title", request.form.get("hero_title", "").strip() or "Leemos, debatimos y crecemos.")
+        db.set_config("public_section_libro", request.form.get("section_libro", "").strip() or "El libro que estamos leyendo")
+        db.set_config("public_section_reunion", request.form.get("section_reunion", "").strip() or "Próxima reunión")
+        db.set_config("public_section_propuestas", request.form.get("section_propuestas", "").strip() or "Propuestas en votación")
+        db.set_config("public_section_bot", request.form.get("section_bot", "").strip() or "¿Cómo funciona el bot?")
+        db.set_config("public_section_historia", request.form.get("section_historia", "").strip() or "Lo que hemos leído juntos")
+        db.set_config("public_join_title", request.form.get("join_title", "").strip() or "¿Te unes al club?")
+        db.set_config("public_join_body", request.form.get("join_body", "").strip())
         flash("Configuración de la página pública guardada", "success")
         return redirect(url_for("admin_public_settings"))
     settings = {
@@ -74,6 +91,14 @@ def handle_public_settings(require_admin, group_invite_link):
         "description": db.get_config("public_description", ""),
         "invite_link": db.get_config("public_invite_link", "") or group_invite_link,
         "pub_theme": db.get_config("public_theme", "amber"),
+        "hero_title": db.get_config("public_hero_title", "Leemos, debatimos y crecemos."),
+        "section_libro": db.get_config("public_section_libro", "El libro que estamos leyendo"),
+        "section_reunion": db.get_config("public_section_reunion", "Próxima reunión"),
+        "section_propuestas": db.get_config("public_section_propuestas", "Propuestas en votación"),
+        "section_bot": db.get_config("public_section_bot", "¿Cómo funciona el bot?"),
+        "section_historia": db.get_config("public_section_historia", "Lo que hemos leído juntos"),
+        "join_title": db.get_config("public_join_title", "¿Te unes al club?"),
+        "join_body": db.get_config("public_join_body", "Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros."),
     }
     return render_template("admin_public_settings.html", **settings)
 
@@ -134,10 +159,13 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
 
     # Create predefined themes
     created_themes = []
+    created_theme_ids = []
     for t in candidate_themes:
         try:
-            db.create_theme(t, created_by="admin", cycle_key=name)
+            result = db.create_theme(t, created_by="admin", cycle_key=name)
             created_themes.append(t)
+            if result:
+                created_theme_ids.append(result["id"])
         except Exception:
             pass
 
@@ -150,13 +178,16 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
             options = [t[:100] for t in created_themes[:10]]
             msg_poll = await telegram_app.bot.send_poll(
                 chat_id=telegram_chat_id,
-                question="🏷️ ¿Qué temática elegimos para este ciclo?",
+                question=get_text("poll_themes_question"),
                 options=options,
                 is_anonymous=False,
                 allows_multiple_answers=False,
             )
             db.save_poll(chat_id=msg_poll.chat_id, message_id=msg_poll.message_id,
                          poll_id=msg_poll.poll.id, poll_type="themes", cycle_key=name)
+            # Store option→theme_id mapping for real-time vote tracking
+            import json as _json
+            db.set_config(f"poll_options_{msg_poll.poll.id}", _json.dumps(created_theme_ids[:10]))
             db.set_config("cycle_phase", "theme_voting")
             poll_launched = True
         except Exception:

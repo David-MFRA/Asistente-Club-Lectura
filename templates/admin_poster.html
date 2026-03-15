@@ -194,6 +194,7 @@
         <div class="divider"></div>
         <div class="btn-row">
           <button class="btn btn-soft btn-sm" onclick="addTextElement()">+ Añadir texto</button>
+          <button class="btn btn-soft btn-sm" onclick="undo()" title="Ctrl+Z">↩ Deshacer</button>
           <button class="btn btn-soft btn-sm" onclick="resetPositions()">↺ Resetear</button>
         </div>
         <div class="btn-row" style="margin-top:6px">
@@ -287,6 +288,7 @@
         <button class="btn btn-primary" onclick="downloadPoster()">⬇️ Descargar PNG</button>
         <button class="btn btn-soft"    onclick="copyCanvas()">📋 Copiar imagen</button>
         <button class="btn btn-soft"    onclick="downloadQR()">📱 Descargar QR</button>
+        <button class="btn btn-soft" onclick="undo()" title="Ctrl+Z">↩ Deshacer</button>
         <button class="btn btn-soft"    onclick="resetPositions()">↺ Resetear</button>
       </div>
     </div>
@@ -324,7 +326,22 @@ window.PAGE_TOUR = [
   { selector: '.canvas-actions', title: '⬇️ Descargar',           desc: 'Descarga el cartel como PNG de alta calidad, copia la imagen al portapapeles, o descarga solo el código QR.' },
 ];
 let W = 600, H = 400;
-const HANDLE_SIZE = 8;
+const HANDLE_SIZE = 12;
+let hoverEl = null;  // element under cursor (for hover highlight)
+let undoStack = [];
+const UNDO_LIMIT = 20;
+
+function pushUndo() {
+  undoStack.push(JSON.stringify(elements.map(e => ({...e}))));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+}
+function undo() {
+  if (!undoStack.length) return;
+  const snap = undoStack.pop();
+  const saved = JSON.parse(snap);
+  saved.forEach(s => { const el = getEl(s.id); if (el) Object.assign(el, s); });
+  renderLayerList(); renderPropsPanel(); drawPoster();
+}
 
 const FORMATS = {
   horizontal: { w:600, h:400,  label:'Horizontal' },
@@ -485,10 +502,11 @@ function roundRectPath(ctx, x, y, w, h, r) {
 }
 
 function getResizeHandle(el, px, py) {
-  if (el.type !== 'text') return null;
-  const b = getTextBounds(el);
-  const c = {x: el.x + b.w, y: el.y - b.h * 0.75 + b.h, name:'br'};
-  return (Math.abs(px - c.x) < 8 && Math.abs(py - c.y) < 8) ? c : null;
+  // Uses bottom-right corner of selection box as resize handle
+  const {bx,by,bw,bh} = getElBounds(el);
+  const hx = bx+bw, hy = by+bh;
+  const tol = HANDLE_SIZE + 4;
+  return (Math.abs(px - hx) < tol && Math.abs(py - hy) < tol) ? {x:hx,y:hy,name:'br'} : null;
 }
 
 function hitTest(px, py) {
@@ -524,6 +542,8 @@ function drawPoster() {
   else if (currentLayout === 'colorful') drawDecoColorful(t);
   else drawDecoClassic(t);
   for (const el of elements) { if (!el.visible) continue; drawElement(el, t); }
+  // Hover highlight (non-selected element under cursor)
+  if (hoverEl && !hoverEl.selected && hoverEl.visible) drawHover(hoverEl);
   const sel = elements.find(e => e.selected);
   if (sel) drawSelection(sel);
 }
@@ -585,17 +605,32 @@ function drawImageElement(el) {
   ctx.save(); ctx.drawImage(logoImage, el.x, el.y, s, s); ctx.restore();
 }
 
+function getElBounds(el) {
+  if (el.type === 'qr') { const s = parseInt(document.getElementById('f-qrsize').value) + 12; return {bx:el.x-6, by:el.y-6, bw:s, bh:s}; }
+  if (el.type === 'image') { const s = parseInt(document.getElementById('f-logosize').value); return {bx:el.x-3, by:el.y-3, bw:s+6, bh:s+6}; }
+  const b = getTextBounds(el); return {bx:el.x-4, by:el.y-b.h*0.85-4, bw:b.w+8, bh:b.h+8};
+}
+
+function drawHover(el) {
+  const {bx,by,bw,bh} = getElBounds(el);
+  ctx.save(); ctx.strokeStyle='rgba(165,180,252,0.45)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.strokeRect(bx,by,bw,bh); ctx.setLineDash([]); ctx.restore();
+}
+
 function drawSelection(el) {
-  let bx, by, bw, bh;
-  if (el.type === 'qr') { const s = parseInt(document.getElementById('f-qrsize').value) + 12; bx=el.x-6; by=el.y-6; bw=s; bh=s; }
-  else if (el.type === 'image') { const s = parseInt(document.getElementById('f-logosize').value); bx=el.x-3; by=el.y-3; bw=s+6; bh=s+6; }
-  else { const b = getTextBounds(el); bx=el.x-4; by=el.y-b.h*0.85-4; bw=b.w+8; bh=b.h+8; }
-  ctx.save(); ctx.strokeStyle='rgba(99,102,241,0.85)'; ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.strokeRect(bx,by,bw,bh); ctx.setLineDash([]);
+  const {bx,by,bw,bh} = getElBounds(el);
+  ctx.save(); ctx.strokeStyle='rgba(99,102,241,0.9)'; ctx.lineWidth=2; ctx.setLineDash([5,3]); ctx.strokeRect(bx,by,bw,bh); ctx.setLineDash([]);
   const hs = HANDLE_SIZE;
-  [{x:bx,y:by},{x:bx+bw-hs,y:by},{x:bx,y:by+bh-hs},{x:bx+bw-hs,y:by+bh-hs}].forEach(c => {
-    ctx.fillStyle='#6366f1'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
-    ctx.fillRect(c.x,c.y,hs,hs); ctx.strokeRect(c.x,c.y,hs,hs);
+  // Draw 4 corner handles + resize label on bottom-right
+  [{x:bx,y:by},{x:bx+bw-hs,y:by},{x:bx,y:by+bh-hs},{x:bx+bw-hs,y:by+bh-hs}].forEach((c,i) => {
+    ctx.fillStyle = i===3 ? '#818cf8' : '#6366f1';
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+    roundRectPath(ctx,c.x,c.y,hs,hs,3); ctx.fill(); ctx.stroke();
   });
+  // Resize hint on bottom-right handle
+  ctx.fillStyle='#fff'; ctx.font='bold 7px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('↔', bx+bw-hs/2, by+bh-hs/2+2.5);
+  ctx.textAlign='left';
   ctx.restore();
 }
 
@@ -753,7 +788,10 @@ function renderPropsPanel() {
     <div class="poster-field row-inline" style="margin-top:2px"><input type="checkbox" id="prop-shadow" ${el.shadowGlow?'checked':''} onchange="setPropShadow(this.checked)"><label for="prop-shadow">Sombra / glow</label></div>
     ` : ''}
     <div class="poster-field row-inline" style="margin-top:4px"><input type="checkbox" id="prop-vis" ${el.visible?'checked':''} onchange="setPropVis(this.checked)"><label for="prop-vis">Visible</label></div>
-    ${el.deletable ? `<div style="margin-top:8px"><button class="btn btn-danger btn-sm" onclick="deleteElement('${el.id}')">🗑️ Eliminar</button></div>` : ''}
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-soft btn-sm" onclick="duplicateElement('${el.id}')" title="Ctrl+D">📋 Duplicar</button>
+      ${el.deletable ? `<button class="btn btn-danger btn-sm" onclick="deleteElement('${el.id}')">🗑️ Eliminar</button>` : ''}
+    </div>
   `;
 }
 
@@ -767,7 +805,8 @@ function setPropVis(val) { const el = getSelected(); if (!el) return; el.visible
 function setPropFont(val){ const el = getSelected(); if (!el) return; el.fontFamily=val; drawPoster(); }
 function setPropOpacity(val){ const el = getSelected(); if (!el) return; el.opacity=parseInt(val)/100; const lbl=document.getElementById('prop-op-val'); if(lbl) lbl.textContent=val+'%'; drawPoster(); }
 function setPropShadow(val){ const el = getSelected(); if (!el) return; el.shadowGlow=val; drawPoster(); }
-function deleteElement(id){ const idx = elements.findIndex(e => String(e.id)===String(id)); if (idx>=0) { elements.splice(idx,1); renderLayerList(); renderPropsPanel(); drawPoster(); } }
+function deleteElement(id){ const idx = elements.findIndex(e => String(e.id)===String(id)); if (idx>=0) { pushUndo(); elements.splice(idx,1); renderLayerList(); renderPropsPanel(); drawPoster(); } }
+function duplicateElement(id){ const src=getEl(id); if(!src) return; pushUndo(); const copy={...src, id:'custom_'+Date.now(), x:src.x+15, y:src.y+15, selected:false, deletable:true}; elements.push(copy); selectElement(copy); renderLayerList(); drawPoster(); }
 
 function saveTemplate() {
   const data = { theme:currentTheme, layout:currentLayout, elements:elements.map(e => ({id:e.id,x:e.x,y:e.y,text:e.text,fontSize:e.fontSize,color:e.color,fontWeight:e.fontWeight,fontStyle:e.fontStyle,fontFamily:e.fontFamily||'Inter',visible:e.visible,opacity:e.opacity!==undefined?e.opacity:1,shadowGlow:e.shadowGlow||false})) };
@@ -797,40 +836,110 @@ function switchTab(name, btn) {
 
 function onPointerDown(px, py) {
   const sel = getSelected();
-  if (sel && sel.type === 'text') {
-    const b = getTextBounds(sel), hx = sel.x+b.w, hy = sel.y-b.h*0.75+b.h;
-    if (Math.abs(px-hx)<10 && Math.abs(py-hy)<10) { resizing=true; resizeEl=sel; resizeStartX=px; resizeStartY=py; resizeStartFS=sel.fontSize; return; }
+  // Check resize handle on selected element first
+  if (sel) {
+    const rh = getResizeHandle(sel, px, py);
+    if (rh) { pushUndo(); resizing=true; resizeEl=sel; resizeStartX=px; resizeStartY=py; resizeStartFS=sel.fontSize; canvas.style.cursor='nwse-resize'; return; }
   }
   const hit = hitTest(px, py);
-  if (hit) { selectElement(hit); dragging=true; dragEl=hit; dragOffX=px-hit.x; dragOffY=py-hit.y; }
-  else { selectElement(null); }
+  if (hit) {
+    if (!hit.selected) selectElement(hit);
+    pushUndo();
+    dragging=true; dragEl=hit; dragOffX=px-hit.x; dragOffY=py-hit.y;
+    canvas.style.cursor='grabbing';
+  } else {
+    selectElement(null);
+    canvas.style.cursor='default';
+  }
   drawPoster();
 }
 
 function onPointerMove(px, py) {
-  if (resizing && resizeEl) { const dx=px-resizeStartX; resizeEl.fontSize=Math.max(8,Math.min(96,Math.round(resizeStartFS+dx*0.4))); renderPropsPanel(); drawPoster(); return; }
+  if (resizing && resizeEl) {
+    const dx=px-resizeStartX, dy=py-resizeStartY;
+    resizeEl.fontSize=Math.max(8,Math.min(96,Math.round(resizeStartFS+(dx+dy)*0.3)));
+    renderPropsPanel(); drawPoster(); return;
+  }
   if (dragging && dragEl) {
-    dragEl.x=Math.round(px-dragOffX); dragEl.y=Math.round(py-dragOffY);
+    dragEl.x=Math.max(-40, Math.round(px-dragOffX));
+    dragEl.y=Math.max(10, Math.round(py-dragOffY));
     const xIn=document.getElementById('prop-x'), yIn=document.getElementById('prop-y');
     if(xIn) xIn.value=dragEl.x; if(yIn) yIn.value=dragEl.y;
     drawPoster(); return;
   }
-  const hit=hitTest(px,py), sel=getSelected();
-  if (sel && sel.type==='text') { const b=getTextBounds(sel), hx=sel.x+b.w, hy=sel.y-b.h*0.75+b.h; if(Math.abs(px-hx)<10&&Math.abs(py-hy)<10){canvas.style.cursor='nwse-resize';return;} }
-  canvas.style.cursor = hit ? 'grab' : 'default';
+  // Update hover state
+  const hit=hitTest(px,py);
+  if (hit !== hoverEl) { hoverEl=hit; drawPoster(); }
+  // Cursor
+  const sel=getSelected();
+  if (sel) {
+    const rh = getResizeHandle(sel, px, py);
+    if (rh) { canvas.style.cursor='nwse-resize'; return; }
+  }
+  canvas.style.cursor = hit ? 'pointer' : 'default';
 }
 
 function onPointerUp() {
-  if (dragging) { canvas.style.cursor='default'; dragging=false; dragEl=null; }
-  if (resizing) { resizing=false; resizeEl=null; }
+  if (dragging) { canvas.style.cursor = hoverEl ? 'pointer' : 'default'; dragging=false; dragEl=null; }
+  if (resizing) { resizing=false; resizeEl=null; canvas.style.cursor='default'; }
 }
 
-canvas.addEventListener('mousedown', e => { const p=getCanvasPos(e); onPointerDown(p.x,p.y); canvas.style.cursor=dragging?'grabbing':canvas.style.cursor; });
+canvas.addEventListener('mousedown', e => { const p=getCanvasPos(e); onPointerDown(p.x,p.y); });
 window.addEventListener('mousemove', e => { const p=getCanvasPos(e); onPointerMove(p.x,p.y); });
 window.addEventListener('mouseup', () => onPointerUp());
 canvas.addEventListener('touchstart', e => { e.preventDefault(); const p=getCanvasPos(e); onPointerDown(p.x,p.y); }, {passive:false});
 canvas.addEventListener('touchmove',  e => { e.preventDefault(); const p=getCanvasPos(e); onPointerMove(p.x,p.y); }, {passive:false});
 canvas.addEventListener('touchend',   e => { e.preventDefault(); onPointerUp(); }, {passive:false});
+
+// Double-click: focus text input in left panel for quick editing
+canvas.addEventListener('dblclick', e => {
+  const p=getCanvasPos(e), hit=hitTest(p.x,p.y);
+  if (!hit || hit.type !== 'text') return;
+  selectElement(hit); drawPoster(); renderPropsPanel();
+  // Try to focus matching left-panel input
+  const fm={club:'f-club',title:'f-title',author:'f-author',date:'f-date',subtitle:'f-subtitle'};
+  const inpId = fm[hit.id];
+  const ta = document.getElementById('prop-text') || (inpId ? document.getElementById(inpId) : null);
+  if (ta) { ta.focus(); ta.select(); }
+});
+
+// Keyboard shortcuts
+window.addEventListener('keydown', e => {
+  const tag = document.activeElement?.tagName;
+  // Don't intercept when typing in an input/textarea
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  const sel = getSelected();
+
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+    e.preventDefault();
+    if (sel) {
+      const copy = {...sel, id: 'custom_' + Date.now(), x: sel.x+15, y: sel.y+15, selected:false, deletable:true};
+      pushUndo(); elements.push(copy); selectElement(copy); renderLayerList(); drawPoster();
+    }
+    return;
+  }
+
+  if (!sel) return;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (sel.deletable) { e.preventDefault(); pushUndo(); deleteElement(sel.id); }
+    return;
+  }
+
+  // Arrow keys — nudge selected element
+  const step = e.shiftKey ? 10 : 1;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); pushUndo(); sel.x -= step; }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); pushUndo(); sel.x += step; }
+  else if (e.key === 'ArrowUp')    { e.preventDefault(); pushUndo(); sel.y -= step; }
+  else if (e.key === 'ArrowDown')  { e.preventDefault(); pushUndo(); sel.y += step; }
+  else return;
+
+  const xIn=document.getElementById('prop-x'), yIn=document.getElementById('prop-y');
+  if(xIn) xIn.value=sel.x; if(yIn) yIn.value=sel.y;
+  drawPoster();
+});
 
 function downloadPoster() {
   const prev = getSelected(); elements.forEach(e => e.selected=false); drawPoster();

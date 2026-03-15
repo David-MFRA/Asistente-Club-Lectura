@@ -1,6 +1,7 @@
 import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.services.bot_context import get_soft_guidance
 from app.services.meeting_lookup import find_meeting_by_text
 
 
@@ -18,21 +19,22 @@ class MeetingHandlers:
             return
         self.logger.info("/reunion: user_id=%d args=%r", update.effective_user.id, context.args)
         try:
+            current_cycle = db.get_current_cycle_key()
             if context.args:
                 query = " ".join(context.args)
                 meeting = find_meeting_by_text(query)
                 if not meeting:
                     await update.message.reply_text(
-                        f"No encontre ninguna reunion con «{query}».\n"
-                        "Usa /reunion sin argumentos para ver la proxima.",
+                        f"No encontre ninguna reunion con '{query}'.\nUsa /reunion sin argumentos para ver la proxima.",
                         parse_mode=None,
                     )
                     return
             else:
-                meeting = db.get_latest_scheduled_meeting()
+                meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
 
             if not meeting:
-                await update.message.reply_text("No hay reunion programada todavia.", parse_mode=None)
+                guidance = get_soft_guidance("asistir", cycle_key=current_cycle)
+                await update.message.reply_text(guidance or "No hay reunion programada todavia.", parse_mode=None)
                 return
 
             attendees = db.get_attendance(meeting["id"])
@@ -68,38 +70,37 @@ class MeetingHandlers:
     async def asistir(self, update, context):
         if not await self.allowed(update):
             return
-        u = update.effective_user
-        self.logger.info("/asistir: user=%s id=%d", u.first_name or u.username, u.id)
+        user_obj = update.effective_user
+        self.logger.info("/asistir: user=%s id=%d", user_obj.first_name or user_obj.username, user_obj.id)
         if not self.check_cooldown(update.effective_user.id, "asistir", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
         try:
             meetings = db.get_upcoming_meetings()
             if not meetings:
-                await update.message.reply_text("No hay reunion activa.", parse_mode=None)
+                guidance = get_soft_guidance("asistir")
+                await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             if len(meetings) == 1:
                 meeting = meetings[0]
                 ok = db.add_attendance(meeting["id"], user)
                 if not ok:
-                    await update.message.reply_text(
-                        f"Ya estás apuntado a {meeting['name']}.", parse_mode=None
-                    )
+                    db.log_event("bot", f"Asistencia duplicada para {meeting['name']}", category="meeting", actor=user)
+                    await update.message.reply_text(f"Ya estas apuntado a {meeting['name']}.", parse_mode=None)
                     return
-                db.log_event("bot", f"{user} se apunto a «{meeting['name']}»", category="meeting", actor=user)
+                db.log_event("bot", f"{user} se apunto a '{meeting['name']}'", category="meeting", actor=user)
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees)
                 await update.message.reply_text(
-                    f"{user} se apunto a {meeting['name']}\n\n"
-                    f"Apuntados ({len(attendees)}):\n{names}",
+                    f"{user} se apunto a {meeting['name']}\n\nApuntados ({len(attendees)}):\n{names}",
                     parse_mode=None,
                 )
             else:
                 keyboard = []
                 for meeting in meetings[:5]:
                     date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-                    label = f"{meeting['name']} · {date_text}"
+                    label = f"{meeting['name']} - {date_text}"
                     keyboard.append([InlineKeyboardButton(label, callback_data=f"attend:{meeting['id']}")])
                 await update.message.reply_text(
                     "A que reunion te apuntas? Elige una:",
@@ -113,32 +114,33 @@ class MeetingHandlers:
     async def noasistir(self, update, context):
         if not await self.allowed(update):
             return
-        u = update.effective_user
-        self.logger.info("/noasistir: user=%s id=%d", u.first_name or u.username, u.id)
+        user_obj = update.effective_user
+        self.logger.info("/noasistir: user=%s id=%d", user_obj.first_name or user_obj.username, user_obj.id)
         if not self.check_cooldown(update.effective_user.id, "noasistir", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
         try:
             meetings = db.get_upcoming_meetings()
             if not meetings:
-                await update.message.reply_text("No hay reunion activa.", parse_mode=None)
+                guidance = get_soft_guidance("noasistir")
+                await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             if len(meetings) == 1:
                 meeting = meetings[0]
                 db.remove_attendance(meeting["id"], user)
+                db.log_event("bot", f"{user} se ha quitado de '{meeting['name']}'", category="meeting", actor=user)
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees) if attendees else "Nadie de momento"
                 await update.message.reply_text(
-                    f"{user} se ha quitado de {meeting['name']}\n\n"
-                    f"Quedan ({len(attendees)}):\n{names}",
+                    f"{user} se ha quitado de {meeting['name']}\n\nQuedan ({len(attendees)}):\n{names}",
                     parse_mode=None,
                 )
             else:
                 keyboard = []
                 for meeting in meetings[:5]:
                     date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-                    label = f"{meeting['name']} · {date_text}"
+                    label = f"{meeting['name']} - {date_text}"
                     keyboard.append([InlineKeyboardButton(label, callback_data=f"noattend:{meeting['id']}")])
                 await update.message.reply_text(
                     "De que reunion te quitas? Elige una:",
@@ -153,9 +155,10 @@ class MeetingHandlers:
         if not await self.allowed(update):
             return
         try:
-            meeting = db.get_latest_scheduled_meeting()
+            meeting = db.get_latest_scheduled_meeting(cycle_key=db.get_current_cycle_key())
             if not meeting:
-                await update.message.reply_text("No hay reunion activa\\.", parse_mode="MarkdownV2")
+                guidance = get_soft_guidance("asistencia")
+                await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             attendees = db.get_attendance(meeting["id"])
             names = "\n".join(f"  - {self.esc(name)}" for name in attendees) if attendees else "_Nadie apuntado todavia_"
@@ -165,4 +168,4 @@ class MeetingHandlers:
             )
         except Exception:
             self.logger.exception("Error en /asistencia")
-            await update.message.reply_text("Error obteniendo asistencia\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error obteniendo asistencia.", parse_mode=None)

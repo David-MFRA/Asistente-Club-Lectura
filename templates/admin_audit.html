@@ -1,0 +1,93 @@
+{% extends '_base.html' %}
+{% block title %}Auditoria{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">🛡️</div>
+  <div>
+    <h1>Auditoria admin</h1>
+    <div class="sub">Quien hizo que, desde donde, sobre que objeto y con que resultado.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <form method="get" action="/admin/audit" class="row" style="align-items:end">
+    <div class="field">
+      <label>Accion</label>
+      <input type="text" name="action" value="{{ action }}" placeholder="Ej. db_row_update o admin_login">
+    </div>
+    <div class="field">
+      <label>Estado</label>
+      <select name="status">
+        <option value="" {% if not status %}selected{% endif %}>Todos</option>
+        <option value="ok" {% if status == 'ok' %}selected{% endif %}>ok</option>
+        <option value="error" {% if status == 'error' %}selected{% endif %}>error</option>
+        <option value="blocked" {% if status == 'blocked' %}selected{% endif %}>blocked</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Filtrar</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Actor</th>
+          <th>Accion</th>
+          <th>Objetivo</th>
+          <th>Ruta</th>
+          <th>IP</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="white-space:nowrap">{{ row.created_at|string|truncate(16, True, '') }}</td>
+          <td>{{ row.actor or 'admin' }}</td>
+          <td>
+            <strong>{{ row.action }}</strong>
+            {% if row.result %}<div style="color:var(--muted);font-size:.8rem">{{ row.result }}</div>{% endif %}
+          </td>
+          <td>{{ row.target_type or '—' }}{% if row.target_id %} · {{ row.target_id }}{% endif %}</td>
+          <td style="max-width:220px;white-space:normal">{{ row.method }} {{ row.route }}</td>
+          <td>{{ row.ip or '—' }}</td>
+          <td><span class="pill {% if row.status == 'ok' %}green{% elif row.status == 'error' %}red{% else %}amber{% endif %}">{{ row.status }}</span></td>
+        </tr>
+        <tr>
+          <td colspan="7" style="background:rgba(255,255,255,.02)">
+            <details>
+              <summary style="cursor:pointer;color:var(--muted)">Ver before / after</summary>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+                <div>
+                  <div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Antes</div>
+                  <pre style="white-space:pre-wrap;background:rgba(0,0,0,.16);border:1px solid var(--border);border-radius:10px;padding:10px">{{ row.before_data|tojson(indent=2) if row.before_data else '—' }}</pre>
+                </div>
+                <div>
+                  <div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Despues</div>
+                  <pre style="white-space:pre-wrap;background:rgba(0,0,0,.16);border:1px solid var(--border);border-radius:10px;padding:10px">{{ row.after_data|tojson(indent=2) if row.after_data else '—' }}</pre>
+                </div>
+              </div>
+              {% if row.extra %}
+              <div style="margin-top:10px">
+                <div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Extra</div>
+                <pre style="white-space:pre-wrap;background:rgba(0,0,0,.16);border:1px solid var(--border);border-radius:10px;padding:10px">{{ row.extra|tojson(indent=2) }}</pre>
+              </div>
+              {% endif %}
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">No hay entradas de auditoria con estos filtros.</div>
+  {% endif %}
+</div>
+{% endblock %}

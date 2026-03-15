@@ -1,3 +1,5 @@
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 import db
 
 
@@ -26,76 +28,72 @@ class CallbackHandler:
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
                 if ok:
-                    self.logger.info("Voto libro (inline): %s → «%s» (proposal_id=%d)", user, book_name, proposal_id)
-                    await query.answer(f"Voto registrado para «{book_name}»", show_alert=True)
+                    db.log_event("bot", f"Voto inline registrado para {book_name}", category="callback", actor=user)
+                    await query.answer(f"Voto registrado para '{book_name}'", show_alert=True)
                 else:
-                    self.logger.debug("Voto libro duplicado (inline): %s → proposal_id=%d", user, proposal_id)
-                    await query.answer(f"Ya habias votado «{book_name}»", show_alert=True)
+                    db.log_event("bot", f"Voto inline duplicado para {book_name}", category="callback", actor=user)
+                    await query.answer(f"Ya habias votado '{book_name}'", show_alert=True)
                 return
 
             if data.startswith("vt:"):
                 theme_id = int(data.split(":")[1])
                 ok = db.vote_theme(theme_id, user)
                 if ok:
-                    self.logger.info("Voto temática (inline): %s → theme_id=%d", user, theme_id)
+                    db.log_event("bot", f"Voto inline de tematica registrado #{theme_id}", category="callback", actor=user)
                     await query.answer("Voto de tematica registrado", show_alert=True)
                 else:
-                    self.logger.debug("Voto temática duplicado (inline): %s → theme_id=%d", user, theme_id)
+                    db.log_event("bot", f"Voto inline de tematica duplicado #{theme_id}", category="callback", actor=user)
                     await query.answer("Ya habias votado esa tematica", show_alert=True)
                 return
 
             if data.startswith("attend:"):
                 meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
                 if not meeting_id:
-                    self.logger.warning("Callback asistencia sin reunión resoluble: data=%r", data)
-                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
+                    db.log_event("bot", "Callback de asistencia sin reunion activa", category="callback", actor=user)
+                    await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
                     return
                 ok = db.add_attendance(meeting_id, user)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 if ok:
-                    self.logger.info("Asistencia (inline): %s → «%s» (meeting_id=%d)", user, meeting_name, meeting_id)
                     attendees = db.get_attendance(meeting_id)
                     names = ", ".join(attendees) if attendees else "nadie"
-                    await query.answer(f"Apuntado a «{meeting_name}»")
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                    keep_markup = InlineKeyboardMarkup([[
-                        InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting_id}"),
-                    ]])
+                    db.log_event("bot", f"Asistencia inline registrada para {meeting_name}", category="callback", actor=user)
+                    await query.answer(f"Apuntado a '{meeting_name}'")
                     await query.edit_message_text(
                         f"{user} apuntado a {meeting_name}\n\n"
                         f"Apuntados ({len(attendees)}): {names}\n\n"
                         "Usa /noasistir para quitarte.",
                         parse_mode=None,
-                        reply_markup=keep_markup,
+                        reply_markup=InlineKeyboardMarkup(
+                            [[InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting_id}")]]
+                        ),
                     )
                 else:
-                    self.logger.debug("Asistencia duplicada (inline): %s ya en meeting_id=%d", user, meeting_id)
-                    await query.answer(f"Ya estas apuntado a «{meeting_name}»", show_alert=True)
+                    db.log_event("bot", f"Asistencia inline duplicada para {meeting_name}", category="callback", actor=user)
+                    await query.answer(f"Ya estas apuntado a '{meeting_name}'", show_alert=True)
                 return
 
             if data.startswith("noattend:"):
                 meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
                 if not meeting_id:
-                    self.logger.warning("Callback no asistencia sin reunión resoluble: data=%r", data)
-                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
+                    db.log_event("bot", "Callback de no asistencia sin reunion activa", category="callback", actor=user)
+                    await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
                     return
-                self.logger.info("No asistencia (inline): %s → meeting_id=%d", user, meeting_id)
                 db.remove_attendance(meeting_id, user)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 attendees = db.get_attendance(meeting_id)
                 names = ", ".join(attendees) if attendees else "nadie"
-                await query.answer(f"Te has quitado de «{meeting_name}»")
-                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                keep_markup = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting_id}"),
-                ]])
+                db.log_event("bot", f"Asistencia inline cancelada para {meeting_name}", category="callback", actor=user)
+                await query.answer(f"Te has quitado de '{meeting_name}'")
                 await query.edit_message_text(
                     f"{user} se ha quitado de {meeting_name}\n\n"
                     f"Quedan ({len(attendees)}): {names}",
                     parse_mode=None,
-                    reply_markup=keep_markup,
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting_id}")]]
+                    ),
                 )
                 return
 
@@ -128,4 +126,5 @@ class CallbackHandler:
             await query.answer("Accion no reconocida", show_alert=True)
         except Exception:
             self.logger.exception("Error en button_handler")
+            db.log_event("error", "Error procesando callback", category="callback", actor=user, extra={"data": data})
             await query.answer("Error procesando la accion", show_alert=True)

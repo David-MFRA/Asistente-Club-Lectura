@@ -141,10 +141,14 @@ def save_scoped_admin_message(require_admin, default_messages):
     return redirect(url_for("admin_messages"))
 
 
-def delete_scoped_admin_message(require_admin, scoped_key):
+def delete_scoped_admin_message(require_admin):
     auth = require_admin()
     if auth:
         return auth
+    scoped_key = request.form.get("scoped_key", "").strip()
+    if not scoped_key:
+        flash("Falta la clave contextual", "danger")
+        return redirect(url_for("admin_messages"))
     before = next((row for row in db.get_scoped_message_templates() if row["key"] == scoped_key), None)
     db.delete_message_template(scoped_key)
     prepare_admin_audit(

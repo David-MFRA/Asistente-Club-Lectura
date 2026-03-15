@@ -1,0 +1,95 @@
+{% extends '_base.html' %}
+{% block title %}Buscar{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">🔎</div>
+  <div>
+    <h1>Buscador global</h1>
+    <div class="sub">Busca libros, reuniones, ciclos, usuarios, bugs y mensajes desde un solo sitio.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <form method="get" action="/admin/search" class="row" style="align-items:end">
+    <div class="field" style="flex:1;min-width:220px">
+      <label>Que quieres encontrar</label>
+      <input type="text" name="q" value="{{ query }}" placeholder="Ej. Abril 2026, Asimov, bug, Maria, reunion..." autofocus>
+    </div>
+    <button class="btn btn-primary" type="submit">Buscar</button>
+  </form>
+  {% if query %}
+  <div style="margin-top:10px;color:var(--muted);font-size:.84rem">
+    {% if total_results %}
+      {{ total_results }} resultado{{ 's' if total_results != 1 else '' }} para <strong>{{ query }}</strong>
+    {% else %}
+      Sin resultados para <strong>{{ query }}</strong>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if query %}
+  {% for section, label in [
+    ('books', 'Libros'),
+    ('meetings', 'Reuniones'),
+    ('cycles', 'Ciclos'),
+    ('users', 'Usuarios'),
+    ('bugs', 'Bugs'),
+    ('messages', 'Mensajes')
+  ] %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-label">{{ label }}</div>
+    {% set items = results.get(section, []) %}
+    {% if items %}
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td style="white-space:normal">
+                {% if section == 'books' %}
+                  <strong>{{ item.title }}</strong>{% if item.author %} · {{ item.author }}{% endif %}
+                  <div style="color:var(--muted);font-size:.82rem">ciclo {{ item.cycle_key or 'sin ciclo' }} · book_id {{ item.id }}</div>
+                {% elif section == 'meetings' %}
+                  <strong>{{ item.name }}</strong>
+                  <div style="color:var(--muted);font-size:.82rem">{{ item.cycle_key }} · {{ item.status }}{% if item.final_date %} · {{ item.final_date|string|truncate(16, True, '') }}{% endif %}</div>
+                {% elif section == 'cycles' %}
+                  <strong>{{ item.cycle_key }}</strong>
+                {% elif section == 'users' %}
+                  <strong>{{ item.first_name or item.username or ('user ' ~ item.user_id) }}</strong>
+                  <div style="color:var(--muted);font-size:.82rem">@{{ item.username or 'sin_username' }} · {{ item.user_id }}</div>
+                {% elif section == 'bugs' %}
+                  <strong>#{{ item.id }}</strong> · {{ item.status }}
+                  <div style="color:var(--muted);font-size:.82rem">{{ item.username or 'sin username' }} · {{ item.description[:180] }}{% if item.description|length > 180 %}...{% endif %}</div>
+                {% elif section == 'messages' %}
+                  <strong>{{ item.kind }}</strong> · {{ item.ref }}
+                  <div style="color:var(--muted);font-size:.82rem">{{ item.text[:220] }}{% if item.text|length > 220 %}...{% endif %}</div>
+                {% endif %}
+              </td>
+              <td style="width:1%;white-space:nowrap">
+                {% if section == 'meetings' %}
+                  <a class="btn btn-soft btn-xs" href="/meeting/{{ item.id }}">Abrir</a>
+                {% elif section == 'bugs' %}
+                  <a class="btn btn-soft btn-xs" href="/admin/bugs">Ver</a>
+                {% elif section == 'messages' %}
+                  <a class="btn btn-soft btn-xs" href="/admin/messages">Abrir</a>
+                {% elif section == 'cycles' %}
+                  <a class="btn btn-soft btn-xs" href="/admin/ciclo">Abrir</a>
+                {% elif section == 'books' %}
+                  <a class="btn btn-soft btn-xs" href="/admin?tour=1">Dashboard</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">Sin coincidencias en {{ label|lower }}.</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

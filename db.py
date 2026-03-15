@@ -1581,7 +1581,7 @@ ALLOWED_TABLES = [
     "meetings", "meeting_date_options", "meeting_date_votes",
     "meeting_attendance", "book_ratings", "telegram_polls",
     "app_config", "reading_progress", "message_templates", "sent_messages", "scheduled_messages",
-    "book_waitlist", "club_members", "app_events", "bug_reports",
+    "book_waitlist", "club_members", "app_events", "admin_audit_log", "bug_reports",
 ]
 
 

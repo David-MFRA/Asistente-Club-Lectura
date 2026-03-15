@@ -1,0 +1,106 @@
+{% extends '_base.html' %}
+{% block title %}Simulador{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block head_extra %}
+<style>
+  .stats-bar{display:flex;gap:10px;flex-wrap:wrap}
+  .stat-chip{flex:1;min-width:160px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .stat-chip-label{color:var(--muted);font-size:.76rem;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .stat-chip-value{font-size:1.4rem;font-weight:800;line-height:1}
+  .stat-chip-sub{color:var(--muted);font-size:.75rem;margin-top:3px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">🧪</div>
+  <div>
+    <h1>Simulador del bot</h1>
+    <div class="sub">Previsualiza ciclo, mensajes, encuestas y ayudas contextuales sin tocar Telegram ni datos reales.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <form method="get" action="/admin/simulator" class="row" style="align-items:end">
+    <div class="field">
+      <label>Ciclo</label>
+      <select name="cycle">
+        {% for cycle in cycles %}
+        <option value="{{ cycle }}" {% if cycle == cycle_key %}selected{% endif %}>{{ cycle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Audiencia</label>
+      <select name="audience">
+        <option value="private" {% if audience == 'private' %}selected{% endif %}>Privado</option>
+        <option value="group" {% if audience == 'group' %}selected{% endif %}>Grupo</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Modo</label>
+      <select name="admin">
+        <option value="0" {% if not admin_mode %}selected{% endif %}>Usuario</option>
+        <option value="1" {% if admin_mode %}selected{% endif %}>Admin</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">Actualizar</button>
+  </form>
+</div>
+
+<div class="stats-bar" style="margin-bottom:16px">
+  <div class="stat-chip">
+    <div class="stat-chip-label">Paso</div>
+    <div class="stat-chip-value" style="font-size:1rem">{{ context.dashboard_state.step_label }}</div>
+    <div class="stat-chip-sub">{{ context.dashboard_state.step_desc }}</div>
+  </div>
+  <div class="stat-chip">
+    <div class="stat-chip-label">Libro</div>
+    <div class="stat-chip-value" style="font-size:1rem">{{ context.winner.title if context.winner else 'Sin libro' }}</div>
+  </div>
+  <div class="stat-chip">
+    <div class="stat-chip-label">Reunion</div>
+    <div class="stat-chip-value" style="font-size:1rem">{{ context.meeting.name if context.meeting else 'Sin reunion' }}</div>
+  </div>
+  <div class="stat-chip">
+    <div class="stat-chip-label">Comandos</div>
+    <div class="stat-chip-value">{{ commands|length }}</div>
+    <div class="stat-chip-sub">{{ audience }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-label">Menu contextual</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% for command in commands %}
+    <span class="pill">{{ command.emoji }} {{ command.label }}</span>
+    {% endfor %}
+  </div>
+</div>
+
+{% if guidance_samples %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-label">Moderacion suave detectada</div>
+  {% for item in guidance_samples %}
+  <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-top:8px">
+    <strong>/{{ item.command }}</strong>
+    <div style="color:var(--muted);font-size:.86rem;margin-top:4px">{{ item.guidance }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for block in message_blocks %}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-header">
+    <strong>{{ block.title }}</strong>
+    {% if block.kind == 'poll' %}<span class="pill">encuesta</span>{% endif %}
+  </div>
+  {% if block.meta %}
+  <div style="color:var(--muted);font-size:.82rem;margin-bottom:10px">{{ block.meta }}</div>
+  {% endif %}
+  <pre style="white-space:pre-wrap;background:rgba(0,0,0,.18);border:1px solid var(--border);border-radius:12px;padding:14px;margin:0;font-family:inherit;line-height:1.6">{{ block.text }}</pre>
+</div>
+{% endfor %}
+{% endblock %}

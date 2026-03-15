@@ -21,9 +21,10 @@ class BookHandlers:
         if not await self.allowed(update):
             return
         user = update.effective_user
+        cycle_key = db.get_current_cycle_key()
         self.logger.info("/proponer: user=%s id=%d args=%r", user.first_name or user.username, user.id, context.args)
-        if db.get_config("proposals_locked_for") == db.get_current_cycle_key():
-            guidance = get_soft_guidance("proponer")
+        if cycle_key in db.get_locked_cycle_keys():
+            guidance = get_soft_guidance("proponer", cycle_key=cycle_key)
             self.logger.warning("/proponer: propuestas cerradas, rechazado user=%s", user.first_name or user.username)
             await update.message.reply_text(
                 guidance or "Las propuestas para este ciclo estan cerradas. Espera al siguiente ciclo.",
@@ -50,19 +51,16 @@ class BookHandlers:
             book = books_api.google_books(title)
             if not book:
                 self.logger.warning("/proponer: libro no encontrado en Google Books, query=%r", title)
-                await wait_msg.edit_text("No encontre ese libro\\.", parse_mode="MarkdownV2")
+                await wait_msg.edit_text("No encontre ese libro.", parse_mode=None)
                 return
 
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
-            result = db.insert_book(book, user_name)
+            result = db.insert_book(book, user_name, cycle_key=cycle_key)
             await wait_msg.delete()
 
             if not result.get("inserted", True):
                 db.log_event("bot", f"Propuesta duplicada: {book['title']}", category="command", actor=user_name)
-                await update.message.reply_text(
-                    f"{self.esc(book['title'])} ya esta propuesto en este ciclo\\.",
-                    parse_mode="MarkdownV2",
-                )
+                await update.message.reply_text(f"{book['title']} ya esta propuesto en este ciclo.", parse_mode=None)
                 return
 
             db.log_event("bot", f"Libro propuesto: {book['title']}", category="book", actor=user_name)
@@ -87,19 +85,20 @@ class BookHandlers:
                 await update.message.reply_text(caption, parse_mode="MarkdownV2")
         except Exception:
             self.logger.exception("Error en /proponer")
-            await update.message.reply_text("Error anadiendo el libro\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error anadiendo el libro.", parse_mode=None)
 
     async def propuestas(self, update, context):
         if not await self.allowed(update):
             return
+        cycle_key = db.get_current_cycle_key()
         self.logger.info("/propuestas: solicitado por user_id=%d", update.effective_user.id)
         try:
-            books = db.get_book_proposals()
+            books = db.get_book_proposals(cycle_key)
             if not books:
-                guidance = get_soft_guidance("propuestas")
+                guidance = get_soft_guidance("propuestas", cycle_key=cycle_key)
                 await update.message.reply_text(
-                    guidance or "No hay propuestas todavia\\. Usa /proponer para anadir la primera\\.",
-                    parse_mode="MarkdownV2",
+                    guidance or "No hay propuestas todavia. Usa /proponer para anadir la primera.",
+                    parse_mode=None,
                 )
                 return
 
@@ -125,33 +124,34 @@ class BookHandlers:
             )
         except Exception:
             self.logger.exception("Error en /propuestas")
-            await update.message.reply_text("Error obteniendo propuestas\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error obteniendo propuestas.", parse_mode=None)
 
     async def votar(self, update, context):
         if not await self.allowed(update):
             return
         user = update.effective_user
+        cycle_key = db.get_current_cycle_key()
         self.logger.info("/votar: user=%s id=%d args=%r", user.first_name or user.username, user.id, context.args)
         if not self.check_cooldown(update.effective_user.id, "votar", 10):
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
         if not context.args:
             await update.message.reply_text(
-                f"Usa {self.code('/votar numero')} - el numero es la posicion en /propuestas\\.",
+                f"Usa {self.code('/votar numero')} - el numero es la posicion en /propuestas.",
                 parse_mode="MarkdownV2",
             )
             return
         try:
             num = int(context.args[0])
-            books = db.get_book_proposals()
+            books = db.get_book_proposals(cycle_key)
             proposal = next((book for book in books if book.get("cycle_position") == num), None)
             if not proposal:
                 proposal = db.get_proposal_by_id(num)
             if not proposal:
-                guidance = get_soft_guidance("votar")
+                guidance = get_soft_guidance("votar", cycle_key=cycle_key)
                 await update.message.reply_text(
-                    guidance or f"No existe la propuesta \\#{self.bold(str(num))}\\. Usa /propuestas para ver la lista\\.",
-                    parse_mode="MarkdownV2",
+                    guidance or f"No existe la propuesta #{num}. Usa /propuestas para ver la lista.",
+                    parse_mode=None,
                 )
                 return
 
@@ -162,6 +162,7 @@ class BookHandlers:
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
                 self.logger.info("/votar: exito %s -> '%s' (proposal_id=%d)", user_name, book_name, proposal_id)
+                db.log_event("bot", f"Voto libro registrado para {book_name}", category="book", actor=user_name)
                 await update.message.reply_text(
                     f"{self.bold('Voto registrado')} para _{self.esc(book_name)}_\\.\nUsa /propuestas para ver el ranking\\.",
                     parse_mode="MarkdownV2",
@@ -169,20 +170,20 @@ class BookHandlers:
             else:
                 self.logger.debug("/votar: duplicado %s -> proposal_id=%d", user_name, proposal_id)
                 db.log_event("bot", f"Voto duplicado sobre propuesta #{proposal_id}", category="command", actor=user_name)
-                await update.message.reply_text("Ya habias votado esa propuesta\\.", parse_mode="MarkdownV2")
+                await update.message.reply_text("Ya habias votado esa propuesta.", parse_mode=None)
         except ValueError:
-            await update.message.reply_text("El ID debe ser un numero\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("El ID debe ser un numero.", parse_mode=None)
         except Exception:
             self.logger.exception("Error en /votar")
-            await update.message.reply_text("Error registrando el voto\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error registrando el voto.", parse_mode=None)
 
     async def resultados(self, update, context):
         if not await self.allowed(update):
             return
         try:
-            books = db.get_cycle_results()
+            books = db.get_cycle_results(db.get_current_cycle_key())
             if not books:
-                await update.message.reply_text("No hay resultados todavia\\.", parse_mode="MarkdownV2")
+                await update.message.reply_text("No hay resultados todavia.", parse_mode=None)
                 return
             medals = ["1.", "2.", "3."]
             lines = [f"{self.bold('Resultados del ciclo')}\n"]
@@ -196,4 +197,4 @@ class BookHandlers:
             await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
         except Exception:
             self.logger.exception("Error en /resultados")
-            await update.message.reply_text("Error obteniendo resultados\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error obteniendo resultados.", parse_mode=None)

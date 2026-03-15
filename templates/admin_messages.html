@@ -4,32 +4,98 @@
 
 {% block head_extra %}
 <style>
-  h1  { font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; }
-  .sub { color: var(--muted); font-size: .88rem; margin-bottom: 20px; }
-  .key { font-family: monospace; font-size: .8rem; color: #a5b4fc; font-weight: 700; }
-  .badge-custom  { font-size: 11px; padding: 2px 8px; border-radius: 5px; font-weight: 700; background: rgba(99,102,241,.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,.35); }
-  .badge-default { font-size: 11px; padding: 2px 8px; border-radius: 5px; font-weight: 700; background: rgba(16,185,129,.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
-  .placeholders { font-size: .72rem; color: var(--muted); font-family: monospace; margin-top: 6px; line-height: 1.6; }
-  .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-  .preview-box { margin-top: 12px; background: rgba(0,0,0,.35); border: 1px solid rgba(99,102,241,.25); border-radius: 10px; padding: 12px 14px; font-size: .82rem; white-space: pre-wrap; display: none; color: #d1d5db; line-height: 1.7; }
-  .preview-label { font-size: .72rem; color: var(--primary); font-weight: 700; margin-bottom: 6px; }
-  .default-val   { font-size: .75rem; color: var(--muted); margin-top: 8px; font-style: italic; }
-  .fmt-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
-  .fmt-btn { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: .8rem; color: var(--text); cursor: pointer; line-height: 1; transition: background .15s; }
-  .fmt-btn:hover { background: rgba(99,102,241,.25); border-color: var(--primary); }
-  .fmt-hint { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
+  h1{font-size:1.4rem;font-weight:800;margin-bottom:6px}
+  .sub{color:var(--muted);font-size:.88rem;margin-bottom:20px}
+  .key{font-family:monospace;font-size:.8rem;color:#a5b4fc;font-weight:700}
+  .badge-custom{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;background:rgba(99,102,241,.2);color:#a5b4fc;border:1px solid rgba(99,102,241,.35)}
+  .badge-default{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+  .preview-box{margin-top:12px;background:rgba(0,0,0,.35);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:12px 14px;font-size:.82rem;white-space:pre-wrap;display:none;color:#d1d5db;line-height:1.7}
+  .preview-label{font-size:.72rem;color:var(--primary);font-weight:700;margin-bottom:6px}
+  .default-val{font-size:.75rem;color:var(--muted);margin-top:8px;font-style:italic}
+  .fmt-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
+  .fmt-btn{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:.8rem;color:var(--text);cursor:pointer;line-height:1;transition:background .15s}
+  .fmt-btn:hover{background:rgba(99,102,241,.25);border-color:var(--primary)}
 </style>
 {% endblock %}
 
-{% block ai_suggestions %}
-<button onclick="askAI('Redacta un mensaje motivador para enviar al grupo')">✍️ Mensaje motivador</button>
-<button onclick="askAI('Crea un anuncio para el libro ganador del ciclo')">🏆 Anuncio ganador</button>
-<button onclick="askAI('Sinopsis atractiva del libro actual para compartir')">📣 Sinopsis</button>
-{% endblock %}
-
 {% block content %}
-<h1>✉️ Mensajes del Bot</h1>
-<p class="sub">Personaliza los textos que usa el bot. Si no modificas un mensaje, se usa el texto por defecto.</p>
+<h1>Mensajes del bot</h1>
+<p class="sub">Personaliza textos base y tambien variantes por audiencia, fase o ciclo.</p>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-label">Plantilla contextual</div>
+  <form method="post" action="/admin/messages/scoped/save">
+    <div class="row">
+      <div class="field">
+        <label>Base</label>
+        <select name="base_key" required>
+          {% for key in base_keys %}
+          <option value="{{ key }}">{{ key }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Audiencia</label>
+        <select name="audience">
+          <option value="">Sin filtro</option>
+          <option value="private">Privado</option>
+          <option value="group">Grupo</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Fase</label>
+        <select name="phase">
+          <option value="">Sin filtro</option>
+          {% for phase_value, phase_label in phase_options %}
+          <option value="{{ phase_value }}">{{ phase_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Ciclo</label>
+        <select name="cycle_key">
+          <option value="">Sin filtro</option>
+          {% for cycle in active_cycles %}
+          <option value="{{ cycle }}">{{ cycle }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Texto</label>
+      <textarea name="value" rows="4" placeholder="Texto que sustituira a la plantilla base en ese contexto" required></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Guardar variante contextual</button>
+  </form>
+</div>
+
+{% if scoped_templates %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-label">Variantes contextuales activas</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Clave</th><th>Actualizado</th><th>Vista rapida</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for item in scoped_templates %}
+        <tr>
+          <td style="white-space:normal"><span class="key">{{ item.key }}</span></td>
+          <td>{{ item.updated_at|string|truncate(16, True, '') }}</td>
+          <td style="max-width:420px;white-space:normal">{{ item.value[:180] }}{% if item.value|length > 180 %}...{% endif %}</td>
+          <td style="width:1%">
+            <form method="post" action="/admin/messages/scoped/delete" style="margin:0">
+              <input type="hidden" name="scoped_key" value="{{ item.key }}">
+              <button class="btn btn-danger btn-xs" type="submit">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 {% for t in templates %}
 <div class="card">
@@ -43,54 +109,31 @@
         <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<b>','</b>')" title="Negrita"><b>B</b></button>
         <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<i>','</i>')" title="Cursiva"><i>I</i></button>
         <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<u>','</u>')" title="Subrayado"><u>U</u></button>
-        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<s>','</s>')" title="Tachado"><s>S</s></button>
-        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<code>','</code>')" title="Código" style="font-family:monospace">&lt;/&gt;</button>
-        <button type="button" class="fmt-btn" onclick="fmtBullet('ta-{{ t.key }}')" title="Punto de lista">• lista</button>
+        <button type="button" class="fmt-btn" onclick="fmtWrap('ta-{{ t.key }}','<code>','</code>')" title="Codigo">&lt;/&gt;</button>
       </div>
       <textarea name="value" id="ta-{{ t.key }}" rows="4">{{ t.value }}</textarea>
       <details style="margin-top:6px">
-        <summary style="font-size:.74rem;color:var(--muted);cursor:pointer">📋 Ver todos los placeholders disponibles</summary>
+        <summary style="font-size:.74rem;color:var(--muted);cursor:pointer">Ver placeholders disponibles</summary>
         <div style="font-size:.72rem;color:var(--muted);font-family:monospace;margin-top:6px;line-height:1.8;background:rgba(0,0,0,.2);border-radius:8px;padding:10px 12px">
-          <b style="color:#a5b4fc">Placeholders disponibles:</b><br>
-          <b>{user_name}</b> — Nombre del usuario que realiza la acción<br>
-          <b>{book_title}</b> — Título del libro<br>
-          <b>{author}</b> — Autor del libro<br>
-          <b>{author_line}</b> — Línea "✍️ Autor\n" (vacío si no hay autor)<br>
-          <b>{meeting_name}</b> — Nombre de la reunión<br>
-          <b>{meeting_date}</b> — Fecha y hora de la reunión (YYYY-MM-DD HH:MM)<br>
-          <b>{location}</b> — Lugar de la reunión<br>
-          <b>{location_line}</b> — Línea "📍 Lugar\n" (vacío si no hay lugar)<br>
-          <b>{attendee_count}</b> — Número de asistentes confirmados<br>
-          <b>{count}</b> — Número de elementos (asistentes, votos, etc.)<br>
-          <b>{names}</b> — Lista de nombres separados por coma<br>
-          <b>{theme_name}</b> — Nombre de la temática ganadora<br>
-          <b>{cycle_name}</b> — Nombre del ciclo de lectura<br>
-          <b>{votes}</b> — Número de votos<br>
-          <b>{days_left}</b> — Días restantes hasta la reunión<br>
-          <b>{pages}</b> — Número de páginas del libro<br>
-          <b>{daily_pages}</b> — Páginas por día necesarias<br>
-          <b>{theme_line}</b> — Línea con la temática (vacío si no hay tema)<br>
-          <b>{books_list}</b> — Lista de libros empatados<br>
-          <b>{themes_list}</b> — Lista de temáticas empatadas<br>
-          <b>{question}</b> — Pregunta de trivia o debate
+          {user_name} · {book_title} · {author} · {author_line} · {meeting_name} · {meeting_date} · {location} · {location_line}<br>
+          {attendee_count} · {count} · {names} · {theme_name} · {cycle_name} · {votes} · {days_left} · {pages} · {daily_pages}<br>
+          {theme_line} · {books_list} · {themes_list} · {question}
         </div>
       </details>
-      <div class="actions">
-        <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
-        <button type="button" class="btn btn-soft btn-sm" onclick="previewMsg('{{ t.key }}')">👁 Vista previa</button>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+        <button type="button" class="btn btn-soft btn-sm" onclick="previewMsg('{{ t.key }}')">Vista previa</button>
         {% if t.is_custom %}
-        <form method="post" action="/admin/messages/{{ t.key }}/reset" style="display:inline;margin:0">
-          <button type="submit" class="btn btn-soft btn-sm">↩ Restablecer</button>
-        </form>
+        <button type="submit" class="btn btn-soft btn-sm" formaction="/admin/messages/{{ t.key }}/reset">Restablecer</button>
         {% endif %}
       </div>
     </form>
     <div class="preview-box" id="preview-{{ t.key }}">
-      <div class="preview-label">👁 Vista previa con datos de ejemplo</div>
+      <div class="preview-label">Vista previa con datos de ejemplo</div>
       <div id="preview-text-{{ t.key }}"></div>
     </div>
     {% if t.is_custom %}
-    <div class="default-val">Por defecto: {{ t.default_value[:120] }}{% if t.default_value|length > 120 %}…{% endif %}</div>
+    <div class="default-val">Por defecto: {{ t.default_value[:120] }}{% if t.default_value|length > 120 %}...{% endif %}</div>
     {% endif %}
   </div>
 </div>
@@ -104,13 +147,6 @@ function fmtWrap(id, pre, suf) {
   const s = ta.selectionStart, e = ta.selectionEnd;
   const sel = ta.value.slice(s, e) || 'texto';
   ta.setRangeText(pre + sel + suf, s, e, 'select');
-  ta.focus();
-}
-function fmtBullet(id) {
-  const ta = document.getElementById(id);
-  const s = ta.selectionStart;
-  const lineStart = ta.value.lastIndexOf('\n', s - 1) + 1;
-  ta.setRangeText('• ', lineStart, lineStart, 'end');
   ta.focus();
 }
 async function previewMsg(key) {
@@ -129,11 +165,5 @@ async function previewMsg(key) {
     box.style.display = 'block';
   }
 }
-window.PAGE_TOUR = [
-  { selector: '.page-head',    title: '✉️ Mensajes del bot',     desc: 'Aquí editas los textos que el bot envía al grupo: bienvenida, ayuda, recordatorios, etc.' },
-  { selector: '.card:first-of-type', title: '📝 Editar mensaje', desc: 'Cada tarjeta es un mensaje editable. Modifica el texto en el campo y guarda. Se usan variables como {nombre}, {libro}, {fecha}.' },
-  { selector: '.actions',      title: '💾 Guardar y previsualizar', desc: 'Guarda los cambios, previsualiza cómo quedará el mensaje, o resetea al texto por defecto.' },
-  { selector: '.placeholders', title: '🔧 Variables disponibles', desc: 'Lista de variables que puedes usar en el mensaje. Se sustituyen automáticamente con datos reales del ciclo.' },
-];
 </script>
 {% endblock %}

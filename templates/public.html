@@ -19,11 +19,13 @@
 <meta property="og:description" content="{{ seo_desc }}">
 <meta property="og:locale"      content="es_ES">
 {% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
+{% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
 
 {# Twitter Card #}
-<meta name="twitter:card"        content="summary">
+<meta name="twitter:card"        content="{% if og_image %}summary_large_image{% else %}summary{% endif %}">
 <meta name="twitter:title"       content="{{ seo_title }}">
 <meta name="twitter:description" content="{{ seo_desc }}">
+{% if og_image %}<meta name="twitter:image" content="{{ og_image }}">{% endif %}
 
 {# Structured data — LocalBusiness #}
 <script type="application/ld+json">
@@ -41,6 +43,36 @@
   "knowsAbout": ["literatura", "lectura", "club de lectura", "libros"]
 }
 </script>
+{% if winner %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Book",
+  "name": {{ winner.title | tojson }},
+  "author": {{ (winner.author or "") | tojson }},
+  "image": {{ (winner.cover or "") | tojson }},
+  "numberOfPages": {{ winner.pages or 0 }},
+  "description": {{ (winner.description or seo_desc) | tojson }}
+}
+</script>
+{% endif %}
+{% if meeting %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Event",
+  "name": {{ meeting.name | tojson }},
+  "startDate": {{ (meeting.final_date|string if meeting.final_date else "") | tojson }},
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "location": {
+    "@type": "Place",
+    "name": {{ (meeting.location or city) | tojson }}
+  },
+  "description": {{ ("Reunion del club para comentar " ~ (winner.title if winner else "la lectura actual")) | tojson }}
+}
+</script>
+{% endif %}
 
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -617,7 +649,8 @@ footer a:hover{color:var(--amber)}
           📖 Ver cómo funciona
         </a>
         {% endif %}
-        <a class="btn-ghost" href="#libro">Ver lectura actual</a>
+        <a class="btn-ghost" href="{% if meeting %}#reunion{% else %}#libro{% endif %}">{% if meeting %}Ver proxima reunion{% else %}Ver lectura actual{% endif %}</a>
+        <a class="btn-ghost" href="#bot">Como participar</a>
       </div>
       {% if group_invite_link %}
       <a class="hero-qr" href="{{ group_invite_link }}" target="_blank" rel="noopener">
@@ -759,69 +792,45 @@ footer a:hover{color:var(--amber)}
   <p class="section-sub reveal">El bot vive en el grupo de Telegram y también en privado. Es tu asistente del club: propones libros, votas, te apuntas a reuniones y mucho más con simples comandos.</p>
 
   <div class="commands-grid">
+    {% for command in public_commands %}
     <div class="cmd-card reveal">
-      <span class="cmd-icon">📖</span>
-      <span class="cmd-name">/proponer</span>
-      <div class="cmd-title">Propón un libro</div>
-      <div class="cmd-desc">Escribe el título y el bot busca la info en Google Books: portada, autor, sinopsis y páginas. Se añade a la lista automáticamente.</div>
-      <code class="cmd-example">/proponer El nombre del viento</code>
+      <span class="cmd-icon">{{ command.emoji }}</span>
+      <span class="cmd-name">{{ command.label }}</span>
+      <div class="cmd-title">{{ command.desc }}</div>
+      <div class="cmd-desc">
+        {% if command.id == 'proponer' %}
+          Escribe el titulo y el bot busca portada, autor, sinopsis y paginas para anadirlo a las propuestas del ciclo.
+        {% elif command.id in ('propuestas', 'votar') %}
+          Participa en la votacion del ciclo y sigue el ranking sin perderte en el chat.
+        {% elif command.id == 'reunion' %}
+          Consulta fecha, lugar, libro y estado de asistencia de la proxima quedada.
+        {% elif command.id in ('asistir', 'noasistir', 'asistencia') %}
+          Gestiona tu plaza en la reunion y comprueba quien se ha apuntado.
+        {% elif command.id in ('tema', 'temas', 'votar_tema') %}
+          Propone o vota la tematica que guiara las lecturas del siguiente ciclo.
+        {% elif command.id == 'recomendar' %}
+          Pide ideas de lectura relacionadas con la tematica activa del club.
+        {% elif command.id == 'progreso' %}
+          Guarda tus paginas leidas y sigue tu avance hasta la reunion.
+        {% else %}
+          El menu del bot cambia segun el momento del ciclo para mostrar justo lo que mas sentido tiene ahora.
+        {% endif %}
+      </div>
+      <code class="cmd-example">
+        {% if command.id == 'proponer' %}/proponer El nombre del viento
+        {% elif command.id == 'propuestas' %}/propuestas
+        {% elif command.id == 'votar' %}/votar 2
+        {% elif command.id == 'reunion' %}/reunion
+        {% elif command.id == 'asistir' %}/asistir
+        {% elif command.id == 'tema' %}/tema Novela historica
+        {% elif command.id == 'temas' %}/temas
+        {% elif command.id == 'recomendar' %}/recomendar
+        {% elif command.id == 'progreso' %}/progreso 120
+        {% else %}{{ command.label }}
+        {% endif %}
+      </code>
     </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">🗳️</span>
-      <span class="cmd-name">/propuestas</span>
-      <div class="cmd-title">Vota el siguiente libro</div>
-      <div class="cmd-desc">Muestra la lista de propuestas del ciclo con botones para votar directamente. Cada miembro puede votar y ver el ranking en tiempo real.</div>
-      <code class="cmd-example">/propuestas → pulsa el botón del libro</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">📅</span>
-      <span class="cmd-name">/reunion</span>
-      <div class="cmd-title">Info de la próxima quedada</div>
-      <div class="cmd-desc">Te da fecha, lugar, libro y quién se ha apuntado. Puedes confirmar asistencia directamente desde los botones del mensaje.</div>
-      <code class="cmd-example">/reunion → pulsa ✅ Asistir</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">✅</span>
-      <span class="cmd-name">/asistir</span>
-      <div class="cmd-title">Apúntate a la reunión</div>
-      <div class="cmd-desc">Confirma tu asistencia en un solo comando. Si hay varias reuniones activas, el bot te pregunta a cuál quieres ir.</div>
-      <code class="cmd-example">/asistir · /noasistir para quitarte</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">💬</span>
-      <span class="cmd-name">/preguntas</span>
-      <div class="cmd-title">Preguntas de debate con IA</div>
-      <div class="cmd-desc">La IA genera preguntas profundas y personalizadas sobre el libro actual para enriquecer el debate en la reunión. ¡Nunca más quedarse sin temas!</div>
-      <code class="cmd-example">/preguntas → recibe 5 preguntas</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">✨</span>
-      <span class="cmd-name">/cita</span>
-      <div class="cmd-title">Cita literaria del libro</div>
-      <div class="cmd-desc">La IA genera o busca una cita inspiradora relacionada con el libro del ciclo. Perfecta para compartir en el grupo o animarse a leer.</div>
-      <code class="cmd-example">/cita → recibe inspiración</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">🏷️</span>
-      <span class="cmd-name">/temas</span>
-      <div class="cmd-title">Vota la temática</div>
-      <div class="cmd-desc">Propón y vota la temática del próximo ciclo: novela negra, ciencia ficción, clásicos… El grupo decide juntos la dirección de las lecturas.</div>
-      <code class="cmd-example">/tema Novela histórica · /temas para votar</code>
-    </div>
-
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">💡</span>
-      <span class="cmd-name">/recomendar</span>
-      <div class="cmd-title">Recomendaciones de libros</div>
-      <div class="cmd-desc">El bot busca libros relacionados con la temática activa del ciclo. Ideal para encontrar propuestas o leer más allá del libro del mes.</div>
-      <code class="cmd-example">/recomendar → lista de sugerencias</code>
-    </div>
+    {% endfor %}
   </div>
 
   <div style="margin-top:24px;padding:20px 22px;background:rgba(78,205,196,.05);border:1px solid rgba(78,205,196,.15);border-radius:14px" class="reveal">

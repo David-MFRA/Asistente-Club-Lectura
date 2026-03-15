@@ -196,7 +196,7 @@ async function runDemo() {
   for (let step = 0; step < DEMO_TOTAL; step++) {
     setProgress(step);
     try {
-      const res = await fetch(`/admin/demo/step/${step}`);
+      const res = await fetch(`/admin/demo/step/${step}`, {method:'POST'});
       const data = await res.json();
       appendLog(data.message, data.ok ? 'log-ok' : 'log-err');
       if (!data.ok) { appendLog('Demo interrumpida por error.', 'log-err'); break; }

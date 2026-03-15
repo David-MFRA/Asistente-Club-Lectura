@@ -44,6 +44,14 @@ from app.services.bot_context import (
     build_welcome_text,
     get_contextual_commands,
 )
+from app.services.admin_audit import (
+    audit_admin,
+    flush_pending_admin_audit,
+    get_admin_actor,
+    get_request_ip,
+    prepare_admin_audit,
+    remember_admin_identity,
+)
 from app.services.meeting_lookup import find_meeting_by_text
 from app.telegram.access import TelegramAccessControl
 from app.telegram.callbacks import CallbackHandler
@@ -55,12 +63,14 @@ from app.telegram.messaging import TelegramMessagingService
 from app.telegram.registry import register_handlers
 from app.web.admin.messaging import (
     add_scheduled_message,
+    delete_scoped_admin_message,
     delete_scheduled_message,
     preview_admin_message,
     render_admin_messages,
     render_scheduler,
     render_sent_messages,
     reset_admin_message,
+    save_scoped_admin_message,
     send_custom_message,
     update_admin_message,
 )
@@ -111,7 +121,14 @@ from app.web.admin.operations import (
     send_manual_reading_reminder,
     send_pin_all,
 )
-from app.web.admin.monitoring import render_admin_bugs, render_admin_logs, update_admin_bug
+from app.web.admin.monitoring import render_admin_audit, render_admin_bugs, render_admin_logs, update_admin_bug
+from app.web.admin.insights import (
+    get_security_alerts,
+    render_admin_bot_context,
+    render_admin_search,
+    render_admin_simulator,
+    update_admin_bot_context,
+)
 from app.web.admin.polls import (
     close_dates_poll,
     close_poll,
@@ -162,14 +179,7 @@ PORT              = int(os.environ.get("PORT", "10000"))
 ADMIN_SECRET      = CFG_ADMIN_SECRET
 FLASK_SECRET_KEY  = CFG_FLASK_SECRET_KEY
 if not FLASK_SECRET_KEY:
-    import hashlib as _hashlib
-    _bot_token = os.getenv("BOT_TOKEN", "")
-    FLASK_SECRET_KEY = _hashlib.sha256(f"flask-{_bot_token}-secret".encode()).hexdigest()
-    import logging as _log
-    _log.getLogger(__name__).warning(
-        "FLASK_SECRET_KEY no configurada — derivando de BOT_TOKEN. "
-        "Define la variable de entorno para mayor seguridad."
-    )
+    raise RuntimeError("FLASK_SECRET_KEY no disponible tras cargar configuracion")
 TELEGRAM_CHAT_ID  = CFG_TELEGRAM_CHAT_ID
 WEBHOOK_SECRET_TOKEN = CFG_WEBHOOK_SECRET_TOKEN
 # Si se define, el bot SOLO responde a comandos de ese chat/grupo
@@ -186,6 +196,7 @@ if not WEBHOOK_URL:
 # Anti-spam: cooldown por usuario y comando
 _cooldowns: dict = {}  # {(user_id, command): last_used_timestamp}
 _admin_login_attempts: dict = {}  # {remote_addr: [timestamps]}
+_recent_webhook_updates: dict = {}  # {update_id: timestamp}
 
 def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
     """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
@@ -334,6 +345,11 @@ def csrf_protect():
         from flask import abort
         abort(403)
 
+
+@flask_app.after_request
+def admin_audit_after_request(response):
+    return flush_pending_admin_audit(response)
+
 # --------------------------------------------------
 # ASYNC BRIDGE — run coroutines from sync Flask routes
 # --------------------------------------------------
@@ -393,10 +409,18 @@ async def announce_winner(book, cycle_key=None):
     from html import escape as hesc
     cycle_key = cycle_key or book.get("cycle_key") or db.get_current_cycle_key()
     votes = book.get("votes", 0)
-    lines = ["🏆 <b>¡Tenemos libro del mes!</b>"]
-    lines.append(f"\n📗 <b>{hesc(book['title'])}</b>")
-    if book.get("author"):
-        lines.append(f"✍️ <i>{hesc(book['author'])}</i>")
+    author_line = f"✍️ <i>{hesc(book['author'])}</i>\n" if book.get("author") else ""
+    lines = [
+        get_text(
+            "winner_announcement_message",
+            audience="group",
+            phase="reading",
+            cycle_key=cycle_key,
+            book_title=book["title"],
+            author_line=author_line,
+            votes=votes,
+        )
+    ]
     if book.get("pages"):
         lines.append(f"📄 {book['pages']} páginas")
     if book.get("language_code"):
@@ -1396,11 +1420,20 @@ async def send_meeting_reminder():
         from html import escape as hesc
         fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
         names = "\n".join(f"  ✅ {hesc(a)}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
+        parts = [
+            get_text(
+                "meeting_reminder_message",
+                audience="group",
+                phase="reading",
+                cycle_key=meeting.get("cycle_key"),
+                meeting_name=meeting["name"],
+                meeting_date=fecha_str,
+                location_line=f"📍 <b>{hesc(meeting['location'])}</b>\n" if meeting.get("location") else "",
+                attendee_count=len(asistentes),
+                book_title=(book or {}).get("title", "Sin libro"),
+            )
+        ]
 
-        parts = [f"📅 <b>Recordatorio semanal del club</b>\n\n<b>{hesc(meeting['name'])}</b>\n🗓 <b>{hesc(fecha_str)}</b>"]
-
-        if meeting.get("location"):
-            parts.append(f"📍 {hesc(meeting['location'])}")
         if meeting.get("notes"):
             parts.append(f"📝 <i>{hesc(meeting['notes'])}</i>")
 
@@ -1502,12 +1535,21 @@ async def send_reading_reminder():
     from html import escape as hesc
     fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
     reunion_name = meeting["name"] if meeting else "Sin reunión"
-    author_line = f"\n✍️ <i>{hesc(book['author'])}</i>" if book.get("author") else ""
+    author_line = f"✍️ <i>{hesc(book['author'])}</i>\n" if book.get("author") else ""
     parts = [
-        f"📖 <b>Recordatorio de lectura</b>\n\nToca avanzar un poco más en la lectura.\n",
-        f"📚 <b>{hesc(book['title'])}</b>{author_line}",
-        f"\n📅 Reunión: <b>{hesc(reunion_name)}</b>",
-        f"🗓 Fecha: <b>{hesc(fecha)}</b>",
+        get_text(
+            "reading_reminder_message",
+            audience="group",
+            phase="reading",
+            cycle_key=meeting.get("cycle_key") if meeting else db.get_current_cycle_key(),
+            book_title=book["title"],
+            author_line=author_line,
+            meeting_name=reunion_name,
+            meeting_date=fecha,
+            days_left=days_left if days_left is not None else "?",
+            pages=book.get("pages") or 0,
+            daily_pages=max(1, int((book.get("pages") or 1) / 30)),
+        )
     ]
     pages = book.get("pages")
     if pages and days_left is not None and days_left > 0:
@@ -1856,9 +1898,11 @@ async def bug_cmd(update, context):
         return
     description = " ".join(context.args).strip() if context.args else ""
     if not description:
+        context.user_data["pending_bug"] = True
+        context.user_data["pending_bug_started_at"] = _time.time()
         await update.message.reply_text(
-            "🐛 Usa /bug seguido de la descripción del problema.\n"
-            "Ejemplo: /bug El comando /votar no responde",
+            "Cuentame brevemente el problema y lo guardo como reporte.\n\n"
+            "Ejemplo: El comando /votar no responde o la encuesta no se cierra.",
             parse_mode=None
         )
         return
@@ -1887,6 +1931,71 @@ async def bug_cmd(update, context):
         await update.message.reply_text("⚠️ Error enviando el reporte.", parse_mode=None)
 
 
+def _bot_actor_label(update):
+    user = getattr(update, "effective_user", None)
+    if not user:
+        return "desconocido"
+    return user.username or user.first_name or str(user.id)
+
+
+def _clear_pending_flow(context, actor, command_name):
+    user_data = getattr(context, "user_data", None)
+    if user_data is None:
+        return []
+    pending_map = {
+        "pending_proponer": "proponer",
+        "pending_tema": "tema",
+        "pending_bug": "bug",
+    }
+    cleared = []
+    now = _time.time()
+    for pending_key, flow_name in pending_map.items():
+        if not user_data.get(pending_key):
+            continue
+        started_at = user_data.pop(f"{pending_key}_started_at", None)
+        user_data.pop(pending_key, None)
+        duration_ms = int((now - started_at) * 1000) if started_at else None
+        db.log_event(
+            "bot",
+            f"Flujo {flow_name} abandonado por /{command_name}",
+            category="flow",
+            actor=actor,
+            extra={
+                "flow": flow_name,
+                "abandoned_by": command_name,
+                "duration_ms": duration_ms,
+            },
+        )
+        cleared.append(flow_name)
+    return cleared
+
+
+def _trace_bot_handler(name, handler, *, category="command", clear_pending=True):
+    async def _wrapped(update, context):
+        actor = _bot_actor_label(update)
+        chat = getattr(update, "effective_chat", None)
+        if clear_pending:
+            _clear_pending_flow(context, actor, name)
+        started_at = _time.time()
+        result = await handler(update, context)
+        duration_ms = int((_time.time() - started_at) * 1000)
+        db.log_event(
+            "bot",
+            f"Handler {name} ejecutado",
+            category=category,
+            actor=actor,
+            extra={
+                "handler": name,
+                "chat_id": getattr(chat, "id", None),
+                "chat_type": getattr(chat, "type", None),
+                "duration_ms": duration_ms,
+            },
+        )
+        return result
+
+    return _wrapped
+
+
 async def private_text_handler(update, context):
     """Responde a mensajes de texto libre en chats privados guiando al usuario."""
     if update.effective_chat.type != "private":
@@ -1901,13 +2010,22 @@ async def private_text_handler(update, context):
     text = (update.message.text or "").strip()
     text_lower = text.lower()
     u = update.effective_user
+    actor = _bot_actor_label(update)
     logger.debug("private_text: user=%s id=%d text=%r", u.first_name or u.username, u.id, text[:80])
 
     # Handle pending /proponer state
     if context.user_data.get("pending_proponer"):
+        started_at = context.user_data.pop("pending_proponer_started_at", None)
         context.user_data.pop("pending_proponer", None)
         if text:
             logger.info("private_text: pending_proponer resuelto con «%s» por user_id=%d", text, u.id)
+            db.log_event(
+                "bot",
+                "Flujo proponer completado por texto libre",
+                category="flow",
+                actor=actor,
+                extra={"duration_ms": int((_time.time() - started_at) * 1000) if started_at else None},
+            )
             # Reuse proponer logic with the text as title
             context.args = text.split()
             await book_handlers.proponer(update, context)
@@ -1917,13 +2035,49 @@ async def private_text_handler(update, context):
 
     # Handle pending /tema state
     if context.user_data.get("pending_tema"):
+        started_at = context.user_data.pop("pending_tema_started_at", None)
         context.user_data.pop("pending_tema", None)
         if text:
             logger.info("private_text: pending_tema resuelto con «%s» por user_id=%d", text, u.id)
+            db.log_event(
+                "bot",
+                "Flujo tema completado por texto libre",
+                category="flow",
+                actor=actor,
+                extra={"duration_ms": int((_time.time() - started_at) * 1000) if started_at else None},
+            )
             context.args = [text]
             await theme_handlers.tema(update, context)
         else:
             await update.message.reply_text("Escribe el nombre de la temática para proponerla.", parse_mode=None)
+        return
+
+    if context.user_data.get("pending_bug"):
+        started_at = context.user_data.pop("pending_bug_started_at", None)
+        context.user_data.pop("pending_bug", None)
+        if text:
+            try:
+                report_id = db.create_bug_report(
+                    user_id=u.id,
+                    username=u.username or u.first_name or str(u.id),
+                    description=text,
+                )
+                db.log_event(
+                    "bot",
+                    f"Bug report #{report_id} enviado por texto libre",
+                    category="bug",
+                    actor=actor,
+                    extra={"duration_ms": int((_time.time() - started_at) * 1000) if started_at else None},
+                )
+                await update.message.reply_text(
+                    f"Gracias. He guardado tu reporte como #{report_id}.",
+                    parse_mode=None,
+                )
+            except Exception:
+                logger.exception("Error completando flujo /bug por texto libre")
+                await update.message.reply_text("No pude guardar el reporte ahora mismo.", parse_mode=None)
+        else:
+            await update.message.reply_text("Cuéntame brevemente qué ha fallado.", parse_mode=None)
         return
 
     # Saludos
@@ -1931,15 +2085,40 @@ async def private_text_handler(update, context):
         await start(update, context)
         return
 
+    if any(fragment in text_lower for fragment in ("voy a la reunion", "voy a la reunión", "me apunto", "ire a la reunion", "ire a la reunión")):
+        context.args = []
+        await meeting_handlers.asistir(update, context)
+        return
+
+    if any(fragment in text_lower for fragment in ("cuando es la proxima", "cuando es la próxima", "proxima reunion", "próxima reunion", "proxima reunión", "próxima reunión")):
+        context.args = []
+        await meeting_handlers.reunion(update, context)
+        return
+
+    if any(fragment in text_lower for fragment in ("que se lee", "qué se lee", "libro actual", "que estamos leyendo", "qué estamos leyendo")):
+        context.args = []
+        await libro_cmd(update, context)
+        return
+
+    if any(fragment in text_lower for fragment in ("quiero proponer", "que propongo", "qué propongo", "proponer un libro", "propongo un libro")):
+        context.args = []
+        await book_handlers.proponer(update, context)
+        return
+
+    if any(fragment in text_lower for fragment in ("quiero proponer tema", "proponer tematica", "proponer temática", "tema para el club")):
+        context.args = []
+        await theme_handlers.tema(update, context)
+        return
+
     # Guía genérica
     await update.message.reply_text(
-        "👋 Usa los comandos del menú para interactuar con el club.\n\n"
-        "Pulsa el icono / en el teclado para ver todos los comandos, "
-        "o escribe /ayuda para la lista completa.\n\n"
-        "Algunos comandos rápidos:\n"
-        "📚 /propuestas — ver y votar libros\n"
-        "📅 /reunion — próxima reunión\n"
-        "✅ /asistir — apuntarte",
+        "Puedo ayudarte tambien si me escribes en lenguaje natural.\n\n"
+        "Prueba por ejemplo:\n"
+        "- voy a la reunion\n"
+        "- que se lee ahora\n"
+        "- quiero proponer un libro\n"
+        "- cuando es la proxima\n\n"
+        "Si prefieres comandos, usa /ayuda para ver el menu contextual.",
         parse_mode=None
     )
 
@@ -1959,6 +2138,13 @@ async def handle_poll_answer(update, context):
     poll = db.get_poll_by_telegram_id(poll_id)
     if not poll or poll.get("is_closed"):
         logger.debug("poll_answer: encuesta no encontrada o cerrada poll_id=%s", poll_id)
+        db.log_event(
+            "bot",
+            f"Respuesta de encuesta ignorada para poll_id={poll_id}",
+            category="poll",
+            actor=user_name,
+            extra={"poll_id": poll_id, "reason": "missing_or_closed"},
+        )
         return
 
     poll_type = poll.get("poll_type")
@@ -1970,6 +2156,13 @@ async def handle_poll_answer(update, context):
     options_json = db.get_config(f"poll_options_{poll_id}")
     if not options_json:
         logger.warning("poll_answer: sin mapeo de opciones para poll_id=%s", poll_id)
+        db.log_event(
+            "error",
+            f"Encuesta sin mapeo de opciones: {poll_id}",
+            category="poll",
+            actor=user_name,
+            extra={"poll_id": poll_id},
+        )
         return
     try:
         options = json.loads(options_json)  # list of proposal_id or theme_id
@@ -2010,6 +2203,18 @@ async def handle_poll_answer(update, context):
 
     # Persist new selection
     db.set_config(prev_key, json.dumps(new_option_ids))
+    db.log_event(
+        "bot",
+        f"Respuesta de encuesta procesada para poll_id={poll_id}",
+        category="poll",
+        actor=user_name,
+        extra={
+            "poll_id": poll_id,
+            "poll_type": poll_type,
+            "new_option_ids": new_option_ids,
+            "previous_option_ids": prev_option_ids,
+        },
+    )
     logger.debug("poll_answer: procesado OK poll_id=%s user=%s", poll_id, user_name)
 
 
@@ -2018,46 +2223,46 @@ async def handle_poll_answer(update, context):
 # --------------------------------------------------
 
 register_handlers(telegram_app, {
-    "start": start,
-    "proponer": proponer,
-    "propuestas": propuestas,
-    "votar": votar,
-    "resultados": resultados,
-    "reunion": reunion,
-    "asistir": asistir,
-    "noasistir": noasistir,
-    "asistencia": asistencia,
-    "tema": tema,
-    "temas": temas,
-    "votar_tema": votar_tema,
-    "trivia_cmd": trivia_cmd,
-    "recomendar": recomendar,
-    "libro_cmd": libro_cmd,
-    "acta_cmd": acta_cmd,
-    "progreso_cmd": progreso_cmd,
-    "estadisticas_cmd": estadisticas_cmd,
-    "admin_ayuda_cmd": admin_ayuda_cmd,
-    "ciclo_cmd": ciclo_cmd,
-    "nuevo_ciclo_cmd": nuevo_ciclo_cmd,
-    "cerrar_ciclo_cmd": cerrar_ciclo_cmd,
-    "anuncio_cmd": anuncio_cmd,
-    "anunciar_ganador_cmd": anunciar_ganador_cmd,
-    "enviar_recordatorio_cmd": enviar_recordatorio_cmd,
-    "enviar_lectura_cmd": enviar_lectura_cmd,
-    "ayuda_cmd": ayuda_cmd,
-    "encuesta_libros_cmd": encuesta_libros_cmd,
-    "encuesta_temas_cmd": encuesta_temas_cmd,
-    "fijar_cmd": fijar_cmd,
-    "desfijar_cmd": desfijar_cmd,
-    "preguntas_cmd": preguntas_cmd,
-    "cita_cmd": cita_cmd,
-    "lista_espera_cmd": lista_espera_cmd,
-    "proponer_fecha_cmd": proponer_fecha_cmd,
-    "bug_cmd": bug_cmd,
+    "start": _trace_bot_handler("start", start),
+    "proponer": _trace_bot_handler("proponer", proponer),
+    "propuestas": _trace_bot_handler("propuestas", propuestas),
+    "votar": _trace_bot_handler("votar", votar),
+    "resultados": _trace_bot_handler("resultados", resultados),
+    "reunion": _trace_bot_handler("reunion", reunion),
+    "asistir": _trace_bot_handler("asistir", asistir),
+    "noasistir": _trace_bot_handler("noasistir", noasistir),
+    "asistencia": _trace_bot_handler("asistencia", asistencia),
+    "tema": _trace_bot_handler("tema", tema),
+    "temas": _trace_bot_handler("temas", temas),
+    "votar_tema": _trace_bot_handler("votar_tema", votar_tema),
+    "trivia_cmd": _trace_bot_handler("trivia", trivia_cmd),
+    "recomendar": _trace_bot_handler("recomendar", recomendar),
+    "libro_cmd": _trace_bot_handler("libro", libro_cmd),
+    "acta_cmd": _trace_bot_handler("acta", acta_cmd),
+    "progreso_cmd": _trace_bot_handler("progreso", progreso_cmd),
+    "estadisticas_cmd": _trace_bot_handler("estadisticas", estadisticas_cmd),
+    "admin_ayuda_cmd": _trace_bot_handler("admin_ayuda", admin_ayuda_cmd),
+    "ciclo_cmd": _trace_bot_handler("ciclo", ciclo_cmd),
+    "nuevo_ciclo_cmd": _trace_bot_handler("nuevo_ciclo", nuevo_ciclo_cmd),
+    "cerrar_ciclo_cmd": _trace_bot_handler("cerrar_ciclo", cerrar_ciclo_cmd),
+    "anuncio_cmd": _trace_bot_handler("anuncio", anuncio_cmd),
+    "anunciar_ganador_cmd": _trace_bot_handler("anunciar_ganador", anunciar_ganador_cmd),
+    "enviar_recordatorio_cmd": _trace_bot_handler("enviar_recordatorio", enviar_recordatorio_cmd),
+    "enviar_lectura_cmd": _trace_bot_handler("enviar_lectura", enviar_lectura_cmd),
+    "ayuda_cmd": _trace_bot_handler("ayuda", ayuda_cmd),
+    "encuesta_libros_cmd": _trace_bot_handler("encuesta_libros", encuesta_libros_cmd),
+    "encuesta_temas_cmd": _trace_bot_handler("encuesta_temas", encuesta_temas_cmd),
+    "fijar_cmd": _trace_bot_handler("fijar", fijar_cmd),
+    "desfijar_cmd": _trace_bot_handler("desfijar", desfijar_cmd),
+    "preguntas_cmd": _trace_bot_handler("preguntas", preguntas_cmd),
+    "cita_cmd": _trace_bot_handler("cita", cita_cmd),
+    "lista_espera_cmd": _trace_bot_handler("lista_espera", lista_espera_cmd),
+    "proponer_fecha_cmd": _trace_bot_handler("proponer_fecha", proponer_fecha_cmd),
+    "bug_cmd": _trace_bot_handler("bug", bug_cmd),
     "handle_my_chat_member": handle_my_chat_member,
-    "button_handler": button_handler,
-    "handle_poll_answer": handle_poll_answer,
-    "private_text_handler": private_text_handler,
+    "button_handler": _trace_bot_handler("button_handler", button_handler, category="callback", clear_pending=False),
+    "handle_poll_answer": _trace_bot_handler("handle_poll_answer", handle_poll_answer, category="poll", clear_pending=False),
+    "private_text_handler": _trace_bot_handler("private_text_handler", private_text_handler, category="message", clear_pending=False),
 })
 
 # --------------------------------------------------
@@ -2118,33 +2323,72 @@ def health():
 def admin_login():
     if is_admin_logged():
         return redirect(url_for("admin_dashboard"))
-    return render_template("admin_login.html")
+    return render_template("admin_login.html", display_name=session.get("admin_display_name", ""))
 
 @flask_app.post("/admin/login")
 def admin_login_post():
-    remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    remote_addr = get_request_ip()
+    display_name = request.form.get("display_name", "").strip()
     if _is_login_rate_limited(remote_addr):
         logger.warning("Login admin bloqueado por rate limit desde %s", remote_addr)
-        return render_template("admin_login.html", error="Demasiados intentos. Espera unos minutos."), 429
+        audit_admin(
+            "admin_login",
+            actor=display_name or f"admin@{remote_addr}",
+            target_type="session",
+            target_id=remote_addr,
+            status="blocked",
+            result="rate_limited",
+            extra={"display_name": display_name or None},
+        )
+        return render_template("admin_login.html", error="Demasiados intentos. Espera unos minutos.", display_name=display_name), 429
     secret = request.form.get("secret", "").strip()
     if not ADMIN_SECRET:
         return "ADMIN_SECRET no configurado", 500
     if secret != ADMIN_SECRET:
         attempts = _register_login_failure(remote_addr)
         logger.warning("Login admin fallido desde %s (intento %d)", remote_addr, attempts)
-        return render_template("admin_login.html", error="Secreto incorrecto"), 403
+        audit_admin(
+            "admin_login",
+            actor=display_name or f"admin@{remote_addr}",
+            target_type="session",
+            target_id=remote_addr,
+            status="error",
+            result="invalid_secret",
+            extra={"attempt": attempts, "display_name": display_name or None},
+        )
+        return render_template("admin_login.html", error="Secreto incorrecto", display_name=display_name), 403
     _clear_login_failures(remote_addr)
     session.clear()
+    actor = remember_admin_identity(display_name)
     session["admin_logged"] = True
     session["csrf_token"] = secrets.token_hex(16)
     session.permanent = True
+    audit_admin(
+        "admin_login",
+        actor=actor,
+        target_type="session",
+        target_id=remote_addr,
+        status="ok",
+        result="login_ok",
+        extra={"display_name": display_name or None},
+    )
     db.log_event("admin", "Inicio de sesión en el panel", category="auth", actor="admin")
     logger.info("Login admin correcto desde %s", remote_addr)
     return redirect(url_for("admin_dashboard"))
 
 @flask_app.post("/admin/logout")
 def admin_logout():
+    actor = get_admin_actor()
+    remote_addr = get_request_ip()
     db.log_event("admin", "Cierre de sesión del panel", category="auth", actor="admin")
+    audit_admin(
+        "admin_logout",
+        actor=actor,
+        target_type="session",
+        target_id=remote_addr,
+        status="ok",
+        result="logout_ok",
+    )
     session.clear()
     return redirect(url_for("admin_login"))
 
@@ -2166,6 +2410,8 @@ def admin_dashboard():
     cycle_states     = db.get_active_cycle_states()
     tied_books       = db.get_tied_books(current_cycle)
     active_cycles    = db.get_active_cycle_keys()
+    operational_alerts = db.get_operational_alerts()
+    security_alerts = get_security_alerts()
     return render_template(
         "admin.html",
         books=books, meetings=meetings, themes=themes, ranking=ranking,
@@ -2173,6 +2419,8 @@ def admin_dashboard():
         cycle_states=cycle_states, cycle_state=cycle_states[0] if cycle_states else None,
         tied_books=tied_books, tied_count=len(tied_books),
         current_cycle=current_cycle, active_cycles=active_cycles,
+        operational_alerts=operational_alerts,
+        security_alerts=security_alerts,
     )
 
 # --------------------------------------------------
@@ -2471,31 +2719,17 @@ def admin_message_edit(key):
 def admin_message_reset(key):
     return reset_admin_message(require_admin, key)
 
+@flask_app.post("/admin/messages/scoped/save")
+def admin_message_scoped_save():
+    return save_scoped_admin_message(require_admin, DEFAULT_MESSAGES)
+
+@flask_app.post("/admin/messages/scoped/delete")
+def admin_message_scoped_delete():
+    return delete_scoped_admin_message(require_admin)
+
 @flask_app.post("/admin/messages/preview")
 def admin_message_preview():
-    auth = require_admin()
-    if auth:
-        return auth
-    from flask import jsonify
-    template = request.form.get("template", "")
-    example_vars = {
-        "user_name": "María García",
-        "book_title": "El nombre del viento",
-        "author": "Patrick Rothfuss",
-        "meeting_name": "Reunión de Abril",
-        "meeting_date": "2026-04-15 19:00",
-        "location": "Casa de Ana",
-        "attendee_count": "7",
-        "count": "7",
-        "names": "María, Carlos, Ana",
-        "location_line": "📍 Casa de Ana\n",
-        "author_line": "✍️ Patrick Rothfuss\n",
-    }
-    try:
-        rendered = template.format(**example_vars)
-    except (KeyError, ValueError):
-        rendered = template
-    return jsonify({"rendered": rendered})
+    return preview_admin_message(require_admin)
 
 # --------------------------------------------------
 # FLASK — SENT MESSAGES HISTORY
@@ -2793,9 +3027,33 @@ def admin_demo_seed():
 def admin_demo_clear():
     return clear_demo_data(require_admin, db, logger)
 
+@flask_app.post("/admin/demo/step/<int:step>")
+def admin_demo_step(step):
+    return run_admin_demo_step(require_admin, db, _utcnow, logger, step)
+
+@flask_app.get("/admin/search")
+def admin_search():
+    return render_admin_search(require_admin)
+
+@flask_app.get("/admin/simulator")
+def admin_simulator():
+    return render_admin_simulator(require_admin)
+
+@flask_app.get("/admin/bot-context")
+def admin_bot_context():
+    return render_admin_bot_context(require_admin)
+
+@flask_app.post("/admin/bot-context")
+def admin_bot_context_update():
+    return update_admin_bot_context(require_admin)
+
 @flask_app.get("/admin/logs")
 def admin_logs():
     return render_admin_logs(require_admin)
+
+@flask_app.get("/admin/audit")
+def admin_audit():
+    return render_admin_audit(require_admin)
 
 
 # --------------------------------------------------
@@ -2816,6 +3074,23 @@ def admin_bug_update(report_id):
 # --------------------------------------------------
 
 async def _enqueue_webhook_update(data):
+    update_id = data.get("update_id")
+    if update_id is not None:
+        now = _time.time()
+        expired = [key for key, ts in _recent_webhook_updates.items() if now - ts > 600]
+        for key in expired:
+            _recent_webhook_updates.pop(key, None)
+        if update_id in _recent_webhook_updates:
+            logger.info("Webhook duplicado ignorado: update_id=%s", update_id)
+            db.log_event(
+                "system",
+                f"Webhook duplicado ignorado: update_id={update_id}",
+                category="webhook",
+                actor="telegram",
+                extra={"update_id": update_id, "duplicate": True},
+            )
+            return
+        _recent_webhook_updates[update_id] = now
     update = Update.de_json(data, telegram_app.bot)
     await telegram_app.update_queue.put(update)
 
@@ -2826,12 +3101,21 @@ def webhook():
         secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if not WEBHOOK_SECRET_TOKEN or secret_token != WEBHOOK_SECRET_TOKEN:
             logger.warning("Webhook rechazado por token invalido desde %s", request.remote_addr)
+            db.set_config("last_webhook_invalid_at", datetime.utcnow().isoformat())
+            db.log_event(
+                "system",
+                "Webhook rechazado por token invalido",
+                category="webhook",
+                actor=request.remote_addr or "unknown",
+            )
             return Response(status=HTTPStatus.FORBIDDEN)
         data = request.get_json(force=True)
+        db.set_config("last_webhook_received_at", datetime.utcnow().isoformat())
         _run_async(_enqueue_webhook_update(data))
         return Response(status=HTTPStatus.OK)
     except Exception:
         logger.exception("Error procesando webhook")
+        db.log_event("error", "Error procesando webhook", category="webhook", actor=request.remote_addr or "unknown")
         return Response(status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
 # --------------------------------------------------
@@ -2923,6 +3207,7 @@ async def refresh_bot_command_menu():
         logger.info("Comandos del bot actualizados para ciclo=%s (%d comandos)", current_cycle, len(user_commands))
     except Exception:
         logger.warning("No se pudieron actualizar los comandos contextuales del bot")
+    return user_commands
 
 
 async def startup():
@@ -2934,7 +3219,7 @@ async def startup():
     )
 
     # Registrar comandos del bot en Telegram
-    await refresh_bot_command_menu()
+    user_commands = await refresh_bot_command_menu()
 
     # Comandos extra para admins (con scope por chat individual)
     admin_extra = [

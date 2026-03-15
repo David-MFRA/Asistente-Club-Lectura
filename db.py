@@ -522,15 +522,25 @@ def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_
         return row
 
 
-def get_meetings(limit=50):
+def get_meetings(limit=50, cycle_key=None):
     with get_cursor() as cur:
-        cur.execute("""
-        SELECT m.*, b.title AS book_title
-        FROM meetings m
-        LEFT JOIN books b ON b.id = m.book_id
-        ORDER BY COALESCE(m.final_date, m.created_at) DESC
-        LIMIT %s
-        """, (limit,))
+        if cycle_key:
+            cur.execute("""
+            SELECT m.*, b.title AS book_title
+            FROM meetings m
+            LEFT JOIN books b ON b.id = m.book_id
+            WHERE m.cycle_key = %s
+            ORDER BY COALESCE(m.final_date, m.created_at) DESC
+            LIMIT %s
+            """, (cycle_key, limit))
+        else:
+            cur.execute("""
+            SELECT m.*, b.title AS book_title
+            FROM meetings m
+            LEFT JOIN books b ON b.id = m.book_id
+            ORDER BY COALESCE(m.final_date, m.created_at) DESC
+            LIMIT %s
+            """, (limit,))
         return [dict(r) for r in cur.fetchall()]
 
 

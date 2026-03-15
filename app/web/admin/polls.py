@@ -2,7 +2,7 @@ import json
 import logging
 from html import escape as hesc
 
-from flask import flash, redirect, url_for
+from flask import flash, redirect, request, url_for
 
 import ai_features
 import db
@@ -24,16 +24,15 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
     if auth:
         return auth
     try:
-        books = db.get_book_proposals()
-        logger.info("Admin: crear encuesta libros (%d propuestas)", len(books))
+        cycle = request.form.get("cycle", "").strip() or db.get_current_cycle_key()
+        books = db.get_book_proposals(cycle)
+        logger.info("Admin: crear encuesta libros (%d propuestas, ciclo=%s)", len(books), cycle)
         if len(books) < 2:
-            flash("Necesitas al menos 2 propuestas para crear una encuesta", "danger")
+            flash(f"Necesitas al menos 2 propuestas en el ciclo «{cycle}» para crear una encuesta", "danger")
             return redirect(url_for("admin_dashboard"))
         if not telegram_chat_id:
             flash("TELEGRAM_CHAT_ID no configurado en variables de entorno", "danger")
             return redirect(url_for("admin_dashboard"))
-
-        cycle = db.get_current_cycle_key()
         # Lock proposals
         locked_now = db.get_config("proposals_locked_for") or ""
         locked_set = {v.strip() for v in locked_now.split(",") if v.strip()}

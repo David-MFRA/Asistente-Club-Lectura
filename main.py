@@ -2190,6 +2190,7 @@ def admin_logout():
 def admin_dashboard():
     auth = require_admin()
     if auth: return auth
+    current_cycle    = db.get_current_cycle_key()
     books            = db.get_books()
     meetings         = db.get_meetings(limit=5)
     themes           = db.get_themes()
@@ -2198,12 +2199,14 @@ def admin_dashboard():
     open_poll_themes = db.get_open_poll(poll_type="themes")
     cycle_states     = db.get_active_cycle_states()
     tied_books       = db.get_tied_books()
+    active_cycles    = db.get_active_cycle_keys()
     return render_template(
         "admin.html",
         books=books, meetings=meetings, themes=themes, ranking=ranking,
         open_poll_books=open_poll_books, open_poll_themes=open_poll_themes,
         cycle_states=cycle_states, cycle_state=cycle_states[0] if cycle_states else None,
         tied_books=tied_books, tied_count=len(tied_books),
+        current_cycle=current_cycle, active_cycles=active_cycles,
     )
 
 # --------------------------------------------------
@@ -2216,6 +2219,7 @@ def admin_book_add():
     if auth: return auth
     title = request.form.get("title", "").strip()
     next_url = request.form.get("_next", url_for("admin_dashboard"))
+    cycle_key = request.form.get("cycle", "").strip() or None
     if not title:
         flash("El título es obligatorio", "danger")
         return redirect(next_url)
@@ -2226,8 +2230,9 @@ def admin_book_add():
                 "title":  title,
                 "author": request.form.get("author", "").strip() or None,
             }
-        db.insert_book(book, proposed_by="admin")
-        flash(f"Libro «{book['title']}» añadido", "success")
+        db.insert_book(book, proposed_by="admin", cycle_key=cycle_key)
+        effective_cycle = cycle_key or db.get_current_cycle_key()
+        flash(f"Libro «{book['title']}» añadido al ciclo «{effective_cycle}»", "success")
     except Exception:
         logger.exception("Error añadiendo libro desde admin")
         flash("Error añadiendo el libro", "danger")
@@ -2411,7 +2416,7 @@ def admin_send_reading_reminder():
 
 @flask_app.post("/admin/send/meeting-info")
 def admin_send_meeting_info():
-    return _run_async(send_manual_meeting_info(require_admin, send_meeting_reminder, logger))
+    return _run_async(send_manual_meeting_info(require_admin, send_to_group, logger))
 
 @flask_app.post("/admin/send/pin-all")
 def admin_send_pin_all():
@@ -2943,8 +2948,8 @@ async def startup():
         BotCommand("noasistir", "❌ Quitarse de la reunión"),
         BotCommand("asistencia", "👥 Ver lista de asistentes"),
         BotCommand("acta", "📝 Acta de la última reunión"),
-        BotCommand("preguntas", "🤖 Preguntas de debate con IA"),
-        BotCommand("cita", "✨ Cita literaria del libro actual"),
+        BotCommand("progreso", "📈 Mi progreso de lectura"),
+        BotCommand("estadisticas", "📊 Estadísticas del club"),
         BotCommand("recomendar", "💡 Recomendaciones según temática"),
         BotCommand("lista_espera", "⏳ Libros en lista de espera"),
         BotCommand("bug", "🐛 Reportar un problema o bug"),
@@ -2958,6 +2963,8 @@ async def startup():
 
     # Comandos extra para admins (con scope por chat individual)
     admin_extra = [
+        BotCommand("preguntas", "🤖 Generar preguntas de debate con IA"),
+        BotCommand("cita", "✨ Generar cita literaria del libro actual"),
         BotCommand("admin_ayuda", "🛠️ Ayuda de administrador"),
         BotCommand("ciclo", "🔄 Ver ciclo activo"),
         BotCommand("nuevo_ciclo", "🆕 Crear nuevo ciclo"),

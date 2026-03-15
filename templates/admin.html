@@ -141,17 +141,17 @@
     <div class="stat-chip">
       <div class="stat-chip-label">Libros</div>
       <div class="stat-chip-value">{{ books|length }}</div>
-      <div class="stat-chip-sub">propuestas</div>
+      <div class="stat-chip-sub">{{ current_cycle or 'ciclo actual' }}</div>
     </div>
     <div class="stat-chip">
       <div class="stat-chip-label">Votos</div>
       <div class="stat-chip-value">{{ books | sum(attribute='votes') }}</div>
-      <div class="stat-chip-sub">este ciclo</div>
+      <div class="stat-chip-sub">{{ current_cycle or 'ciclo actual' }}</div>
     </div>
     <div class="stat-chip">
       <div class="stat-chip-label">Temáticas</div>
       <div class="stat-chip-value">{{ themes|length }}</div>
-      <div class="stat-chip-sub">propuestas</div>
+      <div class="stat-chip-sub">{{ current_cycle or 'ciclo actual' }}</div>
     </div>
     <div class="stat-chip" style="flex:2;min-width:160px">
       <div class="stat-chip-label">Próxima reunión</div>
@@ -196,9 +196,16 @@
   <details open>
     <summary>📚 Libros <span class="det-badge">{{ books|length }}</span>
       {% if books %}<span class="det-badge green" style="margin-left:4px">{{ books | sum(attribute='votes') }} votos</span>{% endif %}
+      {% if current_cycle %}<span class="det-badge" style="margin-left:4px;background:rgba(99,102,241,.2);color:#a5b4fc">{{ current_cycle }}</span>{% endif %}
       {% if tied_books is defined and tied_books|length > 1 %}<span class="det-badge amber" style="margin-left:4px">⚖️ Empate</span>{% endif %}
     </summary>
     <div class="det-body">
+      {% if active_cycles is defined and active_cycles|length > 1 %}
+      <div style="background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:.83rem;color:var(--muted)">
+        ℹ️ Mostrando propuestas del ciclo <strong style="color:#a5b4fc">{{ current_cycle }}</strong>. Para gestionar otros ciclos ve a <a href="/admin/ciclo" style="color:#a5b4fc">Gestión de ciclos</a>.
+      </div>
+      {% endif %}
+
       {% if tied_books is defined and tied_books|length > 1 %}
       <div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:1.2rem">⚖️</span>
@@ -210,21 +217,23 @@
       {% endif %}
 
       <div class="card">
-        <div class="card-label">Añadir propuesta</div>
+        <div class="card-label">Añadir propuesta{% if current_cycle %} — ciclo {{ current_cycle }}{% endif %}</div>
         <form action="/admin/book/add" method="post" class="row">
+          <input type="hidden" name="cycle" value="{{ current_cycle or '' }}">
           <div class="field"><label>Título</label><input name="title" type="text" placeholder="Ej. Cien años de soledad" required></div>
           <div class="field"><label>Autor (fallback)</label><input name="author" type="text" placeholder="García Márquez"></div>
-          <button class="btn btn-success" type="submit" data-tip="Busca en Google Books y añade a las propuestas">➕ Añadir</button>
+          <button class="btn btn-success" type="submit" data-tip="Busca en Google Books y añade a las propuestas del ciclo {{ current_cycle }}">➕ Añadir</button>
         </form>
       </div>
 
       {% if not open_poll_books|length %}
       <div class="card" style="margin-top:10px">
-        <div class="card-label">Encuesta de libros</div>
+        <div class="card-label">Encuesta de libros{% if current_cycle %} — ciclo {{ current_cycle }}{% endif %}</div>
         {% if books|length >= 2 %}
-          <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">Se enviarán {{ books|length }} opciones al grupo de Telegram.</p>
+          <p style="color:var(--muted);font-size:.84rem;margin-bottom:10px">Se enviarán {{ books|length }} opciones del ciclo <strong>{{ current_cycle }}</strong> al grupo de Telegram.</p>
           <form action="/admin/encuesta/libros/crear" method="post">
-            <button class="btn btn-primary" type="submit" data-tip="Cierra las propuestas y envía una encuesta a Telegram para que el grupo vote">📨 Lanzar encuesta en Telegram</button>
+            <input type="hidden" name="cycle" value="{{ current_cycle or '' }}">
+            <button class="btn btn-primary" type="submit" data-tip="Cierra las propuestas del ciclo {{ current_cycle }} y envía una encuesta a Telegram">📨 Lanzar encuesta en Telegram</button>
           </form>
         {% else %}
           <div class="empty">Necesitas al menos 2 propuestas para crear una encuesta.</div>

@@ -8,57 +8,86 @@ import db
 logger = logging.getLogger(__name__)
 
 
+def _meetings_context(meetings_list):
+    """Builds shared context dict for the meetings template."""
+    active_cycles = db.get_active_cycle_keys()
+    current_cycle = db.get_current_cycle_key()
+    winner_by_cycle = {ck: db.get_winner_book(ck) for ck in active_cycles}
+    meetings_json = json.dumps(
+        [
+            {
+                "id": m["id"],
+                "name": m["name"],
+                "final_date": str(m["final_date"])[:10] if m.get("final_date") else None,
+                "status": m.get("status", "draft"),
+                "cycle_key": m.get("cycle_key", ""),
+            }
+            for m in meetings_list
+        ]
+    )
+    return dict(
+        meetings=meetings_list,
+        meetings_json=meetings_json,
+        active_cycles=active_cycles,
+        current_cycle=current_cycle,
+        winner_by_cycle=winner_by_cycle,
+    )
+
+
 def render_meetings(require_admin):
     auth = require_admin()
     if auth:
         return auth
+
+    cycle_filter = request.args.get("cycle", "").strip() or None
+
     if request.method == "POST":
         name = request.form.get("meeting_name", "").strip()
         meeting_date = request.form.get("meeting_date", "").strip() or None
         location = request.form.get("location", "").strip() or None
+        cycle_key = request.form.get("cycle", "").strip() or None
+
         if not name:
-            meetings_list = db.get_meetings()
-            meetings_json = json.dumps(
-                [
-                    {
-                        "id": meeting["id"],
-                        "name": meeting["name"],
-                        "final_date": str(meeting["final_date"])[:10] if meeting.get("final_date") else None,
-                        "status": meeting.get("status", "draft"),
-                    }
-                    for meeting in meetings_list
-                ]
-            )
-            return render_template(
-                "meetings.html",
-                meetings=meetings_list,
-                meetings_json=meetings_json,
-                error="Falta el nombre",
-            )
+            meetings_list = db.get_meetings(cycle_key=cycle_filter)
+            ctx = _meetings_context(meetings_list)
+            ctx["error"] = "Falta el nombre"
+            ctx["cycle_filter"] = cycle_filter
+            return render_template("meetings.html", **ctx)
+
         try:
-            meeting = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
+            # Auto-associate winner book if the chosen cycle has one
+            book_id = None
+            effective_cycle = cycle_key or db.get_current_cycle_key()
+            winner = db.get_winner_book(effective_cycle)
+            if winner:
+                book_id = winner["id"]
+
+            meeting = db.create_meeting(
+                name=name,
+                final_date=meeting_date,
+                cycle_key=cycle_key,
+                book_id=book_id,
+                created_by="admin",
+            )
             if location:
                 db.update_meeting(meeting_id=meeting["id"], location=location)
-            logger.info("Admin: reunión «%s» creada (id=%d)", name, meeting["id"])
-            flash(f"Reunión «{name}» creada", "success")
+            logger.info(
+                "Admin: reunión «%s» creada (id=%d) ciclo=%s book_id=%s",
+                name, meeting["id"], effective_cycle, book_id,
+            )
+            if winner:
+                flash(f"Reunión «{name}» creada y libro «{winner['title']}» asignado automáticamente", "success")
+            else:
+                flash(f"Reunión «{name}» creada (ciclo: {effective_cycle})", "success")
         except Exception:
             logger.exception("Error creando reunión «%s»", name)
             flash("Error creando la reunión", "danger")
         return redirect(url_for("meetings_admin"))
 
-    meetings_list = db.get_meetings()
-    meetings_json = json.dumps(
-        [
-            {
-                "id": meeting["id"],
-                "name": meeting["name"],
-                "final_date": str(meeting["final_date"])[:10] if meeting.get("final_date") else None,
-                "status": meeting.get("status", "draft"),
-            }
-            for meeting in meetings_list
-        ]
-    )
-    return render_template("meetings.html", meetings=meetings_list, meetings_json=meetings_json)
+    meetings_list = db.get_meetings(cycle_key=cycle_filter)
+    ctx = _meetings_context(meetings_list)
+    ctx["cycle_filter"] = cycle_filter
+    return render_template("meetings.html", **ctx)
 
 
 def render_themes(require_admin):
@@ -85,12 +114,14 @@ def render_meeting_detail(require_admin, meeting_id):
     attendees = db.get_attendance(meeting_id)
     date_options = db.get_meeting_date_options(meeting_id)
     open_poll = db.get_open_poll(poll_type="dates", meeting_id=meeting_id)
+    cycle_winner = db.get_winner_book(meeting.get("cycle_key"))
     return render_template(
         "meeting_detail.html",
         meeting=meeting,
         attendees=attendees,
         date_options=date_options,
         open_poll=open_poll,
+        cycle_winner=cycle_winner,
     )
 
 

@@ -283,7 +283,10 @@
       {% if cycle.winner %}Leyendo «{{ cycle.winner.title }}».{% endif %}
       {% if cycle.meeting and cycle.meeting.final_date %}Reunión: {{ cycle.meeting.final_date|string|truncate(16,True,'') }}.{% endif %}
     </div>
-    <a href="/admin/send/meeting-reminder" class="action-btn secondary" style="display:block;text-decoration:none">📨 Enviar recordatorio ahora</a>
+    <form method="post" action="/admin/send/meeting-reminder" style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="action-btn secondary" style="width:100%;cursor:pointer">📨 Enviar recordatorio ahora</button>
+    </form>
   {% endif %}
 
 </div>

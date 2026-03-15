@@ -37,16 +37,49 @@ async def send_manual_reading_reminder(require_admin, send_reading_reminder, log
     return redirect(url_for("admin_dashboard"))
 
 
-async def send_manual_meeting_info(require_admin, send_meeting_reminder, logger):
+async def send_manual_meeting_info(require_admin, send_to_group, logger):
     auth = require_admin()
     if auth:
         return auth
     try:
-        await send_meeting_reminder()
-        flash("Informacion de reunion enviada al grupo", "success")
+        meeting = db.get_latest_scheduled_meeting()
+        if not meeting:
+            flash("No hay reunión activa para anunciar", "warning")
+            return redirect(url_for("admin_dashboard"))
+
+        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha confirmada"
+        location_line = f"\n📍 <b>{hesc(meeting['location'])}</b>" if meeting.get("location") else ""
+
+        winner = db.get_winner_book(meeting.get("cycle_key"))
+        book_line = f"\n📖 Libro: <b>{hesc(winner['title'])}</b>" if winner else ""
+
+        attendees = db.get_attendance(meeting["id"])
+        attend_line = f"\n👥 {len(attendees)} confirmado{'s' if len(attendees) != 1 else ''}" if attendees else ""
+
+        text = (
+            f"📅 <b>{hesc(meeting['name'])}</b>\n\n"
+            f"🗓 <b>{hesc(date_text)}</b>"
+            f"{location_line}"
+            f"{book_line}"
+            f"{attend_line}\n\n"
+            f"✅ Apúntate con /asistir\n"
+            f"❌ Si no puedes venir, usa /noasistir"
+        )
+        keyboard = [[
+            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+        ]]
+        await send_to_group(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            message_type="meeting_info",
+        )
+        logger.info("Admin: info de reunión enviada (meeting_id=%d)", meeting["id"])
+        flash("Info de reunión enviada al grupo con botones de asistencia", "success")
     except Exception:
         logger.exception("Error enviando info de reunion")
-        flash("Error enviando la informacion", "danger")
+        flash("Error enviando la información", "danger")
     return redirect(url_for("admin_dashboard"))
 
 

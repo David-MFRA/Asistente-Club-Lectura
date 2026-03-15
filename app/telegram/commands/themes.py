@@ -4,6 +4,7 @@ import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.services.bot_context import get_soft_guidance
+from app.services.input_limits import InputValidationError, normalize_theme_name
 
 
 class ThemeHandlers:
@@ -31,6 +32,7 @@ class ThemeHandlers:
             )
             return
         try:
+            name = normalize_theme_name(name)
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             row = db.create_theme(name, created_by=user, cycle_key=db.get_current_cycle_key())
             if row:
@@ -49,6 +51,8 @@ class ThemeHandlers:
                     f"La tematica {name} ya existe en este ciclo.",
                     parse_mode=None,
                 )
+        except InputValidationError as exc:
+            await update.message.reply_text(str(exc), parse_mode=None)
         except Exception:
             self.logger.exception("Error en /tema")
             await update.message.reply_text("Error creando tematica.", parse_mode=None)
@@ -103,7 +107,7 @@ class ThemeHandlers:
         try:
             theme_id = int(context.args[0])
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
-            ok = db.vote_theme(theme_id, user)
+            ok = db.vote_theme(theme_id, user, user_obj.id)
             if ok:
                 db.log_event("bot", f"Voto tematica registrado #{theme_id}", category="theme", actor=user)
                 await update.message.reply_text(

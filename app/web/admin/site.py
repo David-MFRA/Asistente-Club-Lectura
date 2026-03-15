@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone
 from html import escape as hesc
@@ -185,8 +184,7 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
     before_cycles = db.get_active_cycle_keys()
     logger.info("Admin: activando ciclo '%s' con %d tematicas", name, len(candidate_themes))
     db.add_active_cycle(name)
-    db.set_config("active_theme", "")
-    db.set_config(f"active_theme:{name}", "")
+    db.set_cycle_theme(name, "")
 
     created_theme_rows = []
     duplicate_themes = []
@@ -237,7 +235,7 @@ async def activate_cycle(require_admin, send_to_group, logger, telegram_app=None
                 poll_type="themes",
                 cycle_key=name,
             )
-            db.set_config(f"poll_options_{msg_poll.poll.id}", json.dumps(created_theme_ids[:10]))
+            db.set_poll_option_mapping(msg_poll.poll.id, "themes", created_theme_ids[:10])
             db.set_config("cycle_phase", "theme_voting")
             poll_launched = True
         except Exception:
@@ -272,7 +270,7 @@ def close_cycle(require_admin, logger, cycle_key=None):
         return auth
     cycle = cycle_key or request.form.get("cycle_key") or db.get_current_cycle_key()
     before_cycles = db.get_active_cycle_keys()
-    cycle_theme = db.get_config(f"active_theme:{cycle}") or db.get_config("active_theme") or None
+    cycle_theme = db.get_cycle_theme(cycle) or None
     logger.info("Admin: cerrando ciclo '%s'", cycle)
     db.close_cycle(cycle)
     try:
@@ -298,16 +296,12 @@ def set_cycle_theme(require_admin):
     theme = request.form.get("active_theme", "").strip()
     cycle_key = request.form.get("cycle_key", "").strip() or db.get_current_cycle_key()
     before = {
-        "active_theme": db.get_config(f"active_theme:{cycle_key}") or "",
-        "global_active_theme": db.get_config("active_theme") or "",
+        "active_theme": db.get_cycle_theme(cycle_key) or "",
     }
     logger.info("Admin: tematica del ciclo '%s' -> '%s'", cycle_key, theme or "(borrada)")
-    if cycle_key == db.get_current_cycle_key():
-        db.set_config("active_theme", theme)
-    db.set_config(f"active_theme:{cycle_key}", theme)
+    db.set_cycle_theme(cycle_key, theme)
     after = {
-        "active_theme": db.get_config(f"active_theme:{cycle_key}") or "",
-        "global_active_theme": db.get_config("active_theme") or "",
+        "active_theme": db.get_cycle_theme(cycle_key) or "",
     }
     prepare_admin_audit(
         action="cycle_theme_set",
@@ -352,12 +346,10 @@ async def pick_theme_winner(require_admin, theme_id, send_to_group_fn, logger):
 
     cycle_key = theme.get("cycle_key") or db.get_current_cycle_key()
     before = {
-        "active_theme": db.get_config(f"active_theme:{cycle_key}") or "",
+        "active_theme": db.get_cycle_theme(cycle_key) or "",
         "locked_cycles": db.get_locked_cycle_keys(),
     }
-    if cycle_key == db.get_current_cycle_key():
-        db.set_config("active_theme", theme["name"])
-    db.set_config(f"active_theme:{cycle_key}", theme["name"])
+    db.set_cycle_theme(cycle_key, theme["name"])
     _set_phase("books")
     db.unlock_cycle_proposals(cycle_key)
     logger.info("Admin: tematica ganadora manual '%s' en ciclo=%s", theme["name"], cycle_key)
@@ -386,7 +378,7 @@ async def pick_theme_winner(require_admin, theme_id, send_to_group_fn, logger):
         target_id=theme_id,
         before=before,
         after={
-            "active_theme": db.get_config(f"active_theme:{cycle_key}") or "",
+            "active_theme": db.get_cycle_theme(cycle_key) or "",
             "locked_cycles": db.get_locked_cycle_keys(),
         },
     )
@@ -427,13 +419,11 @@ async def advance_to_books(require_admin, send_to_group_fn, logger):
     if auth:
         return auth
     cycle_key = request.form.get("cycle") or db.get_current_cycle_key()
-    active_theme = db.get_config(f"active_theme:{cycle_key}") or ""
+    active_theme = db.get_cycle_theme(cycle_key) or ""
     before = {
         "active_theme": active_theme,
         "locked_cycles": db.get_locked_cycle_keys(),
     }
-    if cycle_key == db.get_current_cycle_key():
-        db.set_config("active_theme", active_theme)
     logger.info("Admin: avanzando a fase books para ciclo=%s", cycle_key)
     _set_phase("books")
     db.unlock_cycle_proposals(cycle_key)
@@ -457,7 +447,7 @@ async def advance_to_books(require_admin, send_to_group_fn, logger):
         target_id=cycle_key,
         before=before,
         after={
-            "active_theme": db.get_config(f"active_theme:{cycle_key}") or "",
+            "active_theme": db.get_cycle_theme(cycle_key) or "",
             "locked_cycles": db.get_locked_cycle_keys(),
         },
     )

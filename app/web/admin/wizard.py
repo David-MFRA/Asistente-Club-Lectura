@@ -1,4 +1,3 @@
-import json
 from html import escape as hesc
 
 from flask import flash, redirect, request, url_for
@@ -18,8 +17,7 @@ async def wizard_new_cycle(require_admin, send_to_group, utcnow, logger):
         cycle_name = _suggested_cycle_name()
     db.add_active_cycle(cycle_name)
     db.unlock_cycle_proposals(cycle_name)
-    db.set_config("active_theme", "")
-    db.set_config(f"active_theme:{cycle_name}", "")
+    db.set_cycle_theme(cycle_name, "")
     db.set_config("cycle_phase", "setup")
 
     try:
@@ -76,7 +74,7 @@ async def wizard_lock_and_poll(require_admin, telegram_app, telegram_chat_id, lo
             cycle_key=cycle,
         )
         # Guardar mapeo opción→proposal_id para seguimiento de votos en tiempo real
-        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in books[:10]]))
+        db.set_poll_option_mapping(msg.poll.id, "books", [b["proposal_id"] for b in books[:10]])
         flash("Propuestas cerradas y encuesta de libros lanzada en Telegram.", "success")
     except Exception:
         logger.exception("Error en wizard lock-and-poll")

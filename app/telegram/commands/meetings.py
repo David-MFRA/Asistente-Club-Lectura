@@ -84,7 +84,7 @@ class MeetingHandlers:
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             if len(meetings) == 1:
                 meeting = meetings[0]
-                ok = db.add_attendance(meeting["id"], user)
+                ok = db.add_attendance(meeting["id"], user, user_obj.id)
                 if not ok:
                     db.log_event("bot", f"Asistencia duplicada para {meeting['name']}", category="meeting", actor=user)
                     await update.message.reply_text(f"Ya estas apuntado a {meeting['name']}.", parse_mode=None)
@@ -128,7 +128,7 @@ class MeetingHandlers:
             user = update.effective_user.first_name or update.effective_user.username or "alguien"
             if len(meetings) == 1:
                 meeting = meetings[0]
-                db.remove_attendance(meeting["id"], user)
+                db.remove_attendance(meeting["id"], user, user_obj.id)
                 db.log_event("bot", f"{user} se ha quitado de '{meeting['name']}'", category="meeting", actor=user)
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees) if attendees else "Nadie de momento"

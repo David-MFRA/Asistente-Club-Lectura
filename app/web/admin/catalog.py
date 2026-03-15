@@ -306,58 +306,6 @@ def save_gallery_notes(require_admin, meeting_id):
     flash("Notas guardadas", "success")
     return redirect(url_for("admin_galeria"))
 
-
-def render_admin_db(require_admin, logger):
-    auth = require_admin()
-    if auth:
-        return auth
-    tables = db.get_table_names()
-    table = request.args.get("table", "books")
-    if table not in tables:
-        table = tables[0]
-    try:
-        cols, rows, pk_column = db.get_table_rows(table)
-        logger.info("Admin DB: tabla cargada table=%s rows=%d pk=%s", table, len(rows), pk_column or "(none)")
-    except Exception:
-        logger.exception("Error cargando tabla")
-        flash(f"No se pudo cargar la tabla «{table}».", "danger")
-        cols, rows, pk_column = [], [], None
-    return render_template("admin_db.html", tables=tables, table=table, cols=cols, rows=rows, pk_column=pk_column)
-
-
-def delete_db_row(require_admin, logger, table):
-    auth = require_admin()
-    if auth:
-        return auth
-    pk_name = (request.form.get("pk_name") or "").strip()
-    pk_value = request.form.get("pk_value")
-    logger.info("Admin DB: eliminando fila tabla=%s pk=%s valor=%r", table, pk_name, pk_value)
-    try:
-        deleted = db.delete_table_row(table, pk_name, pk_value)
-        if deleted:
-            flash(f"Fila eliminada de «{table}».", "success")
-        else:
-            flash(f"No se encontró la fila seleccionada en «{table}».", "warning")
-    except Exception:
-        logger.exception("Error borrando fila en tabla %s", table)
-        flash(f"No se pudo borrar la fila de «{table}».", "danger")
-    return redirect(url_for("admin_db", table=table))
-
-
-def truncate_db_table(require_admin, logger, table):
-    auth = require_admin()
-    if auth:
-        return auth
-    logger.warning("Admin DB: vaciando tabla=%s", table)
-    try:
-        db.truncate_table(table)
-        flash(f"Tabla «{table}» vaciada.", "success")
-    except Exception:
-        logger.exception("Error vaciando tabla %s", table)
-        flash(f"No se pudo vaciar la tabla «{table}».", "danger")
-    return redirect(url_for("admin_db", table=table))
-
-
 def render_admin_db(require_admin, logger):
     auth = require_admin()
     if auth:

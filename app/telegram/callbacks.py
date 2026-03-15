@@ -19,12 +19,13 @@ class CallbackHandler:
         await query.answer()
         data = query.data or ""
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
+        user_id = update.effective_user.id if update.effective_user else None
         self.logger.info("Callback recibido: data=%r user=%s", data, user)
 
         try:
             if data.startswith("vb:"):
                 proposal_id = int(data.split(":")[1])
-                ok = db.vote_book(proposal_id, user)
+                ok = db.vote_book(proposal_id, user, user_id)
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
                 if ok:
@@ -37,7 +38,7 @@ class CallbackHandler:
 
             if data.startswith("vt:"):
                 theme_id = int(data.split(":")[1])
-                ok = db.vote_theme(theme_id, user)
+                ok = db.vote_theme(theme_id, user, user_id)
                 if ok:
                     db.log_event("bot", f"Voto inline de tematica registrado #{theme_id}", category="callback", actor=user)
                     await query.answer("Voto de tematica registrado", show_alert=True)
@@ -52,7 +53,7 @@ class CallbackHandler:
                     db.log_event("bot", "Callback de asistencia sin reunion activa", category="callback", actor=user)
                     await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
                     return
-                ok = db.add_attendance(meeting_id, user)
+                ok = db.add_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 if ok:
@@ -80,7 +81,7 @@ class CallbackHandler:
                     db.log_event("bot", "Callback de no asistencia sin reunion activa", category="callback", actor=user)
                     await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
                     return
-                db.remove_attendance(meeting_id, user)
+                db.remove_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 attendees = db.get_attendance(meeting_id)

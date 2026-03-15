@@ -95,14 +95,14 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
         return redirect(url_for("admin_dashboard"))
 
     members = db.get_all_members()
-    confirmed = set(db.get_attendance(meeting_id))
+    confirmed = {row["user_id"] for row in db.get_attendance_members(meeting_id) if row.get("user_id") is not None}
     date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "sin fecha"
     sent = 0
     failed = 0
 
     for member in members:
         name = member.get("first_name") or member.get("username") or "miembro"
-        if name in confirmed:
+        if member.get("user_id") in confirmed:
             continue
         try:
             location_line = f"\n📍 <b>{hesc(meeting['location'])}</b>" if meeting.get("location") else ""

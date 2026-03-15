@@ -5,6 +5,13 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 
+from app.services.identity_backfill import backfill_historical_user_identity
+from app.services.input_limits import (
+    normalize_admin_search_query,
+    normalize_bug_description,
+    normalize_theme_name,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -260,6 +267,190 @@ def init_db():
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS cycles (
+            cycle_key TEXT PRIMARY KEY,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            active_theme TEXT,
+            proposals_locked BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS poll_option_mappings (
+            id SERIAL PRIMARY KEY,
+            poll_id TEXT NOT NULL,
+            option_index INTEGER NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id BIGINT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(poll_id, option_index)
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS poll_user_selections (
+            id SERIAL PRIMARY KEY,
+            poll_id TEXT NOT NULL,
+            user_id BIGINT NOT NULL,
+            selected_option_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(poll_id, user_id)
+        )""")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS custom_reminders (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            schedule_type TEXT NOT NULL DEFAULT 'interval',
+            day_of_week TEXT,
+            hour INTEGER,
+            minute INTEGER,
+            interval_hours INTEGER,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+
+        # Nuevas columnas para identidad estable basada en Telegram user_id.
+        cur.execute("ALTER TABLE book_proposals ADD COLUMN IF NOT EXISTS proposed_by_user_id BIGINT")
+        cur.execute("ALTER TABLE book_votes ADD COLUMN IF NOT EXISTS user_id BIGINT")
+        cur.execute("ALTER TABLE theme_votes ADD COLUMN IF NOT EXISTS user_id BIGINT")
+        cur.execute("ALTER TABLE meeting_attendance ADD COLUMN IF NOT EXISTS user_id BIGINT")
+        cur.execute("ALTER TABLE reading_progress ADD COLUMN IF NOT EXISTS user_id BIGINT")
+        cur.execute("ALTER TABLE book_ratings ADD COLUMN IF NOT EXISTS user_id BIGINT")
+
+        identity_backfill_summary = backfill_historical_user_identity(cur)
+        if any(identity_backfill_summary.values()):
+            logger.info("Migracion identidad historica aplicada: %s", identity_backfill_summary)
+
+        # Índices de soporte para rendimiento y consistencia.
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_proposals_cycle_active_created ON book_proposals (cycle_key, is_active, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_proposals_proposed_by_user_id ON book_proposals (proposed_by_user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_votes_proposal_id ON book_votes (proposal_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_votes_user_id ON book_votes (user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_book_votes_proposal_user_id ON book_votes (proposal_id, user_id) WHERE user_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_themes_cycle_active_created ON themes (cycle_key, is_active, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_theme_votes_theme_id ON theme_votes (theme_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_theme_votes_user_id ON theme_votes (user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_theme_votes_theme_user_id ON theme_votes (theme_id, user_id) WHERE user_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_meetings_cycle_status_final_date ON meetings (cycle_key, status, final_date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_meeting_attendance_meeting_id ON meeting_attendance (meeting_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_meeting_attendance_user_id ON meeting_attendance (user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_attendance_meeting_user_id ON meeting_attendance (meeting_id, user_id) WHERE user_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_telegram_polls_cycle_type_closed_created ON telegram_polls (cycle_key, poll_type, is_closed, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_telegram_polls_poll_id ON telegram_polls (poll_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_scheduled_messages_sent_send_at ON scheduled_messages (sent, send_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_app_events_type_category_created ON app_events (event_type, category, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_admin_audit_action_status_created ON admin_audit_log (action, status, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_bug_reports_status_created ON bug_reports (status, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_reading_progress_user_id_book_id ON reading_progress (user_id, book_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_reading_progress_book_user_id ON reading_progress (book_id, user_id) WHERE user_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_ratings_book_id ON book_ratings (book_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_book_ratings_user_id ON book_ratings (user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_book_ratings_book_user_id ON book_ratings (book_id, user_id) WHERE user_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_cycles_active_updated ON cycles (is_active, updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_cycles_locked_updated ON cycles (proposals_locked, updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_poll_option_mappings_poll_id ON poll_option_mappings (poll_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_poll_user_selections_poll_id ON poll_user_selections (poll_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_custom_reminders_enabled_updated ON custom_reminders (enabled, updated_at DESC)")
+
+        # Migra estado legacy de ciclos desde app_config a tabla real.
+        cur.execute("SELECT value FROM app_config WHERE key = 'active_cycles'")
+        active_cycles_row = cur.fetchone()
+        active_cycles = _dedupe_text_values((active_cycles_row["value"] if active_cycles_row else "").split(","))
+
+        cur.execute("SELECT value FROM app_config WHERE key = 'active_cycle_key'")
+        active_cycle_row = cur.fetchone()
+        active_cycle = (active_cycle_row["value"] if active_cycle_row else "") or ""
+        if active_cycle and active_cycle not in active_cycles:
+            active_cycles.insert(0, active_cycle)
+
+        for cycle_key in active_cycles:
+            cur.execute(
+                """
+                INSERT INTO cycles (cycle_key, is_active, updated_at)
+                VALUES (%s, TRUE, NOW())
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET is_active = TRUE, updated_at = NOW()
+                """,
+                (cycle_key,),
+            )
+
+        cur.execute("SELECT key, value FROM app_config WHERE key LIKE 'active_theme:%'")
+        for row in cur.fetchall():
+            cycle_key = row["key"].split("active_theme:", 1)[1].strip()
+            if not cycle_key:
+                continue
+            cur.execute(
+                """
+                INSERT INTO cycles (cycle_key, active_theme, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET active_theme = EXCLUDED.active_theme, updated_at = NOW()
+                """,
+                (cycle_key, row["value"] or None),
+            )
+
+        cur.execute("SELECT value FROM app_config WHERE key = 'proposals_locked_for'")
+        locked_row = cur.fetchone()
+        locked_cycles = _dedupe_text_values((locked_row["value"] if locked_row else "").split(","))
+        for cycle_key in locked_cycles:
+            cur.execute(
+                """
+                INSERT INTO cycles (cycle_key, proposals_locked, updated_at)
+                VALUES (%s, TRUE, NOW())
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET proposals_locked = TRUE, updated_at = NOW()
+                """,
+                (cycle_key,),
+            )
+
+        # Migra recordatorios legacy JSON una sola vez si la tabla nueva está vacía.
+        cur.execute("SELECT COUNT(*) AS total FROM custom_reminders")
+        custom_reminders_total = cur.fetchone()["total"]
+        if custom_reminders_total == 0:
+            cur.execute("SELECT value FROM app_config WHERE key = 'custom_reminders'")
+            reminders_row = cur.fetchone()
+            reminders_raw = reminders_row["value"] if reminders_row else ""
+            try:
+                legacy_reminders = json.loads(reminders_raw or "[]")
+            except Exception:
+                legacy_reminders = []
+            for reminder in legacy_reminders:
+                reminder_id = str(reminder.get("id") or "").strip()
+                if not reminder_id:
+                    continue
+                schedule_type = (reminder.get("schedule_type") or "interval").strip() or "interval"
+                cur.execute(
+                    """
+                    INSERT INTO custom_reminders (
+                        id, title, message, schedule_type, day_of_week,
+                        hour, minute, interval_hours, enabled, updated_at
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                    ON CONFLICT (id) DO UPDATE
+                    SET
+                        title = EXCLUDED.title,
+                        message = EXCLUDED.message,
+                        schedule_type = EXCLUDED.schedule_type,
+                        day_of_week = EXCLUDED.day_of_week,
+                        hour = EXCLUDED.hour,
+                        minute = EXCLUDED.minute,
+                        interval_hours = EXCLUDED.interval_hours,
+                        enabled = EXCLUDED.enabled,
+                        updated_at = NOW()
+                    """,
+                    (
+                        reminder_id,
+                        (reminder.get("title") or "").strip() or "Recordatorio",
+                        (reminder.get("message") or "").strip(),
+                        schedule_type,
+                        (reminder.get("day_of_week") or "").strip() or None,
+                        int(reminder["hour"]) if reminder.get("hour") not in (None, "") else None,
+                        int(reminder["minute"]) if reminder.get("minute") not in (None, "") else None,
+                        int(reminder["hours"]) if reminder.get("hours") not in (None, "") else None,
+                        bool(reminder.get("enabled", True)),
+                    ),
+                )
 
 
 # =========================================================
@@ -269,6 +460,23 @@ def init_db():
 def current_cycle_key(dt=None):
     dt = dt or _utcnow()
     return dt.strftime("%Y-%m")
+
+
+def _coerce_user_id(user_id):
+    if user_id in (None, ""):
+        return None
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_user_identity(user_name=None, user_id=None):
+    normalized_user_id = _coerce_user_id(user_id)
+    normalized_user_name = (user_name or "").strip()
+    if not normalized_user_name and normalized_user_id is not None:
+        normalized_user_name = str(normalized_user_id)
+    return normalized_user_name or None, normalized_user_id
 
 def get_config(key, default=None):
     try:
@@ -300,7 +508,71 @@ def get_json_config(key, default=None):
 def set_json_config(key, value):
     set_config(key, json.dumps(value, ensure_ascii=False))
 
+
+def ensure_cycle_record(cycle_key, *, is_active=None, active_theme=None, proposals_locked=None):
+    cycle_key = (cycle_key or "").strip()
+    if not cycle_key:
+        return None
+
+    updates = []
+    values = [cycle_key]
+    if is_active is not None:
+        updates.append("is_active = EXCLUDED.is_active")
+        values.append(bool(is_active))
+    else:
+        values.append(True)
+    if active_theme is not None:
+        updates.append("active_theme = EXCLUDED.active_theme")
+        values.append(active_theme or None)
+    else:
+        values.append(None)
+    if proposals_locked is not None:
+        updates.append("proposals_locked = EXCLUDED.proposals_locked")
+        values.append(bool(proposals_locked))
+    else:
+        values.append(False)
+
+    with get_cursor(commit=True) as cur:
+        if updates:
+            updates.append("updated_at = NOW()")
+            cur.execute(
+                f"""
+                INSERT INTO cycles (cycle_key, is_active, active_theme, proposals_locked)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET {', '.join(updates)}
+                RETURNING *
+                """,
+                tuple(values),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO cycles (cycle_key)
+                VALUES (%s)
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET updated_at = cycles.updated_at
+                RETURNING *
+                """,
+                (cycle_key,),
+            )
+        return dict(cur.fetchone())
+
+
 def get_current_cycle_key():
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT cycle_key
+            FROM cycles
+            WHERE is_active = TRUE
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row:
+            return row["cycle_key"]
     stored = get_config("active_cycle_key")
     return stored if stored else current_cycle_key()
 
@@ -318,29 +590,63 @@ def _dedupe_text_values(values):
 
 
 def get_locked_cycle_keys():
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT cycle_key
+            FROM cycles
+            WHERE proposals_locked = TRUE
+            ORDER BY updated_at DESC, created_at DESC
+            """
+        )
+        rows = [row["cycle_key"] for row in cur.fetchall()]
+    if rows:
+        return rows
     raw = get_config("proposals_locked_for") or ""
     return _dedupe_text_values(raw.split(","))
 
 
 def set_locked_cycle_keys(keys):
-    set_config("proposals_locked_for", ",".join(_dedupe_text_values(keys)))
+    normalized_keys = _dedupe_text_values(keys)
+    with get_cursor(commit=True) as cur:
+        cur.execute("UPDATE cycles SET proposals_locked = FALSE WHERE proposals_locked = TRUE")
+        for cycle_key in normalized_keys:
+            cur.execute(
+                """
+                INSERT INTO cycles (cycle_key, proposals_locked)
+                VALUES (%s, TRUE)
+                ON CONFLICT (cycle_key) DO UPDATE
+                SET proposals_locked = TRUE, updated_at = NOW()
+                """,
+                (cycle_key,),
+            )
+    set_config("proposals_locked_for", ",".join(normalized_keys))
 
 
 def lock_cycle_proposals(cycle_key):
+    ensure_cycle_record(cycle_key, proposals_locked=True)
     keys = get_locked_cycle_keys()
     if cycle_key not in keys:
         keys.append(cycle_key)
-        set_locked_cycle_keys(keys)
+    set_config("proposals_locked_for", ",".join(_dedupe_text_values(keys)))
     logger.info("Propuestas bloqueadas para ciclo=%s", cycle_key)
 
 
 def unlock_cycle_proposals(cycle_key=None):
     if not cycle_key:
-        set_locked_cycle_keys([])
+        with get_cursor(commit=True) as cur:
+            cur.execute("UPDATE cycles SET proposals_locked = FALSE WHERE proposals_locked = TRUE")
+        set_config("proposals_locked_for", "")
         logger.info("Propuestas desbloqueadas para todos los ciclos")
         return
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE cycles SET proposals_locked = FALSE, updated_at = NOW() WHERE cycle_key = %s",
+            (cycle_key,),
+        )
     keys = [key for key in get_locked_cycle_keys() if key != cycle_key]
-    set_locked_cycle_keys(keys)
+    set_config("proposals_locked_for", ",".join(_dedupe_text_values(keys)))
+    ensure_cycle_record(cycle_key)
     logger.info("Propuestas desbloqueadas para ciclo=%s", cycle_key)
 
 
@@ -373,24 +679,26 @@ def create_or_get_book(book):
         return dict(cur.fetchone())
 
 
-def insert_book(book, proposed_by="telegram", cycle_key=None):
+def insert_book(book, proposed_by="telegram", cycle_key=None, proposed_by_user_id=None):
     cycle_key = cycle_key or get_current_cycle_key()
+    ensure_cycle_record(cycle_key)
     book_row  = create_or_get_book(book)
+    proposed_by_name, proposed_by_user_id = _normalize_user_identity(proposed_by, proposed_by_user_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO book_proposals(book_id, proposed_by, cycle_key)
-        VALUES(%s,%s,%s)
+        INSERT INTO book_proposals(book_id, proposed_by, proposed_by_user_id, cycle_key)
+        VALUES(%s,%s,%s,%s)
         ON CONFLICT (book_id, cycle_key) DO NOTHING
         RETURNING *
-        """, (book_row["id"], proposed_by, cycle_key))
+        """, (book_row["id"], proposed_by_name or "telegram", proposed_by_user_id, cycle_key))
         row = cur.fetchone()
         if row:
             logger.info("Libro propuesto: «%s» por %s en ciclo %s (book_id=%d, proposal_id=%d)",
-                        book_row["title"], proposed_by, cycle_key, book_row["id"], row["id"])
+                        book_row["title"], proposed_by_name, cycle_key, book_row["id"], row["id"])
             return {"inserted": True, **dict(row)}
         # Already proposed — return existing
         logger.warning("Libro duplicado ignorado: «%s» por %s en ciclo %s (book_id=%d)",
-                       book_row["title"], proposed_by, cycle_key, book_row["id"])
+                       book_row["title"], proposed_by_name, cycle_key, book_row["id"])
         cur.execute(
             "SELECT * FROM book_proposals WHERE book_id=%s AND cycle_key=%s",
             (book_row["id"], cycle_key)
@@ -445,17 +753,18 @@ def get_proposal_by_id(proposal_id):
         return dict(row) if row else None
 
 
-def vote_book(proposal_id, user_name):
+def vote_book(proposal_id, user_name=None, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO book_votes(proposal_id, user_name)
-        VALUES(%s,%s) ON CONFLICT (proposal_id, user_name) DO NOTHING RETURNING id
-        """, (proposal_id, user_name))
+        INSERT INTO book_votes(proposal_id, user_name, user_id)
+        VALUES(%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id
+        """, (proposal_id, user_name, user_id))
         ok = cur.fetchone() is not None
         if ok:
-            logger.info("Voto libro registrado: proposal_id=%d, user=%s", proposal_id, user_name)
+            logger.info("Voto libro registrado: proposal_id=%d, user=%s user_id=%s", proposal_id, user_name, user_id)
         else:
-            logger.warning("Voto libro duplicado ignorado: proposal_id=%d, user=%s", proposal_id, user_name)
+            logger.warning("Voto libro duplicado ignorado: proposal_id=%d, user=%s user_id=%s", proposal_id, user_name, user_id)
         return ok
 
 
@@ -504,11 +813,13 @@ def get_votes():
 
 def create_theme(name, created_by=None, cycle_key=None):
     cycle_key = cycle_key or get_current_cycle_key()
+    name = normalize_theme_name(name)
+    ensure_cycle_record(cycle_key)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO themes(name, cycle_key, created_by)
         VALUES(%s,%s,%s) ON CONFLICT (name, cycle_key) DO NOTHING RETURNING *
-        """, (name.strip(), cycle_key, created_by))
+        """, (name, cycle_key, created_by))
         row = cur.fetchone()
         if row:
             logger.info("Temática creada: «%s» por %s en ciclo %s (id=%d)", name, created_by, cycle_key, row["id"])
@@ -538,17 +849,18 @@ def get_theme_by_id(theme_id):
         return dict(row) if row else None
 
 
-def vote_theme(theme_id, user_name):
+def vote_theme(theme_id, user_name=None, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO theme_votes(theme_id, user_name)
-        VALUES(%s,%s) ON CONFLICT (theme_id, user_name) DO NOTHING RETURNING id
-        """, (theme_id, user_name))
+        INSERT INTO theme_votes(theme_id, user_name, user_id)
+        VALUES(%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id
+        """, (theme_id, user_name, user_id))
         ok = cur.fetchone() is not None
         if ok:
-            logger.info("Voto temática registrado: theme_id=%d, user=%s", theme_id, user_name)
+            logger.info("Voto temática registrado: theme_id=%d, user=%s user_id=%s", theme_id, user_name, user_id)
         else:
-            logger.warning("Voto temática duplicado ignorado: theme_id=%d, user=%s", theme_id, user_name)
+            logger.warning("Voto temática duplicado ignorado: theme_id=%d, user=%s user_id=%s", theme_id, user_name, user_id)
         return ok
 
 
@@ -590,6 +902,7 @@ def get_theme_previous_cycles(name):
 
 def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_id=None, status="draft"):
     cycle_key = cycle_key or get_current_cycle_key()
+    ensure_cycle_record(cycle_key)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status)
@@ -740,23 +1053,34 @@ def delete_meeting(meeting_id):
         cur.execute("DELETE FROM meetings WHERE id = %s", (meeting_id,))
 
 
-def add_attendance(meeting_id, user_name):
+def add_attendance(meeting_id, user_name=None, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO meeting_attendance(meeting_id, user_name)
-        VALUES(%s,%s) ON CONFLICT (meeting_id, user_name) DO NOTHING RETURNING id
-        """, (meeting_id, user_name))
+        INSERT INTO meeting_attendance(meeting_id, user_name, user_id)
+        VALUES(%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id
+        """, (meeting_id, user_name, user_id))
         ok = cur.fetchone() is not None
         if ok:
-            logger.info("Asistencia añadida: %s a reunion_id=%d", user_name, meeting_id)
+            logger.info("Asistencia añadida: %s user_id=%s a reunion_id=%d", user_name, user_id, meeting_id)
         else:
-            logger.warning("Asistencia duplicada ignorada: %s ya en reunion_id=%d", user_name, meeting_id)
+            logger.warning("Asistencia duplicada ignorada: %s user_id=%s ya en reunion_id=%d", user_name, user_id, meeting_id)
         return ok
 
 
-def remove_attendance(meeting_id, user_name):
-    logger.info("Asistencia eliminada: %s de reunion_id=%d", user_name, meeting_id)
+def remove_attendance(meeting_id, user_name=None, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
+    logger.info("Asistencia eliminada: %s user_id=%s de reunion_id=%d", user_name, user_id, meeting_id)
     with get_cursor(commit=True) as cur:
+        if user_id is not None:
+            cur.execute(
+                """
+                DELETE FROM meeting_attendance
+                WHERE meeting_id=%s AND (user_id=%s OR (user_id IS NULL AND user_name=%s))
+                """,
+                (meeting_id, user_id, user_name),
+            )
+            return
         cur.execute("""
         DELETE FROM meeting_attendance WHERE meeting_id=%s AND user_name=%s
         """, (meeting_id, user_name))
@@ -765,13 +1089,42 @@ def remove_attendance(meeting_id, user_name):
 def get_attendance(meeting_id=None):
     with get_cursor() as cur:
         if meeting_id is None:
-            cur.execute("SELECT meeting_id, user_name FROM meeting_attendance ORDER BY meeting_id DESC, user_name ASC")
+            cur.execute(
+                """
+                SELECT
+                    ma.meeting_id,
+                    COALESCE(cm.first_name, cm.username, ma.user_name) AS user_name,
+                    ma.user_id
+                FROM meeting_attendance ma
+                LEFT JOIN club_members cm ON cm.user_id = ma.user_id
+                ORDER BY ma.meeting_id DESC, user_name ASC
+                """
+            )
             return [dict(r) for r in cur.fetchall()]
         cur.execute("""
-        SELECT user_name FROM meeting_attendance
-        WHERE meeting_id=%s ORDER BY user_name ASC
+        SELECT COALESCE(cm.first_name, cm.username, ma.user_name) AS user_name
+        FROM meeting_attendance ma
+        LEFT JOIN club_members cm ON cm.user_id = ma.user_id
+        WHERE ma.meeting_id=%s ORDER BY user_name ASC
         """, (meeting_id,))
         return [r["user_name"] for r in cur.fetchall()]
+
+
+def get_attendance_members(meeting_id):
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                ma.user_id,
+                COALESCE(cm.first_name, cm.username, ma.user_name) AS user_name
+            FROM meeting_attendance ma
+            LEFT JOIN club_members cm ON cm.user_id = ma.user_id
+            WHERE ma.meeting_id=%s
+            ORDER BY user_name ASC
+            """,
+            (meeting_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
 
 
 def get_meeting_attendance_count(meeting_id):
@@ -784,15 +1137,39 @@ def get_meeting_attendance_count(meeting_id):
 # RATINGS
 # =========================================================
 
-def rate_book(book_id, user_name, score, review=None):
-    logger.info("Valoración libro: book_id=%d user=%s score=%d", book_id, user_name, score)
+def rate_book(book_id, user_name, score, review=None, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
+    logger.info("Valoración libro: book_id=%d user=%s user_id=%s score=%d", book_id, user_name, user_id, score)
     with get_cursor(commit=True) as cur:
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT id FROM book_ratings
+                WHERE book_id=%s AND (user_id=%s OR (user_id IS NULL AND user_name=%s))
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (book_id, user_id, user_name),
+            )
+            row = cur.fetchone()
+            if row:
+                cur.execute(
+                    """
+                    UPDATE book_ratings
+                    SET user_name=%s, user_id=%s, score=%s, review=%s
+                    WHERE id=%s
+                    RETURNING *
+                    """,
+                    (user_name, user_id, score, review, row["id"]),
+                )
+                return dict(cur.fetchone())
         cur.execute("""
-        INSERT INTO book_ratings(book_id, user_name, score, review)
-        VALUES(%s,%s,%s,%s)
-        ON CONFLICT (book_id, user_name) DO UPDATE SET score=EXCLUDED.score, review=EXCLUDED.review
+        INSERT INTO book_ratings(book_id, user_name, user_id, score, review)
+        VALUES(%s,%s,%s,%s,%s)
+        ON CONFLICT (book_id, user_name) DO UPDATE
+            SET user_id=EXCLUDED.user_id, score=EXCLUDED.score, review=EXCLUDED.review
         RETURNING *
-        """, (book_id, user_name, score, review))
+        """, (book_id, user_name, user_id, score, review))
         return dict(cur.fetchone())
 
 
@@ -825,6 +1202,7 @@ def get_book_ratings_for_book(book_id):
 
 def save_poll(chat_id, message_id, poll_id, poll_type="books", cycle_key=None, meeting_id=None):
     cycle_key = cycle_key or get_current_cycle_key()
+    ensure_cycle_record(cycle_key)
     with get_cursor(commit=True) as cur:
         cur.execute("""
         INSERT INTO telegram_polls(cycle_key, chat_id, message_id, poll_id, poll_type, meeting_id)
@@ -903,18 +1281,104 @@ def get_poll_by_telegram_id(telegram_poll_id):
         return dict(row) if row else None
 
 
-def remove_book_vote(proposal_id, user_name):
-    """Remove a specific user's vote for a book."""
+def set_poll_option_mapping(poll_id, entity_type, entity_ids):
+    entity_ids = list(entity_ids or [])
     with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM poll_option_mappings WHERE poll_id=%s", (poll_id,))
+        for option_index, entity_id in enumerate(entity_ids):
+            cur.execute(
+                """
+                INSERT INTO poll_option_mappings(poll_id, option_index, entity_type, entity_id)
+                VALUES(%s,%s,%s,%s)
+                ON CONFLICT (poll_id, option_index) DO UPDATE
+                SET entity_type=EXCLUDED.entity_type, entity_id=EXCLUDED.entity_id
+                """,
+                (poll_id, option_index, entity_type, int(entity_id)),
+            )
+
+
+def get_poll_option_mapping(poll_id):
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT option_index, entity_type, entity_id
+            FROM poll_option_mappings
+            WHERE poll_id=%s
+            ORDER BY option_index ASC
+            """,
+            (poll_id,),
+        )
+        rows = cur.fetchall()
+    return [row["entity_id"] for row in rows]
+
+
+def set_poll_user_selection(poll_id, user_id, option_ids):
+    normalized_user_id = _coerce_user_id(user_id)
+    if normalized_user_id is None:
+        raise ValueError("user_id invalido para guardar seleccion de encuesta")
+    payload = [int(option_id) for option_id in list(option_ids or [])]
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO poll_user_selections(poll_id, user_id, selected_option_ids, updated_at)
+            VALUES(%s,%s,%s,NOW())
+            ON CONFLICT (poll_id, user_id) DO UPDATE
+            SET selected_option_ids=EXCLUDED.selected_option_ids, updated_at=NOW()
+            """,
+            (poll_id, normalized_user_id, Json(payload)),
+        )
+
+
+def get_poll_user_selection(poll_id, user_id):
+    normalized_user_id = _coerce_user_id(user_id)
+    if normalized_user_id is None:
+        return []
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT selected_option_ids
+            FROM poll_user_selections
+            WHERE poll_id=%s AND user_id=%s
+            LIMIT 1
+            """,
+            (poll_id, normalized_user_id),
+        )
+        row = cur.fetchone()
+    return list(row["selected_option_ids"] or []) if row else []
+
+
+def remove_book_vote(proposal_id, user_name=None, user_id=None):
+    """Remove a specific user's vote for a book."""
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
+    with get_cursor(commit=True) as cur:
+        if user_id is not None:
+            cur.execute(
+                """
+                DELETE FROM book_votes
+                WHERE proposal_id=%s AND (user_id=%s OR (user_id IS NULL AND user_name=%s))
+                """,
+                (proposal_id, user_id, user_name),
+            )
+            return
         cur.execute(
             "DELETE FROM book_votes WHERE proposal_id=%s AND user_name=%s",
             (proposal_id, user_name)
         )
 
 
-def remove_theme_vote(theme_id, user_name):
+def remove_theme_vote(theme_id, user_name=None, user_id=None):
     """Remove a specific user's vote for a theme."""
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor(commit=True) as cur:
+        if user_id is not None:
+            cur.execute(
+                """
+                DELETE FROM theme_votes
+                WHERE theme_id=%s AND (user_id=%s OR (user_id IS NULL AND user_name=%s))
+                """,
+                (theme_id, user_id, user_name),
+            )
+            return
         cur.execute(
             "DELETE FROM theme_votes WHERE theme_id=%s AND user_name=%s",
             (theme_id, user_name)
@@ -995,10 +1459,21 @@ def get_all_meetings_history():
 
 def get_active_cycle_keys():
     """Lista de ciclos actualmente abiertos (no cerrados)."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT cycle_key
+            FROM cycles
+            WHERE is_active = TRUE
+            ORDER BY updated_at DESC, created_at DESC
+            """
+        )
+        rows = [row["cycle_key"] for row in cur.fetchall()]
+    if rows:
+        return rows
     raw = get_config("active_cycles") or ""
     keys = [k.strip() for k in raw.split(",") if k.strip()]
     if not keys:
-        # Backward compat: si la lista nueva no existe, usar el key individual
         ck = get_config("active_cycle_key")
         if ck:
             keys = [ck]
@@ -1006,15 +1481,27 @@ def get_active_cycle_keys():
 
 
 def add_active_cycle(key):
-    keys = get_active_cycle_keys()
-    if key not in keys:
-        keys.insert(0, key)
+    key = (key or "").strip()
+    if not key:
+        return
+    ensure_cycle_record(key, is_active=True)
+    keys = [key] + [cycle_key for cycle_key in get_active_cycle_keys() if cycle_key != key]
     keys = _dedupe_text_values(keys)
     set_config("active_cycles", ",".join(keys))
-    set_config("active_cycle_key", keys[0])  # el más reciente como primario
+    set_config("active_cycle_key", key)
 
 
 def remove_active_cycle(key):
+    key = (key or "").strip()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE cycles
+            SET is_active = FALSE, proposals_locked = FALSE, updated_at = NOW()
+            WHERE cycle_key = %s
+            """,
+            (key,),
+        )
     keys = [k for k in get_active_cycle_keys() if k != key]
     set_config("active_cycles", ",".join(keys))
     set_config("active_cycle_key", keys[0] if keys else "")
@@ -1024,7 +1511,27 @@ def cycle_exists(cycle_key):
     cycle_key = (cycle_key or "").strip()
     if not cycle_key:
         return False
-    return cycle_key in set(get_all_cycle_keys()) or cycle_key in set(get_active_cycle_keys())
+    with get_cursor() as cur:
+        cur.execute("SELECT 1 FROM cycles WHERE cycle_key=%s LIMIT 1", (cycle_key,))
+        row = cur.fetchone()
+    return bool(row) or cycle_key in set(get_all_cycle_keys()) or cycle_key in set(get_active_cycle_keys())
+
+
+def get_cycle_theme(cycle_key=None):
+    cycle_key = (cycle_key or get_current_cycle_key() or "").strip()
+    if not cycle_key:
+        return ""
+    with get_cursor() as cur:
+        cur.execute("SELECT active_theme FROM cycles WHERE cycle_key=%s LIMIT 1", (cycle_key,))
+        row = cur.fetchone()
+    return (row["active_theme"] or "") if row and row["active_theme"] is not None else ""
+
+
+def set_cycle_theme(cycle_key, theme):
+    cycle_key = (cycle_key or "").strip()
+    if not cycle_key:
+        raise ValueError("Falta cycle_key")
+    ensure_cycle_record(cycle_key, active_theme=(theme or "").strip() or None)
 
 
 def rename_cycle_key(old_key, new_key):
@@ -1037,8 +1544,8 @@ def rename_cycle_key(old_key, new_key):
 
     active_cycles = [new_key if key == old_key else key for key in get_active_cycle_keys()]
     locked_cycles = [new_key if key == old_key else key for key in get_locked_cycle_keys()]
-    current_cycle = get_config("active_cycle_key")
-    current_theme_value = get_config(f"active_theme:{old_key}")
+    current_cycle = get_current_cycle_key()
+    current_theme_value = get_cycle_theme(old_key)
     summary = {}
 
     with get_cursor(commit=True) as cur:
@@ -1046,13 +1553,15 @@ def rename_cycle_key(old_key, new_key):
             cur.execute(f"UPDATE {table_name} SET cycle_key=%s WHERE cycle_key=%s", (new_key, old_key))
             summary[table_name] = cur.rowcount
 
-        if current_theme_value is not None:
-            cur.execute("""
-            INSERT INTO app_config(key, value) VALUES(%s,%s)
-            ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
-            """, (f"active_theme:{new_key}", current_theme_value))
-            cur.execute("DELETE FROM app_config WHERE key=%s", (f"active_theme:{old_key}",))
-            summary["active_theme_config"] = 1
+        cur.execute(
+            """
+            UPDATE cycles
+            SET cycle_key=%s, updated_at=NOW()
+            WHERE cycle_key=%s
+            """,
+            (new_key, old_key),
+        )
+        summary["cycles"] = cur.rowcount
 
     set_config("active_cycles", ",".join(_dedupe_text_values(active_cycles)))
     if current_cycle == old_key:
@@ -1078,11 +1587,9 @@ def get_cycle_state(cycle_key):
     themes = get_themes(cycle_key)
     winner = get_winner_book(cycle_key)
 
-    proposals_locked_for = get_config("proposals_locked_for") or ""
-    locked_cycles = {c.strip() for c in proposals_locked_for.split(",") if c.strip()}
-    is_locked = cycle_key in locked_cycles
+    is_locked = cycle_key in set(get_locked_cycle_keys())
 
-    active_theme = get_config(f"active_theme:{cycle_key}") or ""
+    active_theme = get_cycle_theme(cycle_key)
 
     open_theme_poll = get_open_poll("themes", cycle_key=cycle_key)
     open_book_polls = get_open_polls("books", cycle_key=cycle_key)
@@ -1152,7 +1659,8 @@ def get_all_cycle_keys():
     with get_cursor() as cur:
         cur.execute("""
         SELECT DISTINCT cycle_key FROM (
-            SELECT cycle_key FROM book_proposals
+            SELECT cycle_key FROM cycles
+            UNION SELECT cycle_key FROM book_proposals
             UNION SELECT cycle_key FROM themes
             UNION SELECT cycle_key FROM meetings
         ) t ORDER BY cycle_key DESC
@@ -1164,23 +1672,50 @@ def get_all_cycle_keys():
 # READING PROGRESS
 # =========================================================
 
-def log_reading_progress(user_name, book_id, pages_read):
+def log_reading_progress(user_name, book_id, pages_read, user_id=None):
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor(commit=True) as cur:
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT id
+                FROM reading_progress
+                WHERE book_id=%s AND (user_id=%s OR (user_id IS NULL AND user_name=%s))
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (book_id, user_id, user_name),
+            )
+            row = cur.fetchone()
+            if row:
+                cur.execute(
+                    """
+                    UPDATE reading_progress
+                    SET user_name=%s, user_id=%s, pages_read=%s, updated_at=NOW()
+                    WHERE id=%s
+                    RETURNING *
+                    """,
+                    (user_name, user_id, pages_read, row["id"]),
+                )
+                updated = cur.fetchone()
+                return dict(updated) if updated else None
         cur.execute("""
-        INSERT INTO reading_progress(user_name, book_id, pages_read, updated_at)
-        VALUES(%s,%s,%s,NOW())
+        INSERT INTO reading_progress(user_name, user_id, book_id, pages_read, updated_at)
+        VALUES(%s,%s,%s,%s,NOW())
         ON CONFLICT(user_name, book_id) DO UPDATE
-            SET pages_read=EXCLUDED.pages_read, updated_at=NOW()
+            SET user_id=EXCLUDED.user_id, pages_read=EXCLUDED.pages_read, updated_at=NOW()
         RETURNING *
-        """, (user_name, book_id, pages_read))
+        """, (user_name, user_id, book_id, pages_read))
         row = cur.fetchone()
         return dict(row) if row else None
 
 def get_reading_progress(book_id):
     with get_cursor() as cur:
         cur.execute("""
-        SELECT user_name, pages_read, updated_at
-        FROM reading_progress WHERE book_id=%s
+        SELECT COALESCE(cm.first_name, cm.username, rp.user_name) AS user_name, rp.pages_read, rp.updated_at
+        FROM reading_progress rp
+        LEFT JOIN club_members cm ON cm.user_id = rp.user_id
+        WHERE rp.book_id=%s
         ORDER BY pages_read DESC
         """, (book_id,))
         return [dict(r) for r in cur.fetchall()]
@@ -1368,6 +1903,97 @@ def delete_scheduled_message(msg_id):
         cur.execute("DELETE FROM scheduled_messages WHERE id=%s", (msg_id,))
 
 
+def get_custom_reminders():
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id, title, message, schedule_type, day_of_week,
+                hour, minute, interval_hours, enabled, created_at, updated_at
+            FROM custom_reminders
+            ORDER BY created_at ASC, id ASC
+            """
+        )
+        rows = []
+        for row in cur.fetchall():
+            item = dict(row)
+            item["hours"] = item.get("interval_hours")
+            rows.append(item)
+    return rows
+
+
+def upsert_custom_reminder(
+    *,
+    reminder_id,
+    title,
+    message,
+    schedule_type="interval",
+    day_of_week=None,
+    hour=None,
+    minute=None,
+    interval_hours=None,
+    enabled=True,
+):
+    reminder_id = str(reminder_id or "").strip()
+    if not reminder_id:
+        raise ValueError("Falta el id del recordatorio")
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO custom_reminders (
+                id, title, message, schedule_type, day_of_week,
+                hour, minute, interval_hours, enabled, updated_at
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+            ON CONFLICT (id) DO UPDATE
+            SET
+                title=EXCLUDED.title,
+                message=EXCLUDED.message,
+                schedule_type=EXCLUDED.schedule_type,
+                day_of_week=EXCLUDED.day_of_week,
+                hour=EXCLUDED.hour,
+                minute=EXCLUDED.minute,
+                interval_hours=EXCLUDED.interval_hours,
+                enabled=EXCLUDED.enabled,
+                updated_at=NOW()
+            RETURNING *
+            """,
+            (
+                reminder_id,
+                (title or "").strip() or "Recordatorio",
+                (message or "").strip(),
+                (schedule_type or "interval").strip() or "interval",
+                (day_of_week or "").strip() or None,
+                int(hour) if hour not in (None, "") else None,
+                int(minute) if minute not in (None, "") else None,
+                int(interval_hours) if interval_hours not in (None, "") else None,
+                bool(enabled),
+            ),
+        )
+        return dict(cur.fetchone())
+
+
+def delete_custom_reminder(reminder_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM custom_reminders WHERE id=%s", (str(reminder_id),))
+        return cur.rowcount
+
+
+def toggle_custom_reminder(reminder_id):
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE custom_reminders
+            SET enabled = NOT enabled, updated_at = NOW()
+            WHERE id=%s
+            RETURNING *
+            """,
+            (str(reminder_id),),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 # =========================================================
 # UPCOMING MEETINGS
 # =========================================================
@@ -1405,7 +2031,7 @@ def get_cycle_dashboard_state(cycle=None, _proposals_locked_for=None):
     open_book_poll = get_open_poll(poll_type="books", cycle_key=cycle)
     winner = get_winner_book(cycle)
     themes = get_themes(cycle)
-    active_theme = get_config(f"active_theme:{cycle}") or ""
+    active_theme = get_cycle_theme(cycle)
     open_theme_poll = get_open_poll(poll_type="themes", cycle_key=cycle)
     next_meeting = get_latest_scheduled_meeting(cycle_key=cycle)
     open_dates_poll = None
@@ -1506,16 +2132,11 @@ def get_active_cycle_states():
     active_cycle_keys = get_active_cycle_keys()  # source of truth: active_cycles config
     if not active_cycle_keys:
         return []
-
-    with get_cursor() as cur:
-        cur.execute("SELECT value FROM app_config WHERE key='proposals_locked_for'")
-        row = cur.fetchone()
-    locked_for = (row["value"] if row else "") or ""
     default_cycle = active_cycle_keys[0]
 
     states = []
     for ck in active_cycle_keys:
-        state = get_cycle_dashboard_state(cycle=ck, _proposals_locked_for=locked_for)
+        state = get_cycle_dashboard_state(cycle=ck)
         state["is_default"] = (ck == default_cycle)
         states.append(state)
     return states
@@ -1525,29 +2146,104 @@ def get_active_cycle_states():
 # USER STATS
 # =========================================================
 
-def get_user_stats(user_name):
+def get_user_stats(user_name=None, user_id=None):
     stats = {}
     cycle = get_current_cycle_key()
+    user_name, user_id = _normalize_user_identity(user_name, user_id)
     with get_cursor() as cur:
-        cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s", (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM book_proposals
+                WHERE proposed_by_user_id=%s OR (proposed_by_user_id IS NULL AND proposed_by=%s)
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s", (user_name,))
         stats["proposals_total"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s AND cycle_key=%s", (user_name, cycle))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM book_proposals
+                WHERE cycle_key=%s
+                  AND (proposed_by_user_id=%s OR (proposed_by_user_id IS NULL AND proposed_by=%s))
+                """,
+                (cycle, user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n FROM book_proposals WHERE proposed_by=%s AND cycle_key=%s", (user_name, cycle))
         stats["proposals_cycle"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*)::int AS n FROM book_votes WHERE user_name=%s", (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM book_votes
+                WHERE user_id=%s OR (user_id IS NULL AND user_name=%s)
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n FROM book_votes WHERE user_name=%s", (user_name,))
         stats["book_votes"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*)::int AS n FROM theme_votes WHERE user_name=%s", (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM theme_votes
+                WHERE user_id=%s OR (user_id IS NULL AND user_name=%s)
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n FROM theme_votes WHERE user_name=%s", (user_name,))
         stats["theme_votes"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*)::int AS n FROM meeting_attendance WHERE user_name=%s", (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n
+                FROM meeting_attendance
+                WHERE user_id=%s OR (user_id IS NULL AND user_name=%s)
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n FROM meeting_attendance WHERE user_name=%s", (user_name,))
         stats["meetings"] = cur.fetchone()["n"]
-        cur.execute("SELECT COUNT(*)::int AS n, ROUND(AVG(score)::numeric,1) AS avg FROM book_ratings WHERE user_name=%s", (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT COUNT(*)::int AS n, ROUND(AVG(score)::numeric,1) AS avg
+                FROM book_ratings
+                WHERE user_id=%s OR (user_id IS NULL AND user_name=%s)
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("SELECT COUNT(*)::int AS n, ROUND(AVG(score)::numeric,1) AS avg FROM book_ratings WHERE user_name=%s", (user_name,))
         row = cur.fetchone()
         stats["ratings"] = row["n"]
         stats["avg_score"] = float(row["avg"]) if row["avg"] else None
-        cur.execute("""
-        SELECT rp.pages_read, b.pages AS total, b.title
-        FROM reading_progress rp JOIN books b ON b.id=rp.book_id
-        WHERE rp.user_name=%s ORDER BY rp.updated_at DESC LIMIT 1
-        """, (user_name,))
+        if user_id is not None:
+            cur.execute(
+                """
+                SELECT rp.pages_read, b.pages AS total, b.title
+                FROM reading_progress rp
+                JOIN books b ON b.id=rp.book_id
+                WHERE rp.user_id=%s OR (rp.user_id IS NULL AND rp.user_name=%s)
+                ORDER BY rp.updated_at DESC
+                LIMIT 1
+                """,
+                (user_id, user_name),
+            )
+        else:
+            cur.execute("""
+            SELECT rp.pages_read, b.pages AS total, b.title
+            FROM reading_progress rp JOIN books b ON b.id=rp.book_id
+            WHERE rp.user_name=%s ORDER BY rp.updated_at DESC LIMIT 1
+            """, (user_name,))
         row = cur.fetchone()
         stats["last_progress"] = dict(row) if row else None
     return stats
@@ -2130,7 +2826,7 @@ def get_admin_audit_logs(limit: int = 200, action: str = None, status: str = Non
 
 
 def search_admin(query, limit_per_section: int = 6):
-    term = (query or "").strip()
+    term = normalize_admin_search_query(query) if query else ""
     if not term:
         return {
             "books": [],
@@ -2294,6 +2990,7 @@ def get_operational_alerts():
 # =========================================================
 
 def create_bug_report(user_id: int, username: str, description: str) -> int:
+    description = normalize_bug_description(description)
     with get_cursor(commit=True) as cur:
         cur.execute(
             "INSERT INTO bug_reports (user_id, username, description) VALUES (%s,%s,%s) RETURNING id",

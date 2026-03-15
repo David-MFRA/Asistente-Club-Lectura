@@ -30,6 +30,12 @@
   {% endif %}
 </div>
 
+{% if error_message %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08)">
+  <strong>Atención:</strong> {{ error_message }}
+</div>
+{% endif %}
+
 {% if query %}
   {% for section, label in [
     ('books', 'Libros'),

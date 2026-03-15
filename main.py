@@ -6,23 +6,17 @@ import unicodedata
 import time as _time
 import asyncio
 from datetime import datetime, timedelta
-from http import HTTPStatus
 import secrets
 
 from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages, jsonify
-from asgiref.wsgi import WsgiToAsgi
-import uvicorn
 
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeChat, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import books_api
 import trivia
 import recommendations
 import db
-import ai_features
 from app.bootstrap import serve
 from app.config import (
     ADMIN_SECRET as CFG_ADMIN_SECRET,
@@ -52,7 +46,10 @@ from app.services.admin_audit import (
     prepare_admin_audit,
     remember_admin_identity,
 )
-from app.services.meeting_lookup import find_meeting_by_text
+from app.services.input_limits import InputValidationError, normalize_bug_description
+from app.services.observability import ObservabilityTracker
+from app.services.runtime_limits import SlidingWindowRateLimiter, TTLCache
+from app.runtime.jobs import RuntimeJobs
 from app.telegram.access import TelegramAccessControl
 from app.telegram.callbacks import CallbackHandler
 from app.telegram.commands.books import BookHandlers
@@ -60,7 +57,9 @@ from app.telegram.commands.extras import ExtraHandlers
 from app.telegram.commands.meetings import MeetingHandlers
 from app.telegram.commands.themes import ThemeHandlers
 from app.telegram.messaging import TelegramMessagingService
+from app.telegram.polling import PollAnswerHandler, WebhookHandler
 from app.telegram.registry import register_handlers
+from app.web.admin.routes import register_admin_routes
 from app.web.admin.messaging import (
     add_scheduled_message,
     delete_scoped_admin_message,
@@ -194,10 +193,7 @@ if not BOT_TOKEN:
 if not WEBHOOK_URL:
     raise RuntimeError("Falta WEBHOOK_URL")
 
-# Anti-spam: cooldown por usuario y comando
-_cooldowns: dict = {}  # {(user_id, command): last_used_timestamp}
 _admin_login_attempts: dict = {}  # {remote_addr: [timestamps]}
-_recent_webhook_updates: dict = {}  # {update_id: timestamp}
 
 def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
     """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
@@ -226,6 +222,11 @@ logger = logging.getLogger(__name__)
 
 db.init_db()
 
+observability = ObservabilityTracker()
+admin_search_limiter = SlidingWindowRateLimiter()
+ai_quota_limiter = SlidingWindowRateLimiter()
+ai_response_cache = TTLCache()
+
 telegram_app = Application.builder().token(BOT_TOKEN).updater(None).build()
 access_control = TelegramAccessControl(
     allowed_chat_id=ALLOWED_CHAT_ID,
@@ -249,6 +250,8 @@ extra_handlers = ExtraHandlers(
     logger=logger if "logger" in globals() else logging.getLogger(__name__),
     formatting={"bold": bold, "esc": esc, "italic": italic},
     admin_ids=ADMIN_TELEGRAM_IDS,
+    quota_limiter=ai_quota_limiter,
+    response_cache=ai_response_cache,
 )
 meeting_handlers = MeetingHandlers(
     allowed=_allowed,
@@ -265,6 +268,17 @@ theme_handlers = ThemeHandlers(
 callback_handler_service = CallbackHandler(
     logger=logger if "logger" in globals() else logging.getLogger(__name__)
 )
+runtime_jobs = RuntimeJobs(
+    db=db,
+    scheduler=scheduler,
+    telegram_app=telegram_app,
+    logger=logger,
+    webhook_url=WEBHOOK_URL,
+    admin_ids=ADMIN_TELEGRAM_IDS,
+    get_contextual_commands=get_contextual_commands,
+    observability=observability,
+)
+poll_answer_handler = PollAnswerHandler(db=db, logger=logger, observability=observability)
 
 flask_app = Flask(__name__)
 flask_app.secret_key = FLASK_SECRET_KEY
@@ -334,6 +348,7 @@ flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
 @flask_app.before_request
 def csrf_protect():
     """Valida el token CSRF en todos los POST administrativos y legacy."""
+    request.environ["_request_started_at"] = _time.monotonic()
     if request.method != "POST":
         return
     if request.path in ("/admin/login", "/webhook"):
@@ -349,6 +364,14 @@ def csrf_protect():
 
 @flask_app.after_request
 def admin_audit_after_request(response):
+    started_at = request.environ.get("_request_started_at")
+    if started_at is not None:
+        observability.record_request(
+            request.method,
+            request.path,
+            response.status_code,
+            int((_time.monotonic() - started_at) * 1000),
+        )
     return flush_pending_admin_audit(response)
 
 # --------------------------------------------------
@@ -362,6 +385,16 @@ def _run_async(coro):
     if _bot_loop is None:
         raise RuntimeError("Bot event loop not initialized")
     return asyncio.run_coroutine_threadsafe(coro, _bot_loop).result()
+
+
+webhook_handler = WebhookHandler(
+    db=db,
+    telegram_app=telegram_app,
+    logger=logger,
+    run_async=_run_async,
+    secret_token=WEBHOOK_SECRET_TOKEN,
+    observability=observability,
+)
 
 # --------------------------------------------------
 # BOT / GROUP HELPERS
@@ -521,425 +554,50 @@ async def proponer(update, context):
 
 async def propuestas(update, context):
     return await book_handlers.propuestas(update, context)
-    if not await _allowed(update): return
-    try:
-        books = db.get_book_proposals()
-        if not books:
-            await update.message.reply_text(
-                "📭 No hay propuestas todavía\\. Usa /proponer para añadir la primera\\.",
-                parse_mode="MarkdownV2"
-            )
-            return
-        lines = [f"📚 {bold('Propuestas del ciclo')}\n"]
-        for b in books:
-            pos = b.get("cycle_position", b["proposal_id"])
-            author_str = f" — _{esc(b['author'])}_" if b.get("author") else ""
-            stars = "⭐" * min(b["votes"], 5) if b["votes"] > 0 else "·"
-            lines.append(
-                f"{bold(str(pos))}\\. {esc(b['title'])}{author_str}\n"
-                f"   {stars} {bold(str(b['votes']))} voto{'s' if b['votes'] != 1 else ''}"
-            )
-        lines.append(f"\n_Pulsa un botón para votar directamente:_")
-        keyboard = []
-        for b in books[:10]:
-            pos = b.get("cycle_position", b["proposal_id"])
-            label = f"🗳️ {pos}. {b['title'][:28]}"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"vb:{b['proposal_id']}")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2", reply_markup=reply_markup)
-    except Exception:
-        logger.exception("Error en /propuestas")
-        await update.message.reply_text("⚠️ Error obteniendo propuestas\\.", parse_mode="MarkdownV2")
 
 
 async def votar(update, context):
     return await book_handlers.votar(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "votar", 10):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    if not context.args:
-        await update.message.reply_text(
-            f"🗳️ Usa {code('/votar número')} — el número es la posición en /propuestas\\.", parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        num = int(context.args[0])
-        # Resolver posición de ciclo → proposal_id real
-        books = db.get_book_proposals()
-        proposal = next((b for b in books if b.get("cycle_position") == num), None)
-        if not proposal:
-            # Fallback: intentar como proposal_id directo (backward compat)
-            proposal = db.get_proposal_by_id(num)
-        if not proposal:
-            await update.message.reply_text(
-                f"❌ No existe la propuesta \\#{bold(str(num))}\\. Usa /propuestas para ver la lista\\.",
-                parse_mode="MarkdownV2"
-            )
-            return
-        proposal_id = proposal["proposal_id"]
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        ok = db.vote_book(proposal_id, user)
-        if ok:
-            proposal = db.get_proposal_by_id(proposal_id)
-            book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
-            await update.message.reply_text(
-                f"✅ {bold('Voto registrado')} para _{esc(book_name)}_\\.\nUsa /propuestas para ver el ranking\\.",
-                parse_mode="MarkdownV2"
-            )
-        else:
-            await update.message.reply_text("⚠️ Ya habías votado esa propuesta\\.", parse_mode="MarkdownV2")
-    except ValueError:
-        await update.message.reply_text("❌ El ID debe ser un número\\.", parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /votar")
-        await update.message.reply_text("⚠️ Error registrando el voto\\.", parse_mode="MarkdownV2")
 
 
 async def resultados(update, context):
     return await book_handlers.resultados(update, context)
-    if not await _allowed(update): return
-    try:
-        books = db.get_cycle_results()
-        if not books:
-            await update.message.reply_text("📭 No hay resultados todavía\\.", parse_mode="MarkdownV2")
-            return
-        medals = ["🥇", "🥈", "🥉"]
-        lines = [f"🏆 {bold('Resultados del ciclo')}\n"]
-        for i, b in enumerate(books):
-            medal = medals[i] if i < 3 else f"{i+1}\\."
-            author_str = f"\n   _{esc(b['author'])}_" if b.get("author") else ""
-            lines.append(
-                f"{medal} {bold(b['title'])}{author_str}\n"
-                f"   {bold(str(b['votes']))} voto{'s' if b['votes'] != 1 else ''}"
-            )
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /resultados")
-        await update.message.reply_text("⚠️ Error obteniendo resultados\\.", parse_mode="MarkdownV2")
-
-
-def _normalize(text: str) -> str:
-    """Normaliza texto: minúsculas, sin acentos, sin puntuación."""
-    text = text.lower().strip()
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-    return text
-
-def _find_meeting_by_text(query: str):
-    """Busca la reunión más relevante por nombre o fecha."""
-    meetings = db.get_meetings(limit=20)
-    query_norm = _normalize(query)
-    best = None
-    best_score = 0
-    for m in meetings:
-        if m.get("status") == "closed":
-            continue
-        name_norm = _normalize(m.get("name", ""))
-        if name_norm == query_norm:
-            score = 100
-        elif query_norm in name_norm:
-            score = 80
-        else:
-            words = query_norm.split()
-            matched = sum(1 for w in words if w in name_norm)
-            score = int(matched / max(len(words), 1) * 60)
-        if m.get("final_date"):
-            date_str = _normalize(str(m["final_date"]))
-            month_names = {"enero":"01","febrero":"02","marzo":"03","abril":"04","mayo":"05","junio":"06",
-                           "julio":"07","agosto":"08","septiembre":"09","octubre":"10","noviembre":"11","diciembre":"12"}
-            for month_es, month_num in month_names.items():
-                if month_es in query_norm and f"-{month_num}-" in date_str:
-                    score += 30
-        if score > best_score:
-            best_score = score
-            best = m
-    return best if best_score >= 30 else None
 
 
 async def reunion(update, context):
     return await meeting_handlers.reunion(update, context)
-    if not await _allowed(update): return
-    try:
-        if context.args:
-            query = " ".join(context.args)
-            meeting = find_meeting_by_text(query)
-            if not meeting:
-                await update.message.reply_text(f"❌ No encontré ninguna reunión con «{query}».\nUsa /reunion sin argumentos para ver la próxima.", parse_mode=None)
-                return
-        else:
-            meeting = db.get_latest_scheduled_meeting()
-        if not meeting:
-            await update.message.reply_text("📭 No hay reunión programada todavía.", parse_mode=None)
-            return
-        asistentes = db.get_attendance(meeting["id"])
-        fecha = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-        estado_map = {"draft": "⏳ Borrador", "scheduled": "✅ Confirmada", "closed": "🔒 Cerrada"}
-        estado = estado_map.get(meeting.get("status", ""), meeting.get("status", ""))
-        lines = [
-            f"📅 {meeting['name']}\n",
-            f"📆 Fecha: {fecha}",
-            f"📊 Estado: {estado}",
-        ]
-        if meeting.get("location"):
-            lines.append(f"📍 Lugar: {meeting['location']}")
-        if meeting.get("notes"):
-            lines.append(f"📝 {meeting['notes']}")
-        if meeting.get("book_title"):
-            lines.append(f"📗 Libro: {meeting['book_title']}")
-        lines.append(f"👥 Apuntados: {len(asistentes)}")
-        if asistentes:
-            lines.append("  " + ",  ".join(f"• {a}" for a in asistentes))
-        lines.append("\nUsa /asistir o /noasistir para gestionar tu asistencia.")
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-            ]
-        ]
-        if meeting.get("book_id"):
-            keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
-        await update.message.reply_text(
-            "\n".join(lines),
-            parse_mode=None,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception:
-        logger.exception("Error en /reunion")
-        await update.message.reply_text("⚠️ Error obteniendo la reunión.", parse_mode=None)
 
 
 async def asistir(update, context):
     return await meeting_handlers.asistir(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "asistir", 10):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    try:
-        meetings = db.get_upcoming_meetings()
-        if not meetings:
-            await update.message.reply_text("📭 No hay reunión activa.", parse_mode=None)
-            return
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        if len(meetings) == 1:
-            meeting = meetings[0]
-            db.add_attendance(meeting["id"], user)
-            db.log_event("bot", f"{user} se apuntó a «{meeting['name']}»", category="meeting", actor=user)
-            asistentes = db.get_attendance(meeting["id"])
-            names = "\n".join(f"  ✅ {a}" for a in asistentes)
-            await update.message.reply_text(
-                f"🎉 {user} se apuntó a {meeting['name']}\n\n"
-                f"👥 Apuntados ({len(asistentes)}):\n{names}",
-                parse_mode=None
-            )
-        else:
-            keyboard = []
-            for m in meetings[:5]:
-                date_str = str(m["final_date"])[:16] if m.get("final_date") else "Sin fecha"
-                label = f"📅 {m['name']} · {date_str}"
-                keyboard.append([InlineKeyboardButton(label, callback_data=f"attend:{m['id']}")])
-            await update.message.reply_text(
-                "📅 ¿A qué reunión te apuntas? Elige una:",
-                parse_mode=None,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-    except Exception:
-        logger.exception("Error en /asistir")
-        await update.message.reply_text("⚠️ Error al apuntarte.", parse_mode=None)
 
 
 async def noasistir(update, context):
     return await meeting_handlers.noasistir(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "noasistir", 10):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    try:
-        meetings = db.get_upcoming_meetings()
-        if not meetings:
-            await update.message.reply_text("📭 No hay reunión activa.", parse_mode=None)
-            return
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        if len(meetings) == 1:
-            meeting = meetings[0]
-            db.remove_attendance(meeting["id"], user)
-            asistentes = db.get_attendance(meeting["id"])
-            names = ("\n".join(f"  • {a}" for a in asistentes)) if asistentes else "Nadie de momento"
-            await update.message.reply_text(
-                f"👋 {user} se ha quitado de {meeting['name']}\n\n"
-                f"👥 Quedan ({len(asistentes)}):\n{names}",
-                parse_mode=None
-            )
-        else:
-            keyboard = []
-            for m in meetings[:5]:
-                date_str = str(m["final_date"])[:16] if m.get("final_date") else "Sin fecha"
-                label = f"📅 {m['name']} · {date_str}"
-                keyboard.append([InlineKeyboardButton(label, callback_data=f"noattend:{m['id']}")])
-            await update.message.reply_text(
-                "📅 ¿De qué reunión te quitas? Elige una:",
-                parse_mode=None,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-    except Exception:
-        logger.exception("Error en /noasistir")
-        await update.message.reply_text("⚠️ Error al quitarte.", parse_mode=None)
 
 
 async def asistencia(update, context):
     return await meeting_handlers.asistencia(update, context)
-    if not await _allowed(update): return
-    try:
-        meeting = db.get_latest_scheduled_meeting()
-        if not meeting:
-            await update.message.reply_text("📭 No hay reunión activa\\.", parse_mode="MarkdownV2")
-            return
-        asistentes = db.get_attendance(meeting["id"])
-        names = ("\n".join(f"  ✅ {esc(a)}" for a in asistentes)) if asistentes else "_Nadie apuntado todavía_"
-        await update.message.reply_text(
-            f"👥 {bold('Asistencia')} — {italic(meeting['name'])}\n\n{names}",
-            parse_mode="MarkdownV2"
-        )
-    except Exception:
-        logger.exception("Error en /asistencia")
-        await update.message.reply_text("⚠️ Error obteniendo asistencia\\.", parse_mode="MarkdownV2")
 
 
 async def tema(update, context):
     return await theme_handlers.tema(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "tema", 30):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    name = " ".join(context.args).strip()
-    if not name:
-        await update.message.reply_text(
-            f"🏷️ Usa {code('/tema nombre de la temática')}", parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        row = db.create_theme(name, created_by=user)
-        if row:
-            prev = db.get_theme_previous_cycles(name)
-            warning = ""
-            if prev:
-                cycles_str = ", ".join(p["cycle_key"] for p in prev[:3])
-                warning = f"\n\n⚠️ Esta temática ya se usó en: {cycles_str}"
-            await update.message.reply_text(
-                f"🏷️ Temática propuesta: {name}\n"
-                f"Propuesta por {user}.{warning}\n"
-                f"Usa /temas para votar.",
-                parse_mode=None
-            )
-        else:
-            await update.message.reply_text(
-                f"⚠️ La temática _{esc(name)}_ ya existe en este ciclo\\.", parse_mode="MarkdownV2"
-            )
-    except Exception:
-        logger.exception("Error en /tema")
-        await update.message.reply_text("⚠️ Error creando temática\\.", parse_mode="MarkdownV2")
 
 
 async def temas(update, context):
     return await theme_handlers.temas(update, context)
-    if not await _allowed(update): return
-    try:
-        rows = db.get_themes()
-        if not rows:
-            await update.message.reply_text(
-                "📭 No hay temáticas\\. Usa /tema para añadir la primera\\.", parse_mode="MarkdownV2"
-            )
-            return
-        lines = [f"🧭 {bold('Temáticas del ciclo')}\n"]
-        for t in rows:
-            bar = "█" * min(t["votes"], 8) if t["votes"] > 0 else "░"
-            lines.append(
-                f"{bold(str(t['id']))}\\. {esc(t['name'])}\n"
-                f"   {bar} {bold(str(t['votes']))} voto{'s' if t['votes'] != 1 else ''}"
-            )
-        lines.append(f"\n_Pulsa un botón para votar:_")
-        keyboard = []
-        for t in rows[:10]:
-            label = f"🗳️ {t['name'][:30]}"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"vt:{t['id']}")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2", reply_markup=reply_markup)
-    except Exception:
-        logger.exception("Error en /temas")
-        await update.message.reply_text("⚠️ Error obteniendo temáticas\\.", parse_mode="MarkdownV2")
 
 
 async def votar_tema(update, context):
     return await theme_handlers.votar_tema(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "votar_tema", 10):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    if not context.args:
-        await update.message.reply_text(
-            f"🗳️ Usa {code('/votar_tema id')} — consulta IDs con /temas\\.", parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        theme_id = int(context.args[0])
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        ok = db.vote_theme(theme_id, user)
-        if ok:
-            await update.message.reply_text(
-                f"✅ {bold('Voto de temática registrado')}\\! Usa /temas para ver el ranking\\.",
-                parse_mode="MarkdownV2"
-            )
-        else:
-            await update.message.reply_text("⚠️ Ya habías votado esa temática\\.", parse_mode="MarkdownV2")
-    except ValueError:
-        await update.message.reply_text("❌ El ID debe ser un número\\.", parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /votar_tema")
-        await update.message.reply_text("⚠️ Error registrando voto\\.", parse_mode="MarkdownV2")
 
 
 async def trivia_cmd(update, context):
     return await extra_handlers.trivia_cmd(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "trivia", 15):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    try:
-        question = trivia.generate()
-        await update.message.reply_text(esc(question), parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /trivia")
-        await update.message.reply_text("⚠️ Error generando trivia\\.", parse_mode="MarkdownV2")
 
 
 async def recomendar(update, context):
     return await extra_handlers.recomendar(update, context)
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "recomendar", 60):
-        await update.message.reply_text("⏳ Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-        return
-    try:
-        top_theme = db.get_top_theme()
-        theme_name = top_theme["name"] if top_theme else "novela"
-        wait = await update.message.reply_text(
-            f"🔍 Buscando libros de _{esc(theme_name)}_\\.\\.\\.", parse_mode="MarkdownV2"
-        )
-        rec = recommendations.recommend(theme_name)
-        await wait.delete()
-        if not rec:
-            await update.message.reply_text(
-                "📭 No encontré recomendaciones\\.", parse_mode="MarkdownV2"
-            )
-            return
-        lines = [f"💡 {bold('Recomendaciones')} — tema {italic(theme_name)}\n"]
-        for i, r in enumerate(rec, 1):
-            author_str = f"\n   _{esc(r['author'])}_" if r.get("author") else ""
-            lines.append(f"{bold(str(i))}\\. {esc(r['title'])}{author_str}")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /recomendar")
-        await update.message.reply_text("⚠️ Error obteniendo recomendaciones\\.", parse_mode="MarkdownV2")
 
 
 # --------------------------------------------------
@@ -951,88 +609,6 @@ async def button_handler(update, context):
         await update.callback_query.answer("⛔ No tienes permiso para usar esta función.", show_alert=True)
         return
     return await callback_handler_service.handle(update, context)
-    data = query.data
-    user = query.from_user.first_name or query.from_user.username or "alguien"
-    try:
-        if data.startswith("vb:"):
-            proposal_id = int(data.split(":")[1])
-            ok = db.vote_book(proposal_id, user)
-            proposal = db.get_proposal_by_id(proposal_id)
-            book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
-            if ok:
-                await query.answer(f"✅ Voto registrado para «{book_name}»", show_alert=True)
-            else:
-                await query.answer(f"⚠️ Ya habías votado «{book_name}»", show_alert=True)
-
-        elif data.startswith("vt:"):
-            theme_id = int(data.split(":")[1])
-            ok = db.vote_theme(theme_id, user)
-            if ok:
-                await query.answer("✅ Voto de temática registrado", show_alert=True)
-            else:
-                await query.answer("⚠️ Ya habías votado esa temática", show_alert=True)
-
-        elif data.startswith("attend:"):
-            meeting_id = int(data.split(":")[1])
-            ok = db.add_attendance(meeting_id, user)
-            meeting = db.get_meeting(meeting_id)
-            meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
-            if ok:
-                asistentes = db.get_attendance(meeting_id)
-                await query.answer(f"✅ Apuntado a «{meeting_name}»")
-                names = ", ".join(asistentes) if asistentes else "nadie"
-                await query.edit_message_text(
-                    f"✅ {user} apuntado a {meeting_name}\n\n"
-                    f"👥 Apuntados ({len(asistentes)}): {names}\n\n"
-                    f"Usa /noasistir para quitarte.",
-                    parse_mode=None
-                )
-            else:
-                await query.answer(f"Ya estás apuntado a «{meeting_name}»", show_alert=True)
-
-        elif data.startswith("noattend:"):
-            meeting_id = int(data.split(":")[1])
-            db.remove_attendance(meeting_id, user)
-            meeting = db.get_meeting(meeting_id)
-            meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
-            asistentes = db.get_attendance(meeting_id)
-            await query.answer(f"Te has quitado de «{meeting_name}»")
-            names = ", ".join(asistentes) if asistentes else "nadie"
-            await query.edit_message_text(
-                f"👋 {user} se ha quitado de {meeting_name}\n\n"
-                f"👥 Quedan ({len(asistentes)}): {names}",
-                parse_mode=None
-            )
-
-        elif data.startswith("bookinfo:"):
-            book_id_str = data.split(":")[1]
-            if book_id_str and book_id_str != "0":
-                book = db.get_book_by_id(int(book_id_str))
-                if book:
-                    lines = [f"📗 {book['title']}"]
-                    if book.get("author"):
-                        lines.append(f"✍️ {book['author']}")
-                    if book.get("pages"):
-                        lines.append(f"📄 {book['pages']} páginas")
-                    if book.get("description"):
-                        desc = book["description"]
-                        if len(desc) > 400:
-                            desc = desc[:397] + "…"
-                        lines.append(f"\n📖 {desc}")
-                    await query.answer()
-                    await context.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text="\n".join(lines),
-                        parse_mode=None
-                    )
-                else:
-                    await query.answer("No se encontró el libro", show_alert=True)
-            else:
-                await query.answer("No hay libro asignado a esta reunión", show_alert=True)
-
-    except Exception:
-        logger.exception("Error en button_handler")
-        await query.answer("⚠️ Error procesando la acción", show_alert=True)
 
 
 # --------------------------------------------------
@@ -1106,7 +682,7 @@ async def progreso_cmd(update, context):
             await update.message.reply_text("📭 No hay libro del ciclo activo\\.", parse_mode="MarkdownV2")
             return
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.log_reading_progress(user, winner["id"], pages)
+        db.log_reading_progress(user, winner["id"], pages, update.effective_user.id)
         total = winner.get("pages")
         pct = int(pages / total * 100) if total and total > 0 else None
         bar = ""
@@ -1131,7 +707,7 @@ async def estadisticas_cmd(update, context):
     if not await _allowed(update): return
     try:
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        s = db.get_user_stats(user)
+        s = db.get_user_stats(user, update.effective_user.id)
         lines = [f"📊 Tus estadísticas — {user}\n"]
         lines.append(f"📚 Propuestas: {s['proposals_total']} en total, {s['proposals_cycle']} este ciclo")
         lines.append(f"🗳️ Votos emitidos: {s['book_votes']} libros, {s['theme_votes']} temáticas")
@@ -1200,8 +776,7 @@ async def nuevo_ciclo_cmd(update, context):
         name = _sug()
     db.add_active_cycle(name)
     db.unlock_cycle_proposals(name)
-    db.set_config("active_theme", "")
-    db.set_config(f"active_theme:{name}", "")
+    db.set_cycle_theme(name, "")
     from app.web.admin.polls import _set_phase
     _set_phase("setup")
     db.log_event("admin", f"Ciclo «{name}» activado vía bot", category="cycle", actor="admin")
@@ -1282,7 +857,7 @@ async def anunciar_ganador_cmd(update, context):
             cycle = db.get_current_cycle_key()
             db.save_poll(chat_id=tie_poll.chat_id, message_id=tie_poll.message_id,
                          poll_id=tie_poll.poll.id, poll_type="books", cycle_key=cycle)
-            db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([b["proposal_id"] for b in tied[:10]]))
+            db.set_poll_option_mapping(tie_poll.poll.id, "books", [b["proposal_id"] for b in tied[:10]])
         await update.message.reply_text(f"⚖️ Empate detectado. Encuesta de desempate lanzada.", parse_mode=None)
         return
     winner = db.get_winner_book()
@@ -1335,7 +910,7 @@ async def encuesta_libros_cmd(update, context):
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
                      poll_id=msg.poll.id, poll_type="books", cycle_key=cycle)
-        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in books[:10]]))
+        db.set_poll_option_mapping(msg.poll.id, "books", [b["proposal_id"] for b in books[:10]])
         from app.web.admin.polls import _set_phase
         _set_phase("book_voting")
         logger.info("/encuesta_libros: encuesta lanzada poll_id=%s ciclo=%s opciones=%d", msg.poll.id, cycle, len(options))
@@ -1367,7 +942,7 @@ async def encuesta_temas_cmd(update, context):
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id,
                      poll_id=msg.poll.id, poll_type="themes", cycle_key=cycle)
-        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([t["id"] for t in themes[:10]]))
+        db.set_poll_option_mapping(msg.poll.id, "themes", [t["id"] for t in themes[:10]])
         from app.web.admin.polls import _set_phase
         _set_phase("theme_voting")
         logger.info("/encuesta_temas: encuesta lanzada poll_id=%s ciclo=%s opciones=%d", msg.poll.id, cycle, len(options))
@@ -1648,7 +1223,7 @@ async def _auto_close_cycle():
             return
         # It's meeting day — close the cycle
         cycle = db.get_current_cycle_key()
-        cycle_theme = db.get_config("active_theme") or None
+        cycle_theme = db.get_cycle_theme(cycle) or None
         db.close_cycle(cycle)
         db.set_config("cycle_phase", "closed")
         try:
@@ -1760,30 +1335,6 @@ async def desfijar_cmd(update, context):
 
 async def preguntas_cmd(update, context):
     return await extra_handlers.preguntas_cmd(update, context)
-    """Genera preguntas de debate para el libro actual."""
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "preguntas", 60):
-        await update.message.reply_text("⏳ Espera un momento antes de generar más preguntas.", parse_mode=None)
-        return
-    try:
-        winner = db.get_winner_book()
-        if not winner:
-            await update.message.reply_text("📭 No hay libro del ciclo activo.", parse_mode=None)
-            return
-        wait = await update.message.reply_text("🤔 Generando preguntas de debate...", parse_mode=None)
-        questions = ai_features.generate_discussion_questions(
-            winner["title"], winner.get("author", ""), winner.get("description", "")
-        )
-        await wait.delete()
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.log_event("bot", f"/preguntas solicitado para «{winner['title']}»", category="ai", actor=user)
-        await update.message.reply_text(
-            f"💬 Preguntas de debate — {winner['title']}\n\n{questions}",
-            parse_mode=None
-        )
-    except Exception:
-        logger.exception("Error en /preguntas")
-        await update.message.reply_text("⚠️ Error generando preguntas.", parse_mode=None)
 
 
 async def lista_espera_cmd(update, context):
@@ -1869,26 +1420,6 @@ async def proponer_fecha_cmd(update, context):
 
 async def cita_cmd(update, context):
     return await extra_handlers.cita_cmd(update, context)
-    """Genera una cita literaria relacionada con el libro actual."""
-    if not await _allowed(update): return
-    if not _check_cooldown(update.effective_user.id, "cita", 30):
-        await update.message.reply_text("⏳ Espera un momento.", parse_mode=None)
-        return
-    try:
-        winner = db.get_winner_book()
-        if not winner:
-            await update.message.reply_text("📭 No hay libro del ciclo activo.", parse_mode=None)
-            return
-        wait = await update.message.reply_text("✨ Buscando cita...", parse_mode=None)
-        quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
-        await wait.delete()
-        await update.message.reply_text(
-            f"✨ {quote}\n\n— Sobre «{winner['title']}»",
-            parse_mode=None
-        )
-    except Exception:
-        logger.exception("Error en /cita")
-        await update.message.reply_text("⚠️ Error generando cita.", parse_mode=None)
 
 
 async def bug_cmd(update, context):
@@ -1910,6 +1441,7 @@ async def bug_cmd(update, context):
     user = update.effective_user
     username = user.username or user.first_name or str(user.id)
     try:
+        description = normalize_bug_description(description)
         report_id = db.create_bug_report(user.id, username, description)
         db.log_event("bot", f"Bug reportado por {username}: {description[:80]}", category="bug", actor=username)
         await update.message.reply_text(
@@ -1927,6 +1459,8 @@ async def bug_cmd(update, context):
                 )
             except Exception:
                 pass
+    except InputValidationError as exc:
+        await update.message.reply_text(str(exc), parse_mode=None)
     except Exception:
         logger.exception("Error en /bug")
         await update.message.reply_text("⚠️ Error enviando el reporte.", parse_mode=None)
@@ -1975,24 +1509,40 @@ def _trace_bot_handler(name, handler, *, category="command", clear_pending=True)
     async def _wrapped(update, context):
         actor = _bot_actor_label(update)
         chat = getattr(update, "effective_chat", None)
+        user = getattr(update, "effective_user", None)
+        if user:
+            try:
+                db.save_member(
+                    user.id,
+                    user.first_name,
+                    user.username,
+                )
+            except Exception:
+                pass
         if clear_pending:
             _clear_pending_flow(context, actor, name)
-        started_at = _time.time()
-        result = await handler(update, context)
-        duration_ms = int((_time.time() - started_at) * 1000)
-        db.log_event(
-            "bot",
-            f"Handler {name} ejecutado",
-            category=category,
-            actor=actor,
-            extra={
-                "handler": name,
-                "chat_id": getattr(chat, "id", None),
-                "chat_type": getattr(chat, "type", None),
-                "duration_ms": duration_ms,
-            },
-        )
-        return result
+        started_at = _time.monotonic()
+        ok = False
+        try:
+            result = await handler(update, context)
+            ok = True
+            return result
+        finally:
+            duration_ms = int((_time.monotonic() - started_at) * 1000)
+            observability.record_handler(name, duration_ms=duration_ms, ok=ok, actor=actor)
+            db.log_event(
+                "bot",
+                f"Handler {name} ejecutado",
+                category=category,
+                actor=actor,
+                extra={
+                    "handler": name,
+                    "chat_id": getattr(chat, "id", None),
+                    "chat_type": getattr(chat, "type", None),
+                    "duration_ms": duration_ms,
+                    "ok": ok,
+                },
+            )
 
     return _wrapped
 
@@ -2058,6 +1608,7 @@ async def private_text_handler(update, context):
         context.user_data.pop("pending_bug", None)
         if text:
             try:
+                text = normalize_bug_description(text)
                 report_id = db.create_bug_report(
                     user_id=u.id,
                     username=u.username or u.first_name or str(u.id),
@@ -2074,6 +1625,8 @@ async def private_text_handler(update, context):
                     f"Gracias. He guardado tu reporte como #{report_id}.",
                     parse_mode=None,
                 )
+            except InputValidationError as exc:
+                await update.message.reply_text(str(exc), parse_mode=None)
             except Exception:
                 logger.exception("Error completando flujo /bug por texto libre")
                 await update.message.reply_text("No pude guardar el reporte ahora mismo.", parse_mode=None)
@@ -2125,98 +1678,7 @@ async def private_text_handler(update, context):
 
 
 async def handle_poll_answer(update, context):
-    """Recibe votos en tiempo real de encuestas de Telegram (non-anonymous polls)."""
-    answer = update.poll_answer
-    if not answer:
-        return
-    poll_id = answer.poll_id
-    user_id = str(answer.user.id)
-    user_name = answer.user.first_name or answer.user.username or user_id
-    new_option_ids = list(answer.option_ids)  # list of selected option indices
-    logger.info("poll_answer: poll_id=%s user=%s(%s) opciones=%s", poll_id, user_name, user_id, new_option_ids)
-
-    # Find poll in our DB
-    poll = db.get_poll_by_telegram_id(poll_id)
-    if not poll or poll.get("is_closed"):
-        logger.debug("poll_answer: encuesta no encontrada o cerrada poll_id=%s", poll_id)
-        db.log_event(
-            "bot",
-            f"Respuesta de encuesta ignorada para poll_id={poll_id}",
-            category="poll",
-            actor=user_name,
-            extra={"poll_id": poll_id, "reason": "missing_or_closed"},
-        )
-        return
-
-    poll_type = poll.get("poll_type")
-    if poll_type not in ("books", "themes"):
-        logger.debug("poll_answer: tipo de encuesta ignorado poll_type=%s", poll_type)
-        return
-
-    # Get option→entity_id mapping
-    options_json = db.get_config(f"poll_options_{poll_id}")
-    if not options_json:
-        logger.warning("poll_answer: sin mapeo de opciones para poll_id=%s", poll_id)
-        db.log_event(
-            "error",
-            f"Encuesta sin mapeo de opciones: {poll_id}",
-            category="poll",
-            actor=user_name,
-            extra={"poll_id": poll_id},
-        )
-        return
-    try:
-        options = json.loads(options_json)  # list of proposal_id or theme_id
-    except Exception:
-        logger.exception("poll_answer: error parseando opciones poll_id=%s", poll_id)
-        return
-
-    # Get previous selection for this user (to remove old votes)
-    prev_key = f"poll_uv_{poll_id}_{user_id}"
-    try:
-        prev_option_ids = json.loads(db.get_config(prev_key, "[]") or "[]")
-    except Exception:
-        prev_option_ids = []
-
-    # Remove previous votes
-    for old_idx in prev_option_ids:
-        if old_idx < len(options):
-            entity_id = options[old_idx]
-            try:
-                if poll_type == "books":
-                    db.remove_book_vote(entity_id, user_id)
-                else:
-                    db.remove_theme_vote(entity_id, user_id)
-            except Exception:
-                pass
-
-    # Add new votes
-    for new_idx in new_option_ids:
-        if new_idx < len(options):
-            entity_id = options[new_idx]
-            try:
-                if poll_type == "books":
-                    db.vote_book(entity_id, user_id)
-                else:
-                    db.vote_theme(entity_id, user_id)
-            except Exception:
-                logger.exception("poll_answer: error registrando voto entity_id=%s", entity_id)
-
-    # Persist new selection
-    db.set_config(prev_key, json.dumps(new_option_ids))
-    db.log_event(
-        "bot",
-        f"Respuesta de encuesta procesada para poll_id={poll_id}",
-        category="poll",
-        actor=user_name,
-        extra={
-            "poll_id": poll_id,
-            "poll_type": poll_type,
-            "new_option_ids": new_option_ids,
-            "previous_option_ids": prev_option_ids,
-        },
-    )
-    logger.debug("poll_answer: procesado OK poll_id=%s user=%s", poll_id, user_name)
+    return await poll_answer_handler(update, context)
 
 
 # --------------------------------------------------
@@ -2395,904 +1857,60 @@ def admin_logout():
     session.clear()
     return redirect(url_for("admin_login"))
 
-# --------------------------------------------------
-# FLASK — DASHBOARD
-# --------------------------------------------------
-
-@flask_app.get("/admin")
-def admin_dashboard():
-    auth = require_admin()
-    if auth: return auth
-    current_cycle    = db.get_current_cycle_key()
-    books            = db.get_books(current_cycle)
-    meetings         = db.get_meetings(limit=5, cycle_key=current_cycle)
-    themes           = db.get_themes(current_cycle)
-    ranking          = db.get_book_ranking()
-    open_poll_books  = db.get_open_polls(poll_type="books", cycle_key=current_cycle)
-    open_poll_themes = db.get_open_poll(poll_type="themes", cycle_key=current_cycle)
-    cycle_states     = db.get_active_cycle_states()
-    tied_books       = db.get_tied_books(current_cycle)
-    active_cycles    = db.get_active_cycle_keys()
-    operational_alerts = db.get_operational_alerts()
-    security_alerts = get_security_alerts()
-    return render_template(
-        "admin.html",
-        books=books, meetings=meetings, themes=themes, ranking=ranking,
-        open_poll_books=open_poll_books, open_poll_themes=open_poll_themes,
-        cycle_states=cycle_states, cycle_state=cycle_states[0] if cycle_states else None,
-        tied_books=tied_books, tied_count=len(tied_books),
-        current_cycle=current_cycle, active_cycles=active_cycles,
-        operational_alerts=operational_alerts,
-        security_alerts=security_alerts,
-    )
-
-# --------------------------------------------------
-# FLASK — LIBROS (admin)
-# --------------------------------------------------
-
-@flask_app.post("/admin/book/add")
-def admin_book_add():
-    auth = require_admin()
-    if auth: return auth
-    title = request.form.get("title", "").strip()
-    next_url = request.form.get("_next", url_for("admin_dashboard"))
-    cycle_key = request.form.get("cycle", "").strip() or None
-    if not title:
-        flash("El título es obligatorio", "danger")
-        return redirect(next_url)
-    try:
-        book = books_api.google_books(title)
-        if not book:
-            book = {
-                "title":  title,
-                "author": request.form.get("author", "").strip() or None,
-            }
-        db.insert_book(book, proposed_by="admin", cycle_key=cycle_key)
-        effective_cycle = cycle_key or db.get_current_cycle_key()
-        flash(f"Libro «{book['title']}» añadido al ciclo «{effective_cycle}»", "success")
-    except Exception:
-        logger.exception("Error añadiendo libro desde admin")
-        flash("Error añadiendo el libro", "danger")
-    return redirect(next_url)
-
-@flask_app.post("/admin/book/<int:proposal_id>/delete")
-def admin_book_delete(proposal_id):
-    auth = require_admin()
-    if auth: return auth
-    next_url = request.form.get("_next", url_for("admin_dashboard"))
-    try:
-        db.remove_book_proposal(proposal_id)
-        flash("Propuesta eliminada", "success")
-    except Exception:
-        flash("Error eliminando la propuesta", "danger")
-    return redirect(next_url)
-
-# --------------------------------------------------
-# FLASK — ENCUESTA LIBROS
-# --------------------------------------------------
-
-@flask_app.post("/admin/encuesta/libros/crear")
-def admin_crear_encuesta_libros():
-    return _run_async(create_book_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
-
-@flask_app.post("/admin/encuesta/<int:poll_db_id>/cerrar")
-def admin_cerrar_encuesta(poll_db_id):
-    return _run_async(close_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, announce_winner, logger))
-
-# --------------------------------------------------
-# FLASK — ENCUESTA TEMÁTICAS
-# --------------------------------------------------
-
-@flask_app.post("/admin/encuesta/temas/crear")
-def admin_crear_encuesta_temas():
-    return _run_async(create_theme_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
-
-# --------------------------------------------------
-# FLASK — ENCUESTA FECHAS
-# --------------------------------------------------
-
-@flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/crear")
-def admin_crear_encuesta_fechas(meeting_id):
-    return _run_async(create_dates_poll(require_admin, meeting_id, telegram_app, TELEGRAM_CHAT_ID, logger))
-
-
-@flask_app.post("/admin/encuesta/fechas/<int:meeting_id>/<int:poll_db_id>/cerrar")
-def admin_cerrar_encuesta_fechas(meeting_id, poll_db_id):
-    return _run_async(
-        close_dates_poll(
-            require_admin,
-            meeting_id,
-            poll_db_id,
-            telegram_app,
-            send_to_group,
-            {"bold": bold, "italic": italic, "esc": esc},
-            logger,
-        )
-    )
-# --------------------------------------------------
-
-@flask_app.route("/meetings", methods=["GET", "POST"])
-def meetings_admin():
-    return render_meetings(require_admin)
-
-@flask_app.get("/themes")
-def themes_admin():
-    return render_themes(require_admin)
-
-@flask_app.get("/ranking")
-def ranking_admin():
-    return render_ranking(require_admin)
-
-@flask_app.get("/meeting/<int:meeting_id>")
-def meeting_detail_admin(meeting_id):
-    return render_meeting_detail(require_admin, meeting_id)
-
-@flask_app.post("/meeting/<int:meeting_id>/edit")
-def meeting_edit_admin(meeting_id):
-    return update_meeting_page(require_admin, meeting_id)
-
-@flask_app.post("/meeting/<int:meeting_id>/delete")
-def meeting_delete_admin(meeting_id):
-    return delete_meeting_page(require_admin, meeting_id)
-
-@flask_app.post("/meeting/<int:meeting_id>/date-option")
-def meeting_add_date_option_admin(meeting_id):
-    return add_meeting_date_option(require_admin, meeting_id)
-
-@flask_app.post("/meeting/<int:meeting_id>/close-date")
-def meeting_close_date_admin(meeting_id):
-    return close_meeting_date(require_admin, meeting_id)
-
-@flask_app.post("/create_meeting")
-def create_meeting():
-    return create_meeting_page(require_admin, logger)
-
-# --------------------------------------------------
-# FLASK — UTILIDADES
-# --------------------------------------------------
-
-@flask_app.get("/export")
-def export():
-    return export_books(require_admin)
-    auth = require_admin()
-    if auth: return auth
-    rows = db.get_books()
-    text = "id,title,author,votes\n"
-    for r in rows:
-        text += f'{r["id"]},"{r["title"]}","{r.get("author","") or ""}",{r["votes"]}\n'
-    return Response(text, mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=club_lectura_books.csv"})
-
-@flask_app.get("/close_voting")
-def close_voting():
-    return render_close_voting(require_admin)
-
-@flask_app.get("/attendance")
-def attendance():
-    return render_attendance(require_admin)
-
-# --------------------------------------------------
-# FLASK — TEMÁTICAS (admin CRUD)
-# --------------------------------------------------
-
-@flask_app.post("/admin/theme/add")
-def admin_theme_add():
-    auth = require_admin()
-    if auth: return auth
-    name = request.form.get("name", "").strip()
-    next_url = request.form.get("_next", url_for("themes_admin"))
-    if not name:
-        flash("El nombre de la temática es obligatorio", "danger")
-        return redirect(next_url)
-    try:
-        db.create_theme(name, created_by="admin")
-        flash(f"Temática «{name}» añadida", "success")
-    except Exception:
-        flash("Error añadiendo la temática", "danger")
-    return redirect(next_url)
-
-@flask_app.post("/admin/theme/<int:theme_id>/edit")
-def admin_theme_edit(theme_id):
-    auth = require_admin()
-    if auth: return auth
-    name = request.form.get("name", "").strip()
-    next_url = request.form.get("_next", url_for("themes_admin"))
-    if not name:
-        flash("El nombre no puede estar vacío", "danger")
-        return redirect(next_url)
-    try:
-        db.update_theme(theme_id, name)
-        flash("Temática actualizada", "success")
-    except Exception:
-        flash("Error actualizando la temática", "danger")
-    return redirect(next_url)
-
-@flask_app.post("/admin/theme/<int:theme_id>/delete")
-def admin_theme_delete(theme_id):
-    auth = require_admin()
-    if auth: return auth
-    next_url = request.form.get("_next", url_for("themes_admin"))
-    try:
-        db.delete_theme(theme_id)
-        flash("Temática eliminada", "success")
-    except Exception:
-        flash("Error eliminando la temática", "danger")
-    return redirect(next_url)
-
-# --------------------------------------------------
-# FLASK — RECORDATORIOS MANUALES
-# --------------------------------------------------
-
-@flask_app.post("/admin/send/meeting-reminder")
-def admin_send_meeting_reminder():
-    return _run_async(send_manual_meeting_reminder(require_admin, send_meeting_reminder, logger))
-
-@flask_app.post("/admin/send/reading-reminder")
-def admin_send_reading_reminder():
-    return _run_async(send_manual_reading_reminder(require_admin, send_reading_reminder, logger))
-
-@flask_app.post("/admin/send/meeting-info")
-def admin_send_meeting_info():
-    return _run_async(send_manual_meeting_info(require_admin, send_to_group, logger))
-
-@flask_app.post("/admin/send/pin-all")
-def admin_send_pin_all():
-    return _run_async(send_pin_all(require_admin, send_and_pin, logger))
-
-@flask_app.post("/admin/send/dm-reminders/<int:meeting_id>")
-def admin_send_dm_reminders(meeting_id):
-    return _run_async(send_dm_reminders(require_admin, meeting_id, telegram_app, logger))
-@flask_app.get("/admin/historico")
-def admin_historico():
-    return render_history(require_admin)
-
-# --------------------------------------------------
-# FLASK — GALERÍA
-# --------------------------------------------------
-
-@flask_app.get("/admin/galeria")
-def admin_galeria():
-    return render_gallery(require_admin)
-
-@flask_app.post("/admin/galeria/<int:meeting_id>/notes")
-def admin_galeria_notes(meeting_id):
-    return save_gallery_notes(require_admin, meeting_id)
-
-# --------------------------------------------------
-# FLASK — PÁGINA PÚBLICA
-# --------------------------------------------------
-
-@flask_app.get("/publico")
-def public_page():
-    return render_public_page(GROUP_INVITE_LINK)
-
-@flask_app.route("/admin/public-settings", methods=["GET", "POST"])
-def admin_public_settings():
-    return handle_public_settings(require_admin, GROUP_INVITE_LINK)
-
-# --------------------------------------------------
-# FLASK — VISOR DE BASE DE DATOS
-# --------------------------------------------------
-
-@flask_app.get("/admin/db")
-def admin_db():
-    return render_admin_db(require_admin, logger)
-
-@flask_app.post("/admin/db/<table>/delete")
-def admin_db_delete_row(table):
-    return delete_db_row(require_admin, logger, table)
-
-@flask_app.post("/admin/db/<table>/update")
-def admin_db_update_row(table):
-    return update_db_row(require_admin, logger, table)
-
-@flask_app.post("/admin/db/<table>/truncate")
-def admin_db_truncate(table):
-    return truncate_db_table(require_admin, logger, table)
-
-@flask_app.post("/admin/db/sql")
-def admin_db_sql():
-    return execute_sql_query(require_admin, logger)
-
-# --------------------------------------------------
-# FLASK — BOOK EDIT (admin)
-# --------------------------------------------------
-
-@flask_app.post("/admin/book/<int:book_id>/edit")
-def admin_book_edit(book_id):
-    return edit_book_page(require_admin, logger, book_id)
-
-# --------------------------------------------------
-# FLASK — SEND CUSTOM MESSAGE (admin)
-# --------------------------------------------------
-
-@flask_app.post("/admin/send/custom")
-def admin_send_custom():
-    return _run_async(send_custom_message(require_admin, logger, send_to_group))
-
-# --------------------------------------------------
-# FLASK — MESSAGE TEMPLATES (admin)
-# --------------------------------------------------
-
-@flask_app.get("/admin/messages")
-def admin_messages():
-    return render_admin_messages(require_admin, DEFAULT_MESSAGES)
-
-@flask_app.post("/admin/messages/<key>/edit")
-def admin_message_edit(key):
-    return update_admin_message(require_admin, DEFAULT_MESSAGES, key)
-
-@flask_app.post("/admin/messages/<key>/reset")
-def admin_message_reset(key):
-    return reset_admin_message(require_admin, key)
-
-@flask_app.post("/admin/messages/scoped/save")
-def admin_message_scoped_save():
-    return save_scoped_admin_message(require_admin, DEFAULT_MESSAGES)
-
-@flask_app.post("/admin/messages/scoped/delete")
-def admin_message_scoped_delete():
-    return delete_scoped_admin_message(require_admin)
-
-@flask_app.post("/admin/messages/preview")
-def admin_message_preview():
-    return preview_admin_message(require_admin)
-
-# --------------------------------------------------
-# FLASK — SENT MESSAGES HISTORY
-# --------------------------------------------------
-
-@flask_app.get("/admin/sent-messages")
-def admin_sent_messages():
-    return render_sent_messages(require_admin)
-
-# --------------------------------------------------
-# FLASK — MESSAGE SCHEDULER
-# --------------------------------------------------
-
-@flask_app.get("/admin/scheduler")
-def admin_scheduler():
-    return render_scheduler(require_admin)
-
-@flask_app.post("/admin/scheduler/add")
-def admin_scheduler_add():
-    return add_scheduled_message(require_admin, logger)
-
-@flask_app.post("/admin/scheduler/<int:msg_id>/delete")
-def admin_scheduler_delete(msg_id):
-    return delete_scheduled_message(require_admin, logger, msg_id)
-
-@flask_app.post("/admin/scheduler/custom/add")
-def admin_custom_reminder_add():
-    import uuid
-    auth = require_admin()
-    if auth:
-        return auth
-    title = request.form.get("title", "").strip()
-    message = request.form.get("message", "").strip()
-    schedule_type = request.form.get("schedule_type", "interval")
-    if not title or not message:
-        flash("Título y mensaje son obligatorios", "danger")
-        return redirect(url_for("admin_scheduler"))
-    try:
-        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
-    except Exception:
-        reminders = []
-    new_id = str(uuid.uuid4())[:8]
-    reminder = {"id": new_id, "title": title, "message": message, "schedule_type": schedule_type, "enabled": True}
-    if schedule_type == "cron":
-        reminder["day_of_week"] = request.form.get("day_of_week", "")
-        try:
-            reminder["hour"] = int(request.form.get("hour", 10))
-            reminder["minute"] = int(request.form.get("minute", 0))
-        except ValueError:
-            reminder["hour"] = 10
-            reminder["minute"] = 0
-    else:
-        try:
-            reminder["hours"] = max(1, int(request.form.get("hours", 24)))
-        except ValueError:
-            reminder["hours"] = 24
-    reminders.append(reminder)
-    db.set_config("custom_reminders", json.dumps(reminders))
-    _reload_custom_reminders()
-    flash(f"Recordatorio «{title}» añadido", "success")
-    return redirect(url_for("admin_scheduler"))
-
-
-@flask_app.post("/admin/scheduler/custom/<reminder_id>/delete")
-def admin_custom_reminder_delete(reminder_id):
-    auth = require_admin()
-    if auth:
-        return auth
-    try:
-        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
-    except Exception:
-        reminders = []
-    reminders = [r for r in reminders if r.get("id") != reminder_id]
-    db.set_config("custom_reminders", json.dumps(reminders))
-    _reload_custom_reminders()
-    flash("Recordatorio eliminado", "success")
-    return redirect(url_for("admin_scheduler"))
-
-
-@flask_app.post("/admin/scheduler/custom/<reminder_id>/toggle")
-def admin_custom_reminder_toggle(reminder_id):
-    auth = require_admin()
-    if auth:
-        return auth
-    try:
-        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
-    except Exception:
-        reminders = []
-    for r in reminders:
-        if r.get("id") == reminder_id:
-            r["enabled"] = not r.get("enabled", True)
-            break
-    db.set_config("custom_reminders", json.dumps(reminders))
-    _reload_custom_reminders()
-    flash("Recordatorio actualizado", "success")
-    return redirect(url_for("admin_scheduler"))
-
-
-@flask_app.post("/admin/scheduler/reminder/toggle")
-def admin_reminder_toggle():
-    auth = require_admin()
-    if auth:
-        return auth
-    from flask import request, redirect, url_for, flash
-    key = request.form.get("key", "")
-    # key must be one of the known reminder keys
-    allowed_keys = {
-        "reminder_weekly_enabled", "reminder_reading_enabled",
-        "reminder_daybefore_enabled", "reminder_keepalive_enabled"
-    }
-    if key not in allowed_keys:
-        flash("Clave inválida", "danger")
-        return redirect(url_for("admin_scheduler"))
-    current = db.get_config(key, "1")
-    new_val = "0" if current == "1" else "1"
-    db.set_config(key, new_val)
-    state = "activado" if new_val == "1" else "desactivado"
-    flash(f"Recordatorio {state}", "success")
-    return redirect(url_for("admin_scheduler"))
-
-# --------------------------------------------------
-# FLASK — AI FEATURES
-# --------------------------------------------------
-
-@flask_app.get("/admin/ai/questions")
-def admin_ai_questions():
-    return render_ai_questions(require_admin, logger)
-
-@flask_app.post("/admin/ai/questions/send")
-def admin_ai_questions_send():
-    return _run_async(send_ai_questions(require_admin, logger, send_to_group))
-
-@flask_app.get("/admin/ai/quote")
-def admin_ai_quote():
-    return render_ai_quote(require_admin, logger)
-
-@flask_app.post("/admin/ai/quote/send")
-def admin_ai_quote_send():
-    return _run_async(send_ai_quote(require_admin, logger, send_to_group))
-
-# --------------------------------------------------
-# FLASK — AI ASSISTANT (contextual)
-# --------------------------------------------------
-
-@flask_app.post("/admin/ai/ask")
-def admin_ai_ask():
-    return _run_async(ask_admin_ai(require_admin, _utcnow, logger))
-
-# --------------------------------------------------
-# FLASK — POSTER DESIGNER
-# --------------------------------------------------
-
-@flask_app.get("/admin/poster")
-def admin_poster():
-    return render_admin_poster(require_admin)
-
-# --------------------------------------------------
-# FLASK — ADMIN HELP
-# --------------------------------------------------
-
-@flask_app.get("/admin/help")
-def admin_help():
-    return render_admin_help(require_admin)
-
-# --------------------------------------------------
-# FLASK — CYCLE MANAGEMENT (admin)
-# --------------------------------------------------
-
-@flask_app.get("/admin/ciclo")
-def admin_ciclo():
-    return render_admin_cycle(require_admin)
-
-@flask_app.get("/admin/ciclo/easy")
-def admin_ciclo_easy():
-    auth = require_admin()
-    if auth: return auth
-    active_keys = db.get_active_cycle_keys()
-    cycle = db.get_cycle_state(active_keys[0]) if active_keys else None
-    return render_template("admin_ciclo_easy.html", cycle=cycle)
-
-@flask_app.post("/admin/ciclo/nuevo")
-def admin_ciclo_nuevo():
-    return _run_async(activate_cycle(require_admin, send_to_group, logger, telegram_app, TELEGRAM_CHAT_ID))
-
-@flask_app.post("/admin/ciclo/cerrar")
-def admin_ciclo_cerrar():
-    return close_cycle(require_admin, logger)
-
-@flask_app.post("/admin/ciclo/tema")
-def admin_ciclo_tema():
-    return set_cycle_theme(require_admin)
-
-@flask_app.post("/admin/ciclo/desbloquear")
-def admin_ciclo_desbloquear():
-    return unlock_proposals(require_admin)
-
-@flask_app.post("/admin/ciclo/advance-books")
-def admin_ciclo_advance_books():
-    return _run_async(advance_to_books(require_admin, send_to_group, logger))
-
-@flask_app.post("/admin/ciclo/pick-theme/<int:theme_id>")
-def admin_ciclo_pick_theme(theme_id):
-    return _run_async(pick_theme_winner(require_admin, theme_id, send_to_group, logger))
-
-@flask_app.post("/admin/ciclo/pick-book/<int:proposal_id>")
-def admin_ciclo_pick_book(proposal_id):
-    return _run_async(pick_book_winner(require_admin, proposal_id, announce_winner, logger))
-
-@flask_app.post("/admin/ciclo/<cycle_key>/rename")
-def admin_ciclo_rename(cycle_key):
-    return rename_cycle(require_admin)
-
-
-@flask_app.post("/admin/ciclo/meeting/<int:meeting_id>/set-date")
-def admin_ciclo_meeting_set_date(meeting_id):
-    auth = require_admin()
-    if auth:
-        return auth
-    final_date = request.form.get("final_date", "").strip()
-    if not final_date:
-        flash("Fecha inválida", "danger")
-        return redirect(url_for("admin_ciclo"))
-    try:
-        db.set_meeting_final_date(meeting_id, final_date)
-        flash("Fecha de reunión actualizada", "success")
-    except Exception:
-        logger.exception("Error actualizando fecha de reunión %s", meeting_id)
-        flash("Error actualizando la fecha", "danger")
-    return redirect(url_for("admin_ciclo"))
-
-@flask_app.post("/admin/encuesta/temas/<int:poll_db_id>/cerrar")
-def admin_cerrar_encuesta_temas(poll_db_id):
-    return _run_async(close_theme_poll(require_admin, poll_db_id, telegram_app, TELEGRAM_CHAT_ID, send_to_group, logger))
-
-
-@flask_app.post("/admin/wizard/new-cycle")
-def admin_wizard_new_cycle():
-    return _run_async(wizard_new_cycle(require_admin, send_to_group, _utcnow, logger))
-
-
-@flask_app.post("/admin/wizard/lock-and-poll")
-def admin_wizard_lock_and_poll():
-    return _run_async(wizard_lock_and_poll(require_admin, telegram_app, TELEGRAM_CHAT_ID, logger))
-
-
-@flask_app.post("/admin/wizard/announce-date")
-def admin_wizard_announce_date():
-    return _run_async(wizard_announce_date(require_admin, send_to_group, logger))
-
-# --------------------------------------------------
-# FLASK — ASSIGN BOOK TO MEETING (admin)
-# --------------------------------------------------
-
-@flask_app.post("/meeting/<int:meeting_id>/set-book")
-def meeting_set_book(meeting_id):
-    return assign_book_to_meeting(require_admin, meeting_id)
-
-# --------------------------------------------------
-# FLASK — BOOK WAITLIST
-# --------------------------------------------------
-
-@flask_app.get("/admin/waitlist")
-def admin_waitlist():
-    return render_waitlist(require_admin)
-
-@flask_app.post("/admin/waitlist/add")
-def admin_waitlist_add():
-    return add_waitlist_entry(require_admin)
-
-@flask_app.post("/admin/waitlist/<int:wl_id>/delete")
-def admin_waitlist_delete(wl_id):
-    return delete_waitlist_entry(require_admin, wl_id)
-
-@flask_app.post("/admin/waitlist/suggest")
-def admin_waitlist_suggest():
-    return _run_async(suggest_waitlist_to_group(require_admin, send_to_group))
-
-# --------------------------------------------------
-# FLASK — DEMO / TOUR
-# --------------------------------------------------
-
-def _utcnow():
-    from datetime import timezone as _tz
-    return datetime.now(_tz.utc).replace(tzinfo=None)
-
-@flask_app.get("/admin/demo")
-def admin_demo():
-    return render_demo_page(require_admin, db)
-
-@flask_app.post("/admin/demo/seed")
-def admin_demo_seed():
-    return seed_demo_data(require_admin, db, _utcnow, logger)
-
-@flask_app.post("/admin/demo/clear")
-def admin_demo_clear():
-    return clear_demo_data(require_admin, db, logger)
-
-@flask_app.post("/admin/demo/step/<int:step>")
-def admin_demo_step(step):
-    return run_admin_demo_step(require_admin, db, _utcnow, logger, step)
-
-@flask_app.get("/admin/search")
-def admin_search():
-    return render_admin_search(require_admin)
-
-@flask_app.get("/admin/simulator")
-def admin_simulator():
-    return render_admin_simulator(require_admin)
-
-@flask_app.get("/admin/bot-context")
-def admin_bot_context():
-    return render_admin_bot_context(require_admin)
-
-@flask_app.post("/admin/bot-context")
-def admin_bot_context_update():
-    return update_admin_bot_context(require_admin)
-
-@flask_app.get("/admin/logs")
-def admin_logs():
-    return render_admin_logs(require_admin)
-
-@flask_app.get("/admin/audit")
-def admin_audit():
-    return render_admin_audit(require_admin)
-
-
-# --------------------------------------------------
-# FLASK — BUG REPORTS
-# --------------------------------------------------
-
-@flask_app.get("/admin/bugs")
-def admin_bugs():
-    return render_admin_bugs(require_admin)
-
-@flask_app.post("/admin/bugs/<int:report_id>/update")
-def admin_bug_update(report_id):
-    return update_admin_bug(require_admin, report_id)
+register_admin_routes(
+    flask_app,
+    require_admin=require_admin,
+    run_async=_run_async,
+    send_to_group=send_to_group,
+    send_and_pin=send_and_pin,
+    send_meeting_reminder=send_meeting_reminder,
+    send_reading_reminder=send_reading_reminder,
+    announce_winner=announce_winner,
+    logger=logger,
+    telegram_app=telegram_app,
+    telegram_chat_id=TELEGRAM_CHAT_ID,
+    default_messages=DEFAULT_MESSAGES,
+    group_invite_link=GROUP_INVITE_LINK,
+    reload_custom_reminders=lambda: _reload_custom_reminders(),
+    utcnow=lambda: datetime.utcnow(),
+    get_request_ip=get_request_ip,
+    admin_search_limiter=admin_search_limiter,
+    poll_formatting={"bold": bold, "italic": italic, "esc": esc},
+    observability=observability,
+)
 
 
 # --------------------------------------------------
 # WEBHOOK
 # --------------------------------------------------
 
-async def _enqueue_webhook_update(data):
-    update_id = data.get("update_id")
-    if update_id is not None:
-        now = _time.time()
-        expired = [key for key, ts in _recent_webhook_updates.items() if now - ts > 600]
-        for key in expired:
-            _recent_webhook_updates.pop(key, None)
-        if update_id in _recent_webhook_updates:
-            logger.info("Webhook duplicado ignorado: update_id=%s", update_id)
-            db.log_event(
-                "system",
-                f"Webhook duplicado ignorado: update_id={update_id}",
-                category="webhook",
-                actor="telegram",
-                extra={"update_id": update_id, "duplicate": True},
-            )
-            return
-        _recent_webhook_updates[update_id] = now
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.update_queue.put(update)
-
-
 @flask_app.post("/webhook")
 def webhook():
-    try:
-        secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not WEBHOOK_SECRET_TOKEN or secret_token != WEBHOOK_SECRET_TOKEN:
-            logger.warning("Webhook rechazado por token invalido desde %s", request.remote_addr)
-            db.set_config("last_webhook_invalid_at", datetime.utcnow().isoformat())
-            db.log_event(
-                "system",
-                "Webhook rechazado por token invalido",
-                category="webhook",
-                actor=request.remote_addr or "unknown",
-            )
-            return Response(status=HTTPStatus.FORBIDDEN)
-        data = request.get_json(force=True)
-        db.set_config("last_webhook_received_at", datetime.utcnow().isoformat())
-        _run_async(_enqueue_webhook_update(data))
-        return Response(status=HTTPStatus.OK)
-    except Exception:
-        logger.exception("Error procesando webhook")
-        db.log_event("error", "Error procesando webhook", category="webhook", actor=request.remote_addr or "unknown")
-        return Response(status=HTTPStatus.INTERNAL_SERVER_ERROR)
+    return webhook_handler.handle_request(request)
 
 # --------------------------------------------------
 # STARTUP / SHUTDOWN
 # --------------------------------------------------
 
 def _make_custom_reminder_job(message_text):
-    """Crea una función async que envía el mensaje de recordatorio al grupo."""
-    async def _job():
-        await send_to_group(message_text, parse_mode="HTML", message_type="custom_reminder")
-    return _job
+    """Compatibilidad temporal mientras la carga de jobs vive en RuntimeJobs."""
+    return runtime_jobs.make_custom_reminder_job(message_text, send_to_group)
 
 
 def _reload_custom_reminders():
-    """Carga/recarga todos los recordatorios personalizados desde la BD al scheduler."""
-    # Eliminar jobs custom existentes
-    for job in scheduler.get_jobs():
-        if job.id.startswith("custom_reminder_"):
-            try:
-                scheduler.remove_job(job.id)
-            except Exception:
-                pass
-    # Cargar desde BD
-    try:
-        reminders = json.loads(db.get_config("custom_reminders", "[]") or "[]")
-    except Exception:
-        reminders = []
-    for r in reminders:
-        if not r.get("enabled", True):
-            continue
-        job_id = f"custom_reminder_{r['id']}"
-        message = r.get("message", "")
-        if not message:
-            continue
-        stype = r.get("schedule_type", "interval")
-        try:
-            if stype == "cron":
-                kwargs = {"hour": r.get("hour", 10), "minute": r.get("minute", 0)}
-                dow = r.get("day_of_week", "")
-                if dow:
-                    kwargs["day_of_week"] = dow
-                scheduler.add_job(
-                    _make_custom_reminder_job(message), "cron",
-                    id=job_id, timezone="Europe/Madrid", replace_existing=True, **kwargs
-                )
-            else:
-                scheduler.add_job(
-                    _make_custom_reminder_job(message), "interval",
-                    hours=max(1, r.get("hours", 24)),
-                    id=job_id, replace_existing=True
-                )
-        except Exception:
-            logger.exception("Error cargando recordatorio personalizado %s", r.get("id"))
+    runtime_jobs.reload_custom_reminders(send_to_group)
 
 
 async def _keep_alive_ping():
-    """Hace ping a /health para mantener el servicio activo en Render."""
-    if db.get_config("reminder_keepalive_enabled", "1") == "0":
-        return
-    import urllib.request
-    url = f"{WEBHOOK_URL}/health"
-    loop = asyncio.get_event_loop()
-    try:
-        await loop.run_in_executor(None, urllib.request.urlopen, url)
-        logger.info("Keep-alive ping OK → %s", url)
-    except Exception:
-        logger.warning("Keep-alive ping falló → %s", url)
+    await runtime_jobs.keep_alive_ping()
 
 
 async def refresh_bot_command_menu():
-    current_cycle = db.get_current_cycle_key()
-    user_commands = [BotCommand("start", "👋 Bienvenida y opciones útiles")]
-    contextual = get_contextual_commands("private", cycle_key=current_cycle, is_admin=False)
-    user_commands.extend([
-        BotCommand(item["id"], f"{item['emoji']} {item['desc']}")
-        for item in contextual[:12]
-        if item["id"] in {
-            "ayuda", "proponer", "propuestas", "votar", "resultados", "libro",
-            "tema", "temas", "reunion", "asistir", "noasistir", "asistencia",
-            "acta", "progreso", "estadisticas", "recomendar", "lista_espera",
-            "proponer_fecha", "bug", "votar_tema", "trivia"
-        }
-    ])
-    if not any(cmd.command == "ayuda" for cmd in user_commands):
-        user_commands.insert(0, BotCommand("ayuda", "❓ Ver el menú contextual"))
-    try:
-        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
-        await telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
-        logger.info("Comandos del bot actualizados para ciclo=%s (%d comandos)", current_cycle, len(user_commands))
-    except Exception:
-        logger.warning("No se pudieron actualizar los comandos contextuales del bot")
-    return user_commands
+    return await runtime_jobs.refresh_bot_command_menu()
 
 
-async def startup():
-    await telegram_app.initialize()
-    await telegram_app.start()
-    await telegram_app.bot.set_webhook(
-        url=f"{WEBHOOK_URL}/webhook",
-        secret_token=WEBHOOK_SECRET_TOKEN,
-    )
-
-    # Registrar comandos del bot en Telegram
-    user_commands = await refresh_bot_command_menu()
-
-    # Comandos extra para admins (con scope por chat individual)
-    admin_extra = [
-        BotCommand("preguntas", "🤖 Generar preguntas de debate con IA"),
-        BotCommand("cita", "✨ Generar cita literaria del libro actual"),
-        BotCommand("admin_ayuda", "🛠️ Ayuda de administrador"),
-        BotCommand("ciclo", "🔄 Ver ciclo activo"),
-        BotCommand("nuevo_ciclo", "🆕 Crear nuevo ciclo"),
-        BotCommand("cerrar_ciclo", "🔒 Cerrar ciclo actual"),
-        BotCommand("anuncio", "📢 Enviar mensaje al grupo"),
-        BotCommand("anunciar_ganador", "🎉 Anunciar libro ganador"),
-        BotCommand("encuesta_libros", "📊 Lanzar encuesta de libros"),
-        BotCommand("encuesta_temas", "📊 Lanzar encuesta de temáticas"),
-        BotCommand("enviar_recordatorio", "🔔 Enviar recordatorio de reunión"),
-        BotCommand("enviar_lectura", "📖 Enviar recordatorio de lectura"),
-        BotCommand("fijar", "📌 Fijar mensaje en el grupo"),
-        BotCommand("desfijar", "📍 Desfijar mensaje actual"),
-    ]
-    for _admin_id in ADMIN_TELEGRAM_IDS:
-        try:
-            await telegram_app.bot.set_my_commands(
-                user_commands + admin_extra,
-                scope=BotCommandScopeChat(chat_id=int(_admin_id))
-            )
-        except Exception:
-            logger.warning("No se pudieron registrar comandos admin para %s", _admin_id)
-
-    # Recordatorio semanal — lunes 10:00
-    scheduler.add_job(
-        refresh_bot_command_menu, "interval",
-        minutes=15, id="refresh_command_menu", replace_existing=True
-    )
-    scheduler.add_job(
-        send_meeting_reminder, "cron",
-        day_of_week="mon", hour=10, minute=0,
-        id="weekly_reminder", replace_existing=True
-    )
-    # Recordatorio de lectura — cada 2 días
-    scheduler.add_job(
-        send_reading_reminder, "interval",
-        days=2, id="reading_reminder", replace_existing=True
-    )
-    # Recordatorio día antes — todos los días a las 10:00
-    scheduler.add_job(
-        send_day_before_reminder, "cron",
-        hour=10, minute=0,
-        id="day_before_reminder", replace_existing=True
-    )
-    # Mensajes programados — cada 5 minutos
-    scheduler.add_job(
-        send_scheduled_messages, "interval",
-        minutes=5, id="scheduled_messages", replace_existing=True
-    )
-    # Keep-alive ping — cada 10 minutos
-    scheduler.add_job(
-        _keep_alive_ping, "interval",
-        minutes=10, id="keep_alive", replace_existing=True
-    )
-    # Auto-cierre de ciclo — diario a las 23:30
-    scheduler.add_job(
-        _auto_close_cycle, "cron",
-        hour=23, minute=30,
-        id="auto_close_cycle", replace_existing=True
-    )
-    scheduler.start()
-    _reload_custom_reminders()
+async def _register_runtime_bot_commands():
+    await runtime_jobs.register_runtime_bot_commands()
 
 
 async def main():
@@ -3303,11 +1921,28 @@ async def main():
         telegram_app,
         scheduler,
         (
-            send_meeting_reminder,
-            send_reading_reminder,
-            send_day_before_reminder,
-            send_scheduled_messages,
+            runtime_jobs.instrument("send_meeting_reminder", send_meeting_reminder),
+            runtime_jobs.instrument("send_reading_reminder", send_reading_reminder),
+            runtime_jobs.instrument("send_day_before_reminder", send_day_before_reminder),
+            runtime_jobs.instrument("send_scheduled_messages", send_scheduled_messages),
+            runtime_jobs.instrument("keep_alive_ping", _keep_alive_ping),
+            [
+                {
+                    "id": "refresh_command_menu",
+                    "func": runtime_jobs.instrument("refresh_bot_command_menu", refresh_bot_command_menu),
+                    "trigger": "interval",
+                    "kwargs": {"minutes": 15},
+                },
+                {
+                    "id": "auto_close_cycle",
+                    "func": runtime_jobs.instrument("auto_close_cycle", _auto_close_cycle),
+                    "trigger": "cron",
+                    "kwargs": {"hour": 23, "minute": 30},
+                },
+            ],
         ),
+        register_commands=_register_runtime_bot_commands,
+        post_scheduler_start=_reload_custom_reminders,
     )
 
 

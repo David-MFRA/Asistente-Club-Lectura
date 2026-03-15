@@ -112,6 +112,47 @@
     </div>
   </div>
 
+  {% if runtime_metrics %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:14px">
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px 20px">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#a5b4fc;margin-bottom:8px">Observabilidad</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:1.2rem;font-weight:800">{{ runtime_metrics.requests.count }}</div>
+          <div style="color:var(--muted);font-size:.8rem">requests</div>
+        </div>
+        <div>
+          <div style="font-size:1.2rem;font-weight:800">{{ runtime_metrics.requests.errors }}</div>
+          <div style="color:var(--muted);font-size:.8rem">errores 5xx</div>
+        </div>
+        <div>
+          <div style="font-size:1.2rem;font-weight:800">{{ runtime_metrics.requests.avg_duration_ms }} ms</div>
+          <div style="color:var(--muted);font-size:.8rem">media</div>
+        </div>
+      </div>
+      {% if runtime_metrics.recent_errors %}
+      <div style="margin-top:12px;color:var(--muted);font-size:.82rem">
+        Último incidente: <strong style="color:#fca5a5">{{ runtime_metrics.recent_errors[0].name }}</strong>
+      </div>
+      {% endif %}
+    </div>
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px 20px">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#a5b4fc;margin-bottom:8px">Auditoría reciente</div>
+      {% if recent_audit %}
+        {% for row in recent_audit[:4] %}
+        <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+          <div style="font-weight:700;font-size:.88rem">{{ row.action }}</div>
+          <div style="color:var(--muted);font-size:.8rem">{{ row.actor or 'admin' }} · {{ row.status }} · {{ row.created_at }}</div>
+        </div>
+        {% endfor %}
+        <a class="btn btn-soft" href="/admin/audit" style="margin-top:12px">Abrir auditoría</a>
+      {% else %}
+        <div class="empty" style="margin:0">Sin movimientos auditados todavía.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── CYCLE WIZARDS (uno por ciclo activo) ── -->
   {% if not cycle_states %}
   <div style="background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);border-radius:16px;padding:22px 24px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">

@@ -1,4 +1,3 @@
-import json
 import logging
 from html import escape as hesc
 
@@ -58,7 +57,7 @@ async def create_book_poll(require_admin, telegram_app, telegram_chat_id, logger
             db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id,
                          poll_type="books", cycle_key=cycle)
             # Store option→proposal_id mapping for real-time vote tracking
-            db.set_config(f"poll_options_{msg.poll.id}", json.dumps([b["proposal_id"] for b in chunk]))
+            db.set_poll_option_mapping(msg.poll.id, "books", [b["proposal_id"] for b in chunk])
 
         _set_phase("book_voting")
         suffix = f" (en {len(chunks)} partes)" if len(chunks) > 1 else ""
@@ -141,7 +140,7 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
                     cycle_key=cycle_key,
                 )
                 # Guardar mapeo opción→proposal_id para seguimiento de votos en tiempo real
-                db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([b["proposal_id"] for b in tied[:10]]))
+                db.set_poll_option_mapping(tie_poll.poll.id, "books", [b["proposal_id"] for b in tied[:10]])
                 flash(f"Todas las encuestas cerradas. Empate entre {len(tied)} libros. Encuesta de desempate lanzada.", "warning")
                 return redirect(url_for("admin_dashboard"))
 
@@ -210,7 +209,7 @@ async def create_theme_poll(require_admin, telegram_app, telegram_chat_id, logge
         )
         db.save_poll(chat_id=msg.chat_id, message_id=msg.message_id, poll_id=msg.poll.id, poll_type="themes", cycle_key=cycle)
         # Store option→theme_id mapping for real-time vote tracking
-        db.set_config(f"poll_options_{msg.poll.id}", json.dumps([t["id"] for t in themes[:10]]))
+        db.set_poll_option_mapping(msg.poll.id, "themes", [t["id"] for t in themes[:10]])
         _set_phase("theme_voting")
         flash("Encuesta de temáticas lanzada en el grupo", "success")
     except Exception:
@@ -236,11 +235,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
         db.close_poll(poll_db_id)
 
         # Determine winner directly from Telegram poll data (authoritative vote counts)
-        options_map_raw = db.get_config(f"poll_options_{poll['poll_id']}") or "[]"
-        try:
-            theme_ids = json.loads(options_map_raw)
-        except Exception:
-            theme_ids = []
+        theme_ids = db.get_poll_option_mapping(poll["poll_id"])
 
         # Build ranked list: [{id, name, votes}] from tg_poll.options + theme_ids mapping
         all_themes_db = {t["id"]: t for t in db.get_themes(cycle_key)}
@@ -292,7 +287,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
                     cycle_key=cycle_key,
                 )
                 # Guardar mapeo opción→theme_id para seguimiento de votos en tiempo real
-                db.set_config(f"poll_options_{tie_poll.poll.id}", json.dumps([t["id"] for t in tied[:10]]))
+                db.set_poll_option_mapping(tie_poll.poll.id, "themes", [t["id"] for t in tied[:10]])
             flash(f"Empate entre {len(tied)} temáticas. Encuesta de desempate lanzada.", "warning")
             return redirect(url_for("admin_ciclo"))
 
@@ -300,9 +295,7 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
         top = ranked[0] if ranked else None
         if top:
             logger.info("Admin: temática ganadora → «%s» (%d votos)", top["name"], top["votes"])
-            if cycle_key == db.get_current_cycle_key():
-                db.set_config("active_theme", top["name"])
-            db.set_config(f"active_theme:{cycle_key}", top["name"])
+            db.set_cycle_theme(cycle_key, top["name"])
             _set_phase("books")
             db.unlock_cycle_proposals(cycle_key)
             # Try to get AI book suggestion

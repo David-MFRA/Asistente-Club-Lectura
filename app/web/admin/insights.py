@@ -107,12 +107,12 @@ def get_security_alerts():
     return alerts
 
 
-def render_admin_search(require_admin):
+def render_admin_search(require_admin, *, query=None, error_message=None, status_code=200):
     auth = require_admin()
     if auth:
         return auth
 
-    query = request.args.get("q", "").strip()
+    query = request.args.get("q", "").strip() if query is None else query
     results = db.search_admin(query) if query else None
     total = sum(len(items) for items in (results or {}).values()) if results else 0
     return render_template(
@@ -120,7 +120,8 @@ def render_admin_search(require_admin):
         query=query,
         results=results or {},
         total_results=total,
-    )
+        error_message=error_message,
+    ), status_code
 
 
 def _sim_message_block(title, text, kind="message", meta=None):

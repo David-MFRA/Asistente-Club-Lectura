@@ -5,6 +5,7 @@ import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.services.bot_context import get_soft_guidance
+from app.services.input_limits import InputValidationError, normalize_book_query
 
 
 class BookHandlers:
@@ -42,6 +43,11 @@ class BookHandlers:
                 parse_mode=None,
             )
             return
+        try:
+            title = normalize_book_query(title)
+        except InputValidationError as exc:
+            await update.message.reply_text(str(exc), parse_mode=None)
+            return
 
         wait_msg = await update.message.reply_text(
             f"Buscando _{self.esc(title)}_\\.\\.\\.",
@@ -55,7 +61,7 @@ class BookHandlers:
                 return
 
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
-            result = db.insert_book(book, user_name, cycle_key=cycle_key)
+            result = db.insert_book(book, user_name, cycle_key=cycle_key, proposed_by_user_id=user.id)
             await wait_msg.delete()
 
             if not result.get("inserted", True):
@@ -157,7 +163,7 @@ class BookHandlers:
 
             proposal_id = proposal["proposal_id"]
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
-            ok = db.vote_book(proposal_id, user_name)
+            ok = db.vote_book(proposal_id, user_name, user.id)
             if ok:
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"

@@ -83,7 +83,10 @@ def configure_scheduler(
     send_reading_reminder,
     send_day_before_reminder,
     send_scheduled_messages,
+    keep_alive_job=None,
+    extra_jobs=None,
 ):
+    keep_alive_fn = keep_alive_job or keep_alive_ping
     scheduler.add_job(
         send_meeting_reminder,
         "cron",
@@ -116,24 +119,37 @@ def configure_scheduler(
         replace_existing=True,
     )
     scheduler.add_job(
-        keep_alive_ping,
+        keep_alive_fn,
         "interval",
         minutes=10,
         id="keep_alive",
         replace_existing=True,
     )
+    for job in extra_jobs or []:
+        scheduler.add_job(
+            job["func"],
+            job["trigger"],
+            id=job["id"],
+            replace_existing=True,
+            **dict(job.get("kwargs") or {}),
+        )
 
 
-async def startup(telegram_app, scheduler, scheduler_jobs):
+async def startup(telegram_app, scheduler, scheduler_jobs, register_commands=None, post_scheduler_start=None):
     await telegram_app.initialize()
     await telegram_app.start()
     await telegram_app.bot.set_webhook(
         url=f"{WEBHOOK_URL}/webhook",
         secret_token=WEBHOOK_SECRET_TOKEN,
     )
-    await register_bot_commands(telegram_app.bot)
+    if register_commands is not None:
+        await register_commands()
+    else:
+        await register_bot_commands(telegram_app.bot)
     configure_scheduler(scheduler, *scheduler_jobs)
     scheduler.start()
+    if post_scheduler_start is not None:
+        post_scheduler_start()
 
 
 async def shutdown(telegram_app, scheduler):
@@ -156,8 +172,14 @@ class _FlaskServerThread(threading.Thread):
         self.server.shutdown()
 
 
-async def serve(flask_app, telegram_app, scheduler, scheduler_jobs):
-    await startup(telegram_app, scheduler, scheduler_jobs)
+async def serve(flask_app, telegram_app, scheduler, scheduler_jobs, register_commands=None, post_scheduler_start=None):
+    await startup(
+        telegram_app,
+        scheduler,
+        scheduler_jobs,
+        register_commands=register_commands,
+        post_scheduler_start=post_scheduler_start,
+    )
     server_thread = _FlaskServerThread(flask_app)
     server_thread.start()
     try:

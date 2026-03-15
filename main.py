@@ -2662,6 +2662,14 @@ def admin_help():
 def admin_ciclo():
     return render_admin_cycle(require_admin)
 
+@flask_app.get("/admin/ciclo/easy")
+def admin_ciclo_easy():
+    auth = require_admin()
+    if auth: return auth
+    active_keys = db.get_active_cycle_keys()
+    cycle = db.get_cycle_state(active_keys[0]) if active_keys else None
+    return render_template("admin_ciclo_easy.html", cycle=cycle)
+
 @flask_app.post("/admin/ciclo/nuevo")
 def admin_ciclo_nuevo():
     return _run_async(activate_cycle(require_admin, send_to_group, logger, telegram_app, TELEGRAM_CHAT_ID))

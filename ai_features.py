@@ -47,6 +47,8 @@ def _groq_chat(prompt: str, max_tokens: int = 2000, model: str | None = None) ->
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (compatible; ClubLectura/1.0)",
+                    "Accept": "application/json",
                 },
                 method="POST"
             )

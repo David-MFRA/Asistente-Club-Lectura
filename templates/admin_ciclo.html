@@ -220,7 +220,48 @@
           </form>
         </div>
 
-        <!-- Phase actions — all controls inline for easy flow management -->
+        <!-- Propuestas de libros -->
+        {% if c.books %}
+        <div style="margin-bottom:12px">
+          <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📚 Propuestas ({{ c.books|length }})</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            {% for b in c.books %}
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:7px 10px;display:flex;align-items:center;gap:8px">
+              <div style="flex:1;min-width:0">
+                <span style="font-weight:700;font-size:.85rem">{{ b.title }}</span>
+                {% if b.author %}<span style="color:var(--muted);font-size:.78rem"> · {{ b.author }}</span>{% endif %}
+                {% if b.votes > 0 %}<span style="color:#a5b4fc;font-size:.75rem;margin-left:6px">{{ b.votes }} voto{{ 's' if b.votes != 1 else '' }}</span>{% endif %}
+              </div>
+              {% if not c.winner %}
+              <form action="/admin/book/{{ b.proposal_id }}/delete" method="post" style="margin:0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="_next" value="/admin/ciclo">
+                <button class="btn btn-danger btn-xs" type="submit" title="Eliminar propuesta"
+                        onclick="return confirm('¿Eliminar «{{ b.title }}» de las propuestas?')">✕</button>
+              </form>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% if not c.winner and not c.open_book_polls %}
+          <form action="/admin/book/add" method="post" style="display:flex;gap:6px;margin-top:8px;align-items:center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="_next" value="/admin/ciclo">
+            <input name="title" type="text" placeholder="Añadir libro…" style="flex:1;font-size:.82rem" required>
+            <button class="btn btn-success btn-sm" type="submit">➕</button>
+          </form>
+          {% endif %}
+        </div>
+        {% elif c.phase == 'books' and not c.winner %}
+        <form action="/admin/book/add" method="post" style="display:flex;gap:6px;margin-bottom:12px;align-items:center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="_next" value="/admin/ciclo">
+          <input name="title" type="text" placeholder="Añadir libro al ciclo…" style="flex:1;font-size:.82rem" required>
+          <button class="btn btn-success btn-sm" type="submit">➕</button>
+        </form>
+        {% endif %}
+
+        <!-- Phase actions -->
         <div class="cycle-actions" style="flex-direction:column;align-items:stretch;gap:10px">
 
           {# ── SETUP / THEME_VOTING ── #}
@@ -250,7 +291,7 @@
           {# ── BOOKS ── #}
           {% if c.phase == 'books' %}
             {% if c.active_theme %}
-            <div style="color:#6ee7b7;font-size:.84rem">✅ Temática asignada. Recogiendo propuestas de libros…</div>
+            <div style="color:#6ee7b7;font-size:.84rem">✅ Temática: <strong>{{ c.active_theme }}</strong>. Recogiendo propuestas…</div>
             {% endif %}
             {% if c.books | length >= 2 %}
               <form action="/admin/encuesta/libros/crear" method="post" style="margin:0">
@@ -258,7 +299,7 @@
                 <button class="btn btn-primary" type="submit">📊 Lanzar encuesta libros ({{ c.books | length }} propuestas)</button>
               </form>
             {% else %}
-              <div style="color:var(--muted);font-size:.84rem;padding:4px 0">📚 Esperando propuestas de libros ({{ c.books | length }}/2 mínimo).</div>
+              <div style="color:var(--muted);font-size:.84rem;padding:4px 0">📚 Necesitas al menos 2 propuestas para lanzar la encuesta (tienes {{ c.books | length }}).</div>
             {% endif %}
           {% endif %}
 
@@ -270,18 +311,16 @@
               <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:10px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
                 <div>
                   <span style="color:#fbbf24;font-size:.85rem">📊 Encuesta de libros abierta</span>
-                  {% if total_polls > 1 %}
-                  <span style="color:var(--muted);font-size:.78rem;margin-left:6px">(parte {{ loop.index }}/{{ total_polls }})</span>
-                  {% endif %}
+                  {% if total_polls > 1 %}<span style="color:var(--muted);font-size:.78rem;margin-left:6px">(parte {{ loop.index }}/{{ total_polls }})</span>{% endif %}
                 </div>
                 <form action="/admin/encuesta/{{ bp.id }}/cerrar" method="post" style="margin:0">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-warning btn-sm" type="submit"
-                          onclick="return confirm('¿Cerrar esta encuesta de libros?{% if total_polls > 1 %} El ganador se determinará cuando se cierren todas las partes.{% endif %}')">🔒 Cerrar{% if total_polls > 1 %} parte {{ loop.index }}{% endif %}</button>
+                          onclick="return confirm('¿Cerrar esta encuesta?{% if total_polls > 1 %} El ganador se determina cuando se cierren todas las partes.{% endif %}')">🔒 Cerrar{% if total_polls > 1 %} parte {{ loop.index }}{% endif %}</button>
                 </form>
               </div>
               {% endfor %}
-            {% elif c.books | length >= 2 %}
+            {% elif not c.winner and c.books | length >= 2 %}
               <form action="/admin/encuesta/libros/crear" method="post" style="margin:0">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-primary" type="submit">📊 Re-lanzar encuesta libros</button>
@@ -292,9 +331,9 @@
           {# ── DATE_VOTING ── #}
           {% if c.phase == 'date_voting' %}
             {% if c.meeting %}
-              <a href="/meeting/{{ c.meeting.id }}" class="btn btn-primary" style="text-align:center">📅 Gestionar fechas de reunión</a>
+              <a href="/meeting/{{ c.meeting.id }}" class="btn btn-primary" style="text-align:center">📅 Gestionar fechas y encuesta →</a>
             {% else %}
-              <div style="color:var(--muted);font-size:.84rem;padding:4px 0">⚠️ Crea una reunión en el Dashboard para poder gestionar fechas.</div>
+              <a href="/admin#meetings" class="btn btn-primary" style="text-align:center">➕ Crear reunión para fijar fecha</a>
             {% endif %}
           {% endif %}
 

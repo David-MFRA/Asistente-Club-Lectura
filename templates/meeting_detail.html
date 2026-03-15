@@ -103,7 +103,7 @@
       <div class="poll-box">
         <div class="poll-box-title">📊 Encuesta de fechas activa</div>
         <p>La votación está en marcha en Telegram. Al cerrarla, la fecha ganadora se asignará automáticamente.</p>
-        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/cerrar/{{ open_poll.id }}">
+        <form method="post" action="/admin/encuesta/fechas/{{ meeting.id }}/{{ open_poll.id }}/cerrar">
           <button class="btn btn-danger btn-sm" type="submit">🔒 Cerrar encuesta y asignar fecha</button>
         </form>
       </div>

@@ -897,6 +897,8 @@ def get_cycle_state(cycle_key):
     open_theme_poll = get_open_poll("themes", cycle_key=cycle_key)
     open_book_polls = get_open_polls("books", cycle_key=cycle_key)
     open_book_poll = open_book_polls[0] if open_book_polls else None  # for compat
+    # winner only counts once voting is done (at least 1 vote cast)
+    winner = winner if (winner and winner.get("votes", 0) > 0) else None
 
     with get_cursor() as cur:
         cur.execute("""

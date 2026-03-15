@@ -8,6 +8,23 @@ import db
 logger = logging.getLogger(__name__)
 
 
+def _build_db_editor_columns(columns, row, pk_column):
+    prepared = []
+    for column in columns:
+        name = column["name"]
+        value = row.get(name) if row else None
+        prepared.append(
+            {
+                **column,
+                "is_primary_key": name == pk_column,
+                "form_value": db.format_table_value_for_form(value),
+                "is_null": value is None,
+                "textarea_rows": 8 if column["is_json"] or column["is_array"] else 4,
+            }
+        )
+    return prepared
+
+
 def _meetings_context(meetings_list):
     """Builds shared context dict for the meetings template."""
     active_cycles = db.get_active_cycle_keys()
@@ -337,6 +354,124 @@ def truncate_db_table(require_admin, logger, table):
     except Exception:
         logger.exception("Error vaciando tabla %s", table)
         flash(f"No se pudo vaciar la tabla «{table}».", "danger")
+    return redirect(url_for("admin_db", table=table))
+
+
+def render_admin_db(require_admin, logger):
+    auth = require_admin()
+    if auth:
+        return auth
+    tables = db.get_table_names()
+    table = request.args.get("table", "books")
+    edit_pk_value = request.args.get("edit")
+    if table not in tables:
+        table = tables[0]
+    try:
+        cols, rows, pk_column = db.get_table_rows(table)
+        columns = db.get_table_columns(table)
+        edit_row = None
+        editor_columns = []
+        if edit_pk_value and pk_column:
+            edit_row = db.get_table_row(table, pk_column, edit_pk_value)
+            if edit_row:
+                editor_columns = _build_db_editor_columns(columns, edit_row, pk_column)
+                logger.info("Admin DB: fila en edicion table=%s pk=%s value=%r", table, pk_column, edit_pk_value)
+            else:
+                flash(f"No se encontro la fila seleccionada en {table}.", "warning")
+        logger.info("Admin DB: tabla cargada table=%s rows=%d pk=%s", table, len(rows), pk_column or "(none)")
+    except Exception:
+        logger.exception("Error cargando tabla")
+        flash(f"No se pudo cargar la tabla {table}.", "danger")
+        cols, rows, pk_column, edit_row, editor_columns = [], [], None, None, []
+    return render_template(
+        "admin_db.html",
+        tables=tables,
+        table=table,
+        cols=cols,
+        rows=rows,
+        pk_column=pk_column,
+        edit_row=edit_row,
+        editor_columns=editor_columns,
+    )
+
+
+def delete_db_row(require_admin, logger, table):
+    auth = require_admin()
+    if auth:
+        return auth
+    pk_name = (request.form.get("pk_name") or "").strip()
+    pk_value = request.form.get("pk_value")
+    logger.info("Admin DB: eliminando fila tabla=%s pk=%s valor=%r", table, pk_name, pk_value)
+    try:
+        deleted = db.delete_table_row(table, pk_name, pk_value)
+        if deleted:
+            flash(f"Fila eliminada de {table}.", "success")
+        else:
+            flash(f"No se encontro la fila seleccionada en {table}.", "warning")
+    except Exception:
+        logger.exception("Error borrando fila en tabla %s", table)
+        flash(f"No se pudo borrar la fila de {table}.", "danger")
+    return redirect(url_for("admin_db", table=table))
+
+
+def update_db_row(require_admin, logger, table):
+    auth = require_admin()
+    if auth:
+        return auth
+
+    pk_name = (request.form.get("pk_name") or "").strip()
+    pk_value = request.form.get("pk_value")
+
+    try:
+        columns = db.get_table_columns(table)
+        updates = {}
+        for column in columns:
+            name = column["name"]
+            if name == pk_name:
+                continue
+            updates[name] = {
+                "value": request.form.get(f"value__{name}"),
+                "set_null": request.form.get(f"null__{name}") == "1",
+            }
+
+        logger.info(
+            "Admin DB: actualizando fila table=%s pk=%s value=%r editable_columns=%d",
+            table,
+            pk_name,
+            pk_value,
+            len(updates),
+        )
+        updated = db.update_table_row(table, pk_name, pk_value, updates)
+        if updated:
+            flash(f"Fila actualizada en {table}.", "success")
+        else:
+            flash(f"No se encontro la fila seleccionada en {table}.", "warning")
+    except ValueError as exc:
+        logger.warning(
+            "Admin DB: validacion fallida al actualizar table=%s pk=%s value=%r error=%s",
+            table,
+            pk_name,
+            pk_value,
+            exc,
+        )
+        flash(str(exc), "danger")
+    except Exception:
+        logger.exception("Error actualizando fila en tabla %s", table)
+        flash(f"No se pudo actualizar la fila de {table}.", "danger")
+    return redirect(url_for("admin_db", table=table, edit=pk_value))
+
+
+def truncate_db_table(require_admin, logger, table):
+    auth = require_admin()
+    if auth:
+        return auth
+    logger.warning("Admin DB: vaciando tabla=%s", table)
+    try:
+        db.truncate_table(table)
+        flash(f"Tabla {table} vaciada.", "success")
+    except Exception:
+        logger.exception("Error vaciando tabla %s", table)
+        flash(f"No se pudo vaciar la tabla {table}.", "danger")
     return redirect(url_for("admin_db", table=table))
 
 

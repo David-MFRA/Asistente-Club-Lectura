@@ -4,32 +4,51 @@
 
 {% block head_extra %}
 <style>
-  h1  { margin: 0; font-size: 1.5rem; }
-  h2  { margin: 0 0 6px; font-size: 1.05rem; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  h2 { margin: 0 0 6px; font-size: 1.05rem; }
   .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
   .table-selector { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
   .table-chip { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); color: var(--text); text-decoration: none; font-size: .86rem; font-weight: 600; transition: .15s ease; white-space: nowrap; }
-  .table-chip:hover  { background: rgba(255,255,255,.12); }
+  .table-chip:hover { background: rgba(255,255,255,.12); }
   .table-chip.active { background: linear-gradient(135deg,var(--primary),var(--primary2)); border-color: transparent; color: #fff; }
   .count-badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: rgba(99,102,241,.15); color: #c7d2fe; font-size: .82rem; font-weight: 700; margin-left: 10px; }
-  .danger-zone  { background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.2); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+  .danger-zone { background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.2); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
   .danger-title { color: #fca5a5; font-weight: 700; margin-bottom: 4px; font-size: .95rem; }
-  .danger-desc  { color: var(--muted); font-size: .85rem; margin-bottom: 12px; }
-  .table-wrap   { overflow: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); max-height: 65vh; }
-  table { min-width: 500px; }
+  .danger-desc { color: var(--muted); font-size: .85rem; margin-bottom: 12px; }
+  .table-wrap { overflow: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); max-height: 65vh; }
+  .editor-card { margin-bottom: 16px; padding: 18px; border-radius: 18px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); }
+  .editor-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .editor-note { color: var(--muted); font-size: .84rem; margin-bottom: 14px; }
+  .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .field { display: grid; gap: 6px; }
+  .field--full { grid-column: 1 / -1; }
+  .field label { font-weight: 700; font-size: .88rem; }
+  .field-meta { color: var(--muted); font-size: .78rem; }
+  .field input[type="text"], .field textarea, .field select { width: 100%; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(15,23,42,.45); color: var(--text); padding: 10px 12px; }
+  .field textarea { min-height: 92px; resize: vertical; }
+  .field input[disabled] { opacity: .75; }
+  .null-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; }
+  .editor-actions, .row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row-actions { justify-content: flex-end; }
+  .row-selected td { background: rgba(59,130,246,.08); }
+  table { min-width: 720px; }
   th { z-index: 1; backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,.08); }
   td { font-size: .88rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   td.wrap { white-space: normal; word-break: break-word; }
-  td form { display: contents; }
+  .muted-inline { color: var(--muted); font-size: .8rem; }
+  @media (max-width: 720px) {
+    table { min-width: 560px; }
+    .editor-grid { grid-template-columns: 1fr; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-head">
-  <div class="page-badge">🗄️</div>
+  <div class="page-badge">DB</div>
   <div>
     <h1>Visor de base de datos</h1>
-    <div class="sub">Consulta, elimina filas o vacía tablas directamente</div>
+    <div class="sub">Consulta, edita, elimina filas o vacia tablas directamente</div>
   </div>
 </div>
 
@@ -42,14 +61,73 @@
 <div class="card card--blur">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
     <h2>{{ table }} <span class="count-badge">{{ rows|length }} filas</span></h2>
+    {% if pk_column %}
+    <div class="muted-inline">Clave usada: {{ pk_column }}</div>
+    {% endif %}
   </div>
 
+  {% if edit_row and editor_columns %}
+  <div class="editor-card">
+    <div class="editor-top">
+      <div>
+        <h2>Editar fila</h2>
+        <div class="sub">{{ pk_column }} = {{ edit_row[pk_column] }}</div>
+      </div>
+      <div class="editor-actions">
+        <a class="btn btn-ghost" href="/admin/db?table={{ table }}">Cerrar editor</a>
+      </div>
+    </div>
+    <div class="editor-note">El texto vacio se guarda como cadena vacia. Marca "Guardar como NULL" cuando quieras un valor nulo.</div>
+    <form action="/admin/db/{{ table }}/update" method="post">
+      <input type="hidden" name="pk_name" value="{{ pk_column }}">
+      <input type="hidden" name="pk_value" value="{{ edit_row[pk_column] }}">
+      <div class="editor-grid">
+        {% for column in editor_columns %}
+        <div class="field {% if column.is_textarea %}field--full{% endif %}">
+          <label for="value__{{ column.name }}">{{ column.name }}</label>
+          <div class="field-meta">{{ column.data_type }}{% if column.is_nullable %} | nullable{% else %} | required{% endif %}</div>
+          {% if column.is_primary_key %}
+          <input id="value__{{ column.name }}" type="text" value="{{ column.form_value }}" disabled>
+          {% elif column.is_boolean %}
+          <select id="value__{{ column.name }}" name="value__{{ column.name }}">
+            {% if column.is_nullable %}
+            <option value="" {% if column.form_value == '' %}selected{% endif %}>-</option>
+            {% endif %}
+            <option value="true" {% if column.form_value == 'true' %}selected{% endif %}>true</option>
+            <option value="false" {% if column.form_value == 'false' %}selected{% endif %}>false</option>
+          </select>
+          {% elif column.is_textarea %}
+          <textarea id="value__{{ column.name }}" name="value__{{ column.name }}" rows="{{ column.textarea_rows }}">{{ column.form_value }}</textarea>
+          {% else %}
+          <input id="value__{{ column.name }}" type="text" name="value__{{ column.name }}" value="{{ column.form_value }}">
+          {% endif %}
+          {% if not column.is_primary_key and column.is_nullable %}
+          <label class="null-toggle">
+            <input type="checkbox" name="null__{{ column.name }}" value="1" {% if column.is_null %}checked{% endif %}>
+            Guardar como NULL
+          </label>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="editor-actions" style="margin-top:16px">
+        <button class="btn btn-primary" type="submit">Guardar cambios</button>
+        <a class="btn btn-ghost" href="/admin/db?table={{ table }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+  {% elif pk_column %}
+  <div class="editor-note">Selecciona "Editar" en una fila para modificar sus columnas.</div>
+  {% else %}
+  <div class="editor-note">Esta tabla no tiene una clave utilizable, asi que se muestra en modo solo lectura.</div>
+  {% endif %}
+
   <div class="danger-zone">
-    <div class="danger-title">⚠️ Zona peligrosa</div>
-    <div class="danger-desc">Vaciar la tabla borrará TODOS sus registros en cascada. Esta acción no se puede deshacer.</div>
+    <div class="danger-title">Zona peligrosa</div>
+    <div class="danger-desc">Vaciar la tabla borra todos sus registros en cascada. Esta accion no se puede deshacer.</div>
     <form action="/admin/db/{{ table }}/truncate" method="post"
-          onsubmit="return confirm('¿Seguro que quieres vaciar «{{ table }}»? No se puede deshacer.')">
-      <button class="btn btn-danger" type="submit">🗑️ Vaciar tabla «{{ table }}»</button>
+          onsubmit="return confirm('Seguro que quieres vaciar {{ table }}? No se puede deshacer.')">
+      <button class="btn btn-danger" type="submit">Vaciar tabla {{ table }}</button>
     </form>
   </div>
 
@@ -59,23 +137,33 @@
       <thead>
         <tr>
           {% for col in cols %}<th>{{ col }}</th>{% endfor %}
-          <th>Acción</th>
+          <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr>
-          {% for col in cols %}{% set cell = row[col] %}<td title="{{ cell }}">{{ cell if cell is not none else '—' }}</td>{% endfor %}
+        <tr {% if edit_row and pk_column and row[pk_column] == edit_row[pk_column] %}class="row-selected"{% endif %}>
+          {% for col in cols %}
+          {% set cell = row[col] %}
+          <td title="{{ cell }}">{{ cell if cell is not none else '-' }}</td>
+          {% endfor %}
           <td>
             {% if pk_column %}
-            <form action="/admin/db/{{ table }}/delete" method="post"
-                  onsubmit="return confirm('¿Borrar fila con {{ pk_column }}={{ row[pk_column] }}?')">
-              <input type="hidden" name="pk_name" value="{{ pk_column }}">
-              <input type="hidden" name="pk_value" value="{{ row[pk_column] }}">
-              <button class="btn btn-danger btn-xs" type="submit">🗑</button>
-            </form>
+            <div class="row-actions">
+              <form action="/admin/db" method="get">
+                <input type="hidden" name="table" value="{{ table }}">
+                <input type="hidden" name="edit" value="{{ row[pk_column] }}">
+                <button class="btn btn-xs" type="submit">Editar</button>
+              </form>
+              <form action="/admin/db/{{ table }}/delete" method="post"
+                    onsubmit="return confirm('Borrar fila con {{ pk_column }}={{ row[pk_column] }}?')">
+                <input type="hidden" name="pk_name" value="{{ pk_column }}">
+                <input type="hidden" name="pk_value" value="{{ row[pk_column] }}">
+                <button class="btn btn-danger btn-xs" type="submit">Borrar</button>
+              </form>
+            </div>
             {% else %}
-            <span style="color:var(--muted);font-size:.8rem">Solo lectura</span>
+            <span class="muted-inline">Solo lectura</span>
             {% endif %}
           </td>
         </tr>
@@ -84,7 +172,7 @@
     </table>
   </div>
   {% else %}
-  <div class="empty">Esta tabla no tiene registros.</div>
+  <div class="empty">Esta tabla no tiene registros para mostrar.</div>
   {% endif %}
 </div>
 {% endblock %}

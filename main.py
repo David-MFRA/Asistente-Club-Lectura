@@ -86,6 +86,7 @@ from app.web.admin.catalog import (
     save_gallery_notes,
     suggest_waitlist_to_group,
     truncate_db_table,
+    update_db_row,
     update_meeting as update_meeting_page,
 )
 from app.web.admin.demo import (
@@ -2383,6 +2384,10 @@ def admin_db():
 @flask_app.post("/admin/db/<table>/delete")
 def admin_db_delete_row(table):
     return delete_db_row(require_admin, logger, table)
+
+@flask_app.post("/admin/db/<table>/update")
+def admin_db_update_row(table):
+    return update_db_row(require_admin, logger, table)
 
 @flask_app.post("/admin/db/<table>/truncate")
 def admin_db_truncate(table):

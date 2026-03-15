@@ -2,7 +2,8 @@ import logging
 import os
 import json
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
+from decimal import Decimal, InvalidOperation
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ def _utcnow():
 
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import Json, RealDictCursor
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -1458,6 +1459,44 @@ def get_table_names():
     return list(ALLOWED_TABLES)
 
 
+def get_table_columns(table_name):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                column_name,
+                data_type,
+                udt_name,
+                is_nullable,
+                column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+            ORDER BY ordinal_position
+            """,
+            (table_name,),
+        )
+        columns = []
+        for row in cur.fetchall():
+            data_type = row["data_type"]
+            udt_name = row["udt_name"] or ""
+            columns.append(
+                {
+                    "name": row["column_name"],
+                    "data_type": data_type,
+                    "udt_name": udt_name,
+                    "is_nullable": row["is_nullable"] == "YES",
+                    "has_default": row["column_default"] is not None,
+                    "is_boolean": data_type == "boolean",
+                    "is_json": data_type in ("json", "jsonb"),
+                    "is_array": udt_name.startswith("_"),
+                    "is_textarea": data_type in ("text", "json", "jsonb") or udt_name.startswith("_"),
+                }
+            )
+        return columns
+
+
 def get_table_primary_key(table_name):
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Tabla no permitida: {table_name}")
@@ -1504,19 +1543,13 @@ def get_table_primary_key(table_name):
 def get_table_rows(table_name, limit=200):
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Tabla no permitida: {table_name}")
+    columns = get_table_columns(table_name)
+    column_names = [column["name"] for column in columns]
     with get_cursor() as cur:
-        cur.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = %s
-            """,
-            (table_name,),
-        )
-        column_names = {row["column_name"] for row in cur.fetchall()}
+        column_name_set = set(column_names)
         order_column = None
         for candidate in ("id", "created_at", "updated_at", "key", "user_id"):
-            if candidate in column_names:
+            if candidate in column_name_set:
                 order_column = candidate
                 break
         primary_key = get_table_primary_key(table_name)
@@ -1529,9 +1562,175 @@ def get_table_rows(table_name, limit=200):
         cur.execute(query, (limit,))
         rows = [dict(row) for row in cur.fetchall()]
         if not rows:
-            return [], [], primary_key
-        cols = list(rows[0].keys())
-        return cols, rows, primary_key
+            return column_names, [], primary_key
+        return column_names, rows, primary_key
+
+
+def _coerce_table_value(raw_value, column_meta, *, set_null=False):
+    name = column_meta["name"]
+    data_type = column_meta["data_type"]
+    udt_name = column_meta["udt_name"]
+    is_nullable = column_meta["is_nullable"]
+
+    if set_null:
+        if not is_nullable:
+            raise ValueError(f"La columna {name} no admite NULL")
+        return None
+
+    if raw_value is None:
+        if is_nullable:
+            return None
+        raise ValueError(f"Falta un valor para la columna {name}")
+
+    if not isinstance(raw_value, str):
+        return raw_value
+
+    raw_text = raw_value
+    stripped = raw_text.strip()
+
+    if data_type == "boolean":
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        normalized = stripped.lower()
+        if normalized in {"1", "true", "t", "yes", "y", "si", "s", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off"}:
+            return False
+        raise ValueError(f"Valor booleano invalido en {name}: {raw_text!r}")
+
+    if data_type in {"smallint", "integer", "bigint"}:
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        try:
+            return int(stripped)
+        except ValueError as exc:
+            raise ValueError(f"Valor entero invalido en {name}: {raw_text!r}") from exc
+
+    if data_type in {"numeric", "real", "double precision", "decimal"}:
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        try:
+            return Decimal(stripped)
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"Valor numerico invalido en {name}: {raw_text!r}") from exc
+
+    if data_type in {"json", "jsonb"}:
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        try:
+            return Json(json.loads(raw_text))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"JSON invalido en {name}: {exc.msg}") from exc
+
+    if udt_name.startswith("_"):
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Array invalido en {name}: {exc.msg}") from exc
+        if not isinstance(parsed, list):
+            raise ValueError(f"La columna {name} debe recibir un array JSON")
+        return parsed
+
+    if data_type in {"date", "time without time zone", "time with time zone", "timestamp without time zone", "timestamp with time zone"}:
+        if stripped == "":
+            if is_nullable:
+                return None
+            raise ValueError(f"La columna {name} no puede estar vacia")
+        return stripped
+
+    return raw_text
+
+
+def get_table_row(table_name, pk_column, pk_value):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    real_pk = get_table_primary_key(table_name)
+    if not real_pk:
+        raise ValueError(f"La tabla {table_name} no tiene una clave utilizable")
+    if pk_column != real_pk:
+        raise ValueError(f"Clave invalida para {table_name}: {pk_column}")
+
+    columns = {column["name"]: column for column in get_table_columns(table_name)}
+    if real_pk not in columns:
+        raise ValueError(f"La columna clave {real_pk} no existe en {table_name}")
+    lookup_value = _coerce_table_value(pk_value, columns[real_pk])
+
+    with get_cursor() as cur:
+        cur.execute(f"SELECT * FROM {table_name} WHERE {real_pk} = %s LIMIT 1", (lookup_value,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def format_table_value_for_form(value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ", timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, time):
+        return value.isoformat(timespec="seconds")
+    return str(value)
+
+
+def update_table_row(table_name, pk_column, pk_value, updates):
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(f"Tabla no permitida: {table_name}")
+    real_pk = get_table_primary_key(table_name)
+    if not real_pk:
+        raise ValueError(f"La tabla {table_name} no tiene una clave utilizable para editar filas")
+    if pk_column != real_pk:
+        raise ValueError(f"Clave invalida para {table_name}: {pk_column}")
+
+    columns = {column["name"]: column for column in get_table_columns(table_name)}
+    if real_pk not in columns:
+        raise ValueError(f"La columna clave {real_pk} no existe en {table_name}")
+
+    assignments = []
+    values = []
+    for column_name, payload in updates.items():
+        if column_name == real_pk:
+            continue
+        column_meta = columns.get(column_name)
+        if not column_meta:
+            raise ValueError(f"La columna {column_name} no existe en {table_name}")
+        assignments.append(f"{column_name} = %s")
+        values.append(
+            _coerce_table_value(
+                payload.get("value"),
+                column_meta,
+                set_null=bool(payload.get("set_null")),
+            )
+        )
+
+    if not assignments:
+        raise ValueError("No hay columnas editables para guardar")
+
+    lookup_value = _coerce_table_value(pk_value, columns[real_pk])
+    values.append(lookup_value)
+
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            f"UPDATE {table_name} SET {', '.join(assignments)} WHERE {real_pk} = %s",
+            tuple(values),
+        )
+        return cur.rowcount
 
 
 def delete_table_row(table_name, pk_column, pk_value):

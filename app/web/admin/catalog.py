@@ -502,6 +502,15 @@ def truncate_db_table(require_admin, logger, table):
     return redirect(url_for("admin_db", table=table))
 
 
+def _json_default(obj):
+    import datetime, decimal
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    return str(obj)
+
+
 def execute_sql_query(require_admin, logger):
     auth = require_admin()
     if auth:
@@ -520,7 +529,7 @@ def execute_sql_query(require_admin, logger):
             after={"sql": sql[:500], "rowcount": rowcount},
         )
         return Response(
-            json.dumps({"cols": cols, "rows": rows, "rowcount": rowcount, "is_select": is_select}),
+            json.dumps({"cols": cols, "rows": rows, "rowcount": rowcount, "is_select": is_select}, default=_json_default),
             mimetype="application/json",
         )
     except Exception as exc:

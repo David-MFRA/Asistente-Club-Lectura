@@ -3,8 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ club_name }} · Leyendo juntos</title>
-<meta name="description" content="{{ club_name }} — vota el próximo libro, apúntate a las reuniones y sigue nuestras lecturas.">
+
+{# ── SEO ── #}
+{% set seo_title = club_name ~ " — Club de lectura en " ~ city.split(",")[0] %}
+{% set seo_desc = description if description else "Somos un club de lectura en " ~ city ~ ". Proponemos libros, votamos y quedamos cada mes. Únete gratis." %}
+<title>{{ seo_title }}</title>
+<meta name="description" content="{{ seo_desc }}">
+<meta name="robots" content="index, follow">
+<meta name="google-site-verification" content="E8RQ-2Ojv_i9bIbkgk_Pudbk2JJnSXexaJ0nCWb1l_A">
+{% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+
+{# Open Graph #}
+<meta property="og:type"        content="website">
+<meta property="og:title"       content="{{ seo_title }}">
+<meta property="og:description" content="{{ seo_desc }}">
+<meta property="og:locale"      content="es_ES">
+{% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
+
+{# Twitter Card #}
+<meta name="twitter:card"        content="summary">
+<meta name="twitter:title"       content="{{ seo_title }}">
+<meta name="twitter:description" content="{{ seo_desc }}">
+
+{# Structured data — LocalBusiness #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": {{ club_name | tojson }},
+  "description": {{ seo_desc | tojson }},
+  "url": {{ (canonical_url or "") | tojson }},
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": {{ city.split(",")[0] | tojson }},
+    "addressCountry": "ES"
+  },
+  "knowsAbout": ["literatura", "lectura", "club de lectura", "libros"]
+}
+</script>
+
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -233,6 +233,23 @@ def init_db():
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""")
         cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_audit_log (
+            id SERIAL PRIMARY KEY,
+            actor TEXT,
+            action TEXT NOT NULL,
+            route TEXT,
+            method VARCHAR(10),
+            ip TEXT,
+            target_type TEXT,
+            target_id TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'ok',
+            result TEXT,
+            before_data JSONB,
+            after_data JSONB,
+            extra JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""")
+        cur.execute("""
         CREATE TABLE IF NOT EXISTS bug_reports (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL,
@@ -268,6 +285,20 @@ def set_config(key, value):
         INSERT INTO app_config(key, value) VALUES(%s,%s)
         ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
         """, (key, str(value)))
+
+
+def get_json_config(key, default=None):
+    raw = get_config(key)
+    if raw in (None, ""):
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def set_json_config(key, value):
+    set_config(key, json.dumps(value, ensure_ascii=False))
 
 def get_current_cycle_key():
     stored = get_config("active_cycle_key")
@@ -1187,6 +1218,105 @@ def get_all_message_templates():
         return [dict(r) for r in cur.fetchall()]
 
 
+def build_scoped_message_key(base_key, audience=None, phase=None, cycle_key=None):
+    parts = [base_key]
+    if audience:
+        parts.append(f"aud:{audience}")
+    if phase:
+        parts.append(f"phase:{phase}")
+    if cycle_key:
+        parts.append(f"cycle:{cycle_key}")
+    return "|".join(parts)
+
+
+def get_scoped_message_variants(base_key, audience=None, phase=None, cycle_key=None):
+    candidates = []
+    scopes = []
+    if audience:
+        scopes.append(("aud", audience))
+    if phase:
+        scopes.append(("phase", phase))
+    if cycle_key:
+        scopes.append(("cycle", cycle_key))
+    for mask in range((1 << len(scopes)) - 1, 0, -1):
+        parts = [base_key]
+        for idx, (scope_key, scope_value) in enumerate(scopes):
+            if mask & (1 << idx):
+                parts.append(f"{scope_key}:{scope_value}")
+        candidates.append("|".join(parts))
+    candidates.append(base_key)
+    seen = []
+    for key in candidates:
+        if key not in seen:
+            seen.append(key)
+    return seen
+
+
+def get_message_template_scoped(base_key, audience=None, phase=None, cycle_key=None):
+    keys = get_scoped_message_variants(
+        base_key,
+        audience=audience,
+        phase=phase,
+        cycle_key=cycle_key,
+    )
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT key, value FROM message_templates WHERE key = ANY(%s)",
+            (keys,),
+        )
+        rows = {row["key"]: row["value"] for row in cur.fetchall()}
+    for key in keys:
+        if key in rows:
+            return rows[key], key
+    return None, base_key
+
+
+def get_scoped_message_templates():
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT key, value, updated_at
+            FROM message_templates
+            WHERE key LIKE '%%|%%'
+            ORDER BY updated_at DESC, key ASC
+            """
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_cycle_bot_settings(cycle_key=None):
+    cycle_key = cycle_key or get_current_cycle_key()
+    defaults = {
+        "private_highlights": [],
+        "group_highlights": [],
+        "hidden_commands": [],
+        "context_note": "",
+        "help_note": "",
+        "soft_mode_enabled": True,
+    }
+    data = get_json_config(f"bot_context:{cycle_key}", {}) or {}
+    settings = {**defaults, **data}
+    for key in ("private_highlights", "group_highlights", "hidden_commands"):
+        value = settings.get(key) or []
+        if isinstance(value, str):
+            value = [item.strip() for item in value.split(",") if item.strip()]
+        settings[key] = [str(item).strip() for item in value if str(item).strip()]
+    settings["soft_mode_enabled"] = str(settings.get("soft_mode_enabled", True)).lower() not in {"0", "false", "no"}
+    return settings
+
+
+def set_cycle_bot_settings(cycle_key, settings):
+    payload = {
+        "private_highlights": settings.get("private_highlights") or [],
+        "group_highlights": settings.get("group_highlights") or [],
+        "hidden_commands": settings.get("hidden_commands") or [],
+        "context_note": (settings.get("context_note") or "").strip(),
+        "help_note": (settings.get("help_note") or "").strip(),
+        "soft_mode_enabled": bool(settings.get("soft_mode_enabled", True)),
+    }
+    set_json_config(f"bot_context:{cycle_key}", payload)
+
+
 # =========================================================
 # SENT MESSAGES LOG
 # =========================================================
@@ -1914,6 +2044,233 @@ def get_events(limit: int = 300, event_type: str = None, category: str = None):
         params.append(limit)
         cur.execute(f"SELECT * FROM app_events {where} ORDER BY created_at DESC LIMIT %s", params)
         return [dict(r) for r in cur.fetchall()]
+
+
+def log_admin_audit(
+    action: str,
+    *,
+    actor: str = None,
+    route: str = None,
+    method: str = None,
+    ip: str = None,
+    target_type: str = None,
+    target_id: str = None,
+    status: str = "ok",
+    result: str = None,
+    before: dict = None,
+    after: dict = None,
+    extra: dict = None,
+):
+    logger.info(
+        "ADMIN AUDIT [%s/%s] actor=%s route=%s target=%s:%s",
+        action,
+        status,
+        actor or "-",
+        route or "-",
+        target_type or "-",
+        target_id or "-",
+    )
+    try:
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO admin_audit_log (
+                    actor, action, route, method, ip,
+                    target_type, target_id, status, result,
+                    before_data, after_data, extra
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    actor,
+                    action,
+                    route,
+                    method,
+                    ip,
+                    target_type,
+                    target_id,
+                    status,
+                    result,
+                    Json(before) if before is not None else None,
+                    Json(after) if after is not None else None,
+                    Json(extra) if extra is not None else None,
+                ),
+            )
+    except Exception as exc:
+        logger.warning("log_admin_audit DB write failed: %s", exc)
+
+
+def get_admin_audit_logs(limit: int = 200, action: str = None, status: str = None):
+    with get_cursor() as cur:
+        conds, params = [], []
+        if action:
+            conds.append("action = %s"); params.append(action)
+        if status:
+            conds.append("status = %s"); params.append(status)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        params.append(limit)
+        cur.execute(f"SELECT * FROM admin_audit_log {where} ORDER BY created_at DESC LIMIT %s", params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def search_admin(query, limit_per_section: int = 6):
+    term = (query or "").strip()
+    if not term:
+        return {
+            "books": [],
+            "meetings": [],
+            "cycles": [],
+            "users": [],
+            "bugs": [],
+            "messages": [],
+        }
+    pattern = f"%{term}%"
+    results = {}
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT b.id, b.title, b.author, bp.cycle_key
+            FROM books b
+            LEFT JOIN book_proposals bp ON bp.book_id = b.id
+            WHERE b.title ILIKE %s OR COALESCE(b.author, '') ILIKE %s
+            ORDER BY b.created_at DESC
+            LIMIT %s
+            """,
+            (pattern, pattern, limit_per_section),
+        )
+        results["books"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """
+            SELECT id, name, cycle_key, final_date, status
+            FROM meetings
+            WHERE name ILIKE %s OR COALESCE(location, '') ILIKE %s
+            ORDER BY COALESCE(final_date, created_at) DESC
+            LIMIT %s
+            """,
+            (pattern, pattern, limit_per_section),
+        )
+        results["meetings"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """
+            SELECT user_id, first_name, username, last_seen
+            FROM club_members
+            WHERE COALESCE(first_name, '') ILIKE %s
+               OR COALESCE(username, '') ILIKE %s
+               OR CAST(user_id AS TEXT) ILIKE %s
+            ORDER BY last_seen DESC
+            LIMIT %s
+            """,
+            (pattern, pattern, pattern, limit_per_section),
+        )
+        results["users"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """
+            SELECT id, username, status, description, created_at
+            FROM bug_reports
+            WHERE COALESCE(username, '') ILIKE %s OR description ILIKE %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (pattern, pattern, limit_per_section),
+        )
+        results["bugs"] = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """
+            (
+                SELECT 'template' AS kind, key AS ref, value AS text, updated_at AS ts
+                FROM message_templates
+                WHERE key ILIKE %s OR value ILIKE %s
+            )
+            UNION ALL
+            (
+                SELECT 'sent' AS kind, CAST(id AS TEXT) AS ref, text, sent_at AS ts
+                FROM sent_messages
+                WHERE text ILIKE %s
+            )
+            UNION ALL
+            (
+                SELECT 'scheduled' AS kind, CAST(id AS TEXT) AS ref, text, send_at AS ts
+                FROM scheduled_messages
+                WHERE text ILIKE %s
+            )
+            ORDER BY ts DESC
+            LIMIT %s
+            """,
+            (pattern, pattern, pattern, pattern, limit_per_section),
+        )
+        results["messages"] = [dict(r) for r in cur.fetchall()]
+
+    needle = term.casefold()
+    results["cycles"] = [
+        {"cycle_key": cycle}
+        for cycle in get_all_cycle_keys()
+        if needle in cycle.casefold()
+    ][:limit_per_section]
+    return results
+
+
+def get_operational_alerts():
+    alerts = []
+    current_cycle = get_current_cycle_key()
+    winner = get_winner_book(current_cycle)
+    next_meeting = get_latest_scheduled_meeting(cycle_key=current_cycle)
+    open_theme_poll = get_open_poll("themes", cycle_key=current_cycle)
+    open_book_polls = get_open_polls("books", cycle_key=current_cycle)
+    open_dates_poll = None
+    if next_meeting:
+        open_dates_poll = get_open_poll("dates", cycle_key=current_cycle, meeting_id=next_meeting["id"])
+
+    if winner and (not next_meeting or not next_meeting.get("final_date")):
+        alerts.append(
+            {
+                "level": "warning",
+                "title": "Reunion sin fecha cerrada",
+                "message": f"El ciclo {current_cycle} ya tiene libro ganador pero la reunion aun no tiene fecha confirmada.",
+                "action_label": "Gestionar reunion",
+                "action_url": f"/meeting/{next_meeting['id']}" if next_meeting else "/meetings",
+            }
+        )
+
+    for key, title in (
+        ("reminder_weekly_enabled", "Recordatorio semanal desactivado"),
+        ("reminder_reading_enabled", "Recordatorio de lectura desactivado"),
+        ("reminder_daybefore_enabled", "Aviso de hoy/manana desactivado"),
+    ):
+        if get_config(key, "1") == "0":
+            alerts.append(
+                {
+                    "level": "warning",
+                    "title": title,
+                    "message": "Revisa el programador para reactivarlo o dejar constancia del motivo.",
+                    "action_label": "Abrir programador",
+                    "action_url": "/admin/scheduler",
+                }
+            )
+
+    stale_polls = []
+    all_open_polls = ([open_theme_poll] if open_theme_poll else []) + open_book_polls + ([open_dates_poll] if open_dates_poll else [])
+    for poll in all_open_polls:
+        created_at = poll.get("created_at")
+        if created_at and isinstance(created_at, datetime):
+            age_hours = (_utcnow() - created_at.replace(tzinfo=None)).total_seconds() / 3600
+            if age_hours >= 48:
+                stale_polls.append((poll, int(age_hours)))
+    for poll, age_hours in stale_polls[:3]:
+        alerts.append(
+            {
+                "level": "danger",
+                "title": "Encuesta abierta demasiado tiempo",
+                "message": f"La encuesta {poll.get('poll_type')} lleva unas {age_hours}h abierta.",
+                "action_label": "Revisar panel",
+                "action_url": "/admin",
+            }
+        )
+
+    return alerts
 
 
 # =========================================================

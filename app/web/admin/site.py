@@ -44,6 +44,7 @@ def render_public_page(group_invite_link):
     attendees = db.get_attendance(meeting["id"]) if meeting else []
     galeria = db.get_galeria_data(limit=3)
     invite_link = db.get_config("public_invite_link", "") or group_invite_link
+    canonical_url = db.get_config("public_canonical_url", "").strip() or None
     return render_template(
         "public.html",
         winner=winner,
@@ -65,6 +66,7 @@ def render_public_page(group_invite_link):
         section_historia=db.get_config("public_section_historia", "Lo que hemos leído juntos"),
         join_title=db.get_config("public_join_title", "¿Te unes al club?"),
         join_body=db.get_config("public_join_body", "Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros."),
+        canonical_url=canonical_url,
     )
 
 

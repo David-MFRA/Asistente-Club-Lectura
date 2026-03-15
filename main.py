@@ -2093,7 +2093,37 @@ register_handlers(telegram_app, {
 
 @flask_app.get("/")
 def home():
-    return "ok", 200
+    return redirect(url_for("public_page"), 301)
+
+
+@flask_app.get("/robots.txt")
+def robots_txt():
+    canonical = db.get_config("public_canonical_url", "").strip()
+    sitemap_url = f"{canonical}/sitemap.xml" if canonical else ""
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin",
+        "Disallow: /webhook",
+    ]
+    if sitemap_url:
+        lines.append(f"Sitemap: {sitemap_url}")
+    return Response("\n".join(lines), mimetype="text/plain")
+
+
+@flask_app.get("/sitemap.xml")
+def sitemap_xml():
+    canonical = db.get_config("public_canonical_url", "").strip()
+    if not canonical:
+        canonical = WEBHOOK_URL.rstrip("/")
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f'<url><loc>{canonical}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>'
+        f'<url><loc>{canonical}/publico</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>'
+        "</urlset>"
+    )
+    return Response(xml, mimetype="application/xml")
 
 @flask_app.get("/favicon.ico")
 def favicon():

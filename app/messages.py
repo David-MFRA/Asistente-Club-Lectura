@@ -119,7 +119,15 @@ DEFAULT_MESSAGES = {
 
 def get_text(key, **kwargs):
     """Obtiene texto del template (BD o default) y aplica placeholders."""
-    template = db.get_message_template(key)
+    phase = kwargs.pop("phase", None)
+    audience = kwargs.pop("audience", None)
+    cycle_key = kwargs.pop("cycle_key", None)
+    template, _resolved_key = db.get_message_template_scoped(
+        key,
+        phase=phase,
+        audience=audience,
+        cycle_key=cycle_key,
+    )
     if template is None:
         template = DEFAULT_MESSAGES.get(key, "")
     if kwargs:

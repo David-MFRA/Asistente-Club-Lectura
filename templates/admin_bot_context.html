@@ -106,10 +106,10 @@
   <div class="card-label">Catalogo de comandos</div>
   {% for group in grouped_commands %}
   <div style="margin-top:14px">
-    <div style="font-weight:700;margin-bottom:8px">{{ group.group }}</div>
+    <div style="font-weight:700;margin-bottom:8px">{{ group["group"] }}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      {% for item in group.items %}
-      <span class="pill">{{ item.id }} · {{ item.desc }}</span>
+      {% for item in group["items"] %}
+      <span class="pill">{{ item["id"] }} · {{ item["desc"] }}</span>
       {% endfor %}
     </div>
   </div>

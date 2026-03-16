@@ -1,117 +1,180 @@
 {% extends '_base.html' %}
-{% block title %}Página Pública{% endblock %}
+{% block title %}Pagina Publica{% endblock %}
 {% block main_class %}main--md{% endblock %}
 
 {% block head_extra %}
 <style>
-  h1  { font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; }
-  .sub { color: var(--muted); font-size: .88rem; margin-bottom: 20px; }
-  .theme-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .theme-chip {
-    display: flex; align-items: center; gap: 7px;
-    padding: 7px 14px; border-radius: 8px; cursor: pointer;
-    border: 2px solid transparent; font-size: .82rem; font-weight: 700;
-    transition: .15s;
+  h1 { font-size: 1.45rem; margin: 0; }
+  .sub { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+  .section-label {
+    display: block;
+    margin: 22px 0 12px;
+    font-size: .76rem;
+    font-weight: 800;
+    color: var(--muted);
+    letter-spacing: .08em;
+    text-transform: uppercase;
   }
-  .theme-chip input { display: none; }
-  .theme-chip:has(input:checked) { border-color: var(--primary); background: rgba(99,102,241,.15); }
-  .theme-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .hint {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.5;
+  }
+  .actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 20px;
+  }
   .preview-link {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--primary); font-size: .82rem; text-decoration: none;
-    padding: 6px 12px; border: 1px solid rgba(99,102,241,.35); border-radius: 7px;
-    transition: .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary);
+    font-size: .84rem;
+    text-decoration: none;
+    padding: 8px 12px;
+    border: 1px solid rgba(99, 102, 241, .35);
+    border-radius: 8px;
   }
-  .preview-link:hover { background: rgba(99,102,241,.1); }
-  .section-label { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; display: block; }
+  .theme-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .theme-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    font-size: .84rem;
+    font-weight: 700;
+  }
+  .theme-chip input {
+    display: none;
+  }
+  .theme-chip:has(input:checked) {
+    border-color: rgba(99, 102, 241, .45);
+    background: rgba(99, 102, 241, .14);
+    color: #c7d2fe;
+  }
+  .theme-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>🌐 Página Pública</h1>
-<p class="sub">Configura el contenido y apariencia de la página pública del club en <code>/publico</code>.</p>
+<div class="page-head">
+  <div class="page-badge">Web</div>
+  <div>
+    <h1>Pagina publica y SEO</h1>
+    <div class="sub">Configura contenido, QR local y senales tecnicas de <code>/publico</code> desde un solo sitio.</div>
+  </div>
+</div>
 
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <!-- Identidad del club -->
-    <span class="section-label">🏷️ Identidad del club</span>
+    {# Copy principal visible para usuarios. #}
+    <span class="section-label">Identidad</span>
     <div class="field">
-      <label>Nombre del club</label>
-      <input type="text" name="club_name" value="{{ club_name }}" placeholder="Tribu de Libros" required>
+      <label for="club_name">Nombre del club</label>
+      <input id="club_name" type="text" name="club_name" value="{{ club_name }}" placeholder="Tribu de Libros" required>
     </div>
     <div class="field">
-      <label>Ciudad / País</label>
-      <input type="text" name="city" value="{{ city }}" placeholder="León, España">
+      <label for="city">Ciudad / pais</label>
+      <input id="city" type="text" name="city" value="{{ city }}" placeholder="Leon, Espana">
     </div>
     <div class="field">
-      <label>Descripción corta (subtítulo del hero)</label>
-      <textarea name="description" rows="2" placeholder="Un club de lectura íntimo gestionado en Telegram...">{{ description }}</textarea>
+      <label for="description">Descripcion corta</label>
+      <textarea id="description" name="description" rows="2" placeholder="Resumen visible en hero, metadescripcion y tarjetas sociales.">{{ description }}</textarea>
+      <div class="hint">Se reutiliza como base SEO cuando no haya descripcion mas especifica.</div>
     </div>
     <div class="field">
-      <label>Enlace de invitación a Telegram</label>
-      <input type="url" name="invite_link" value="{{ invite_link }}" placeholder="https://t.me/+...">
-      <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Se usa en el botón "Unirse" y en el QR de la página pública.</div>
-    </div>
-
-    <!-- Textos del hero -->
-    <span class="section-label" style="margin-top:20px">🖼️ Sección Hero (portada)</span>
-    <div class="field">
-      <label>Título principal del hero</label>
-      <input type="text" name="hero_title" value="{{ hero_title }}" placeholder="Leemos, debatimos y crecemos.">
-      <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Texto grande de la portada. La descripción corta de arriba se usa como subtítulo.</div>
+      <label for="invite_link">Enlace de invitacion a Telegram</label>
+      <input id="invite_link" type="url" name="invite_link" value="{{ invite_link }}" placeholder="https://t.me/+...">
+      <div class="hint">El QR ya se genera localmente con este enlace, sin depender de servicios externos.</div>
     </div>
 
-    <!-- Títulos de secciones -->
-    <span class="section-label" style="margin-top:20px">📑 Títulos de secciones</span>
+    <span class="section-label">Hero y secciones</span>
     <div class="field">
-      <label>Sección "Libro actual"</label>
-      <input type="text" name="section_libro" value="{{ section_libro }}" placeholder="El libro que estamos leyendo">
+      <label for="hero_title">Titulo principal</label>
+      <input id="hero_title" type="text" name="hero_title" value="{{ hero_title }}" placeholder="Leemos, debatimos y crecemos.">
     </div>
     <div class="field">
-      <label>Sección "Próxima reunión"</label>
-      <input type="text" name="section_reunion" value="{{ section_reunion }}" placeholder="Próxima reunión">
+      <label for="section_libro">Titulo de "Libro actual"</label>
+      <input id="section_libro" type="text" name="section_libro" value="{{ section_libro }}">
     </div>
     <div class="field">
-      <label>Sección "Propuestas"</label>
-      <input type="text" name="section_propuestas" value="{{ section_propuestas }}" placeholder="Propuestas en votación">
+      <label for="section_reunion">Titulo de "Proxima reunion"</label>
+      <input id="section_reunion" type="text" name="section_reunion" value="{{ section_reunion }}">
     </div>
     <div class="field">
-      <label>Sección "Cómo funciona el bot"</label>
-      <input type="text" name="section_bot" value="{{ section_bot }}" placeholder="¿Cómo funciona el bot?">
+      <label for="section_propuestas">Titulo de "Propuestas"</label>
+      <input id="section_propuestas" type="text" name="section_propuestas" value="{{ section_propuestas }}">
     </div>
     <div class="field">
-      <label>Sección "Historia del club"</label>
-      <input type="text" name="section_historia" value="{{ section_historia }}" placeholder="Lo que hemos leído juntos">
-    </div>
-
-    <!-- Sección de unirse -->
-    <span class="section-label" style="margin-top:20px">🤝 Sección "Únete al club"</span>
-    <div class="field">
-      <label>Título de la sección</label>
-      <input type="text" name="join_title" value="{{ join_title }}" placeholder="¿Te unes al club?">
+      <label for="section_bot">Titulo de "Como funciona el bot"</label>
+      <input id="section_bot" type="text" name="section_bot" value="{{ section_bot }}">
     </div>
     <div class="field">
-      <label>Texto descriptivo</label>
-      <textarea name="join_body" rows="2" placeholder="Somos un grupo de lectores apasionados...">{{ join_body }}</textarea>
+      <label for="section_historia">Titulo de "Historia del club"</label>
+      <input id="section_historia" type="text" name="section_historia" value="{{ section_historia }}">
     </div>
 
-    <!-- Tema de color -->
-    <span class="section-label" style="margin-top:20px">🎨 Tema de color</span>
+    <span class="section-label">Unete al club</span>
+    <div class="field">
+      <label for="join_title">Titulo de cierre</label>
+      <input id="join_title" type="text" name="join_title" value="{{ join_title }}" placeholder="Te unes al club?">
+    </div>
+    <div class="field">
+      <label for="join_body">Texto de apoyo</label>
+      <textarea id="join_body" name="join_body" rows="2" placeholder="Explica por que merece la pena unirse.">{{ join_body }}</textarea>
+    </div>
+
+    {# Senales tecnicas para Search Console, sitemap y canonical. #}
+    <span class="section-label">SEO tecnico</span>
+    <div class="field">
+      <label for="canonical_url">URL canonica</label>
+      <input id="canonical_url" type="url" name="canonical_url" value="{{ canonical_url }}" placeholder="https://club.example.com/publico">
+      <div class="hint">Usa la URL publica definitiva. El sitemap y las etiquetas canonicas se alinean con este valor.</div>
+    </div>
+    <div class="field">
+      <label for="google_meta_verification">Meta verificacion de Google</label>
+      <input id="google_meta_verification" type="text" name="google_meta_verification" value="{{ google_meta_verification }}" placeholder="Token de Search Console">
+      <div class="hint">Puedes dejarlo vacio si no quieres incluir la etiqueta meta.</div>
+    </div>
+    <div class="field">
+      <label for="google_file_verification">Archivo de verificacion de Google</label>
+      <input id="google_file_verification" type="text" name="google_file_verification" value="{{ google_file_verification }}" placeholder="google1234567890.html">
+      <div class="hint">La ruta se sirve dinamicamente para que el cambio quede activo sin tocar codigo.</div>
+    </div>
+
+    <span class="section-label">Tema visual</span>
     <div class="field">
       <div class="theme-chips">
         <label class="theme-chip">
           <input type="radio" name="theme" value="amber" {% if pub_theme == 'amber' %}checked{% endif %}>
-          <span class="theme-dot" style="background:#e8b86d"></span> Ámbar
+          <span class="theme-dot" style="background:#e8b86d"></span> Ambar
         </label>
         <label class="theme-chip">
           <input type="radio" name="theme" value="teal" {% if pub_theme == 'teal' %}checked{% endif %}>
-          <span class="theme-dot" style="background:#4ecdc4"></span> Verde azulado
+          <span class="theme-dot" style="background:#4ecdc4"></span> Teal
         </label>
         <label class="theme-chip">
           <input type="radio" name="theme" value="indigo" {% if pub_theme == 'indigo' %}checked{% endif %}>
-          <span class="theme-dot" style="background:#6366f1"></span> Índigo
+          <span class="theme-dot" style="background:#6366f1"></span> Indigo
         </label>
         <label class="theme-chip">
           <input type="radio" name="theme" value="coral" {% if pub_theme == 'coral' %}checked{% endif %}>
@@ -124,9 +187,9 @@
       </div>
     </div>
 
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px">
-      <button type="submit" class="btn btn-primary">💾 Guardar cambios</button>
-      <a class="preview-link" href="/publico" target="_blank">🔗 Ver página pública</a>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      <a class="preview-link" href="/publico" target="_blank" rel="noopener">Ver pagina publica</a>
     </div>
   </form>
 </div>

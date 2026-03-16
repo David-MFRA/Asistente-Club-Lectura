@@ -19,6 +19,7 @@ Bot de Telegram para gestionar un club de lectura con panel web de administracio
 - Lanzamiento y cierre de encuestas de libros, tematicas y fechas.
 - Edicion de mensajes del bot y programacion de envios.
 - Auditoria, logs, bugs, buscador administrativo y contexto del bot.
+- Seccion separada para revisar accesos a la pagina publica en `/admin/public-access`.
 - Pagina publica del club en `/` y editor de su contenido.
 
 ## Arquitectura rapida
@@ -217,10 +218,16 @@ python -m py_compile main.py db.py app\messages.py app\services\bot_context.py
 ## Notas operativas
 
 - El panel web usa Flask threaded y las acciones async pasan por un bridge interno para compartir event loop con Telegram.
+- Los accesos a `/publico` se guardan aparte para no mezclar trafico web con logs del panel o del bot.
+- Tras 3 intentos fallidos seguidos en `/admin/login`, la IP queda bloqueada hasta revision manual.
 - Si `WEBHOOK_SECRET_TOKEN` no esta definido, la app deriva uno desde `BOT_TOKEN`, pero es mejor configurarlo de forma explicita.
 - Si `FLASK_SECRET_KEY` no esta definida, la app genera una clave derivada o efimera. Para produccion define una fija.
 - Si Telegram migra el grupo a supergrupo, la app intenta detectar el nuevo `chat_id` y guardarlo para diagnostico.
 - `/admin/db` arranca ahora en modo solo lectura y con la consola SQL desactivada salvo que habilites `ADMIN_DB_READ_ONLY=0` o `ADMIN_DB_ALLOW_RAW_SQL=1`.
+
+## Licencia
+
+MIT. Consulta [LICENSE](LICENSE).
 
 ## Documentacion relacionada
 

@@ -1,10 +1,12 @@
-Acceso · Club de Lectura
-📚
+Acceso | Club de Lectura
+CL
 ">
 Panel de administracion
-Acceso privado del club. Si quieres que la auditoria identifique mejor tus cambios, indica un nombre corto.
+Acceso privado del club. Si quieres que la auditoria identifique mejor tus cambios,
+indica un nombre corto.
 Nombre para auditoria (opcional)
 Secreto de administracion
 Entrar
-Tu IP y la ruta tambien quedaran registradas en la auditoria de acciones admin.
-Club de lectura · acceso restringido
+La auditoria guarda tu IP, la ruta y el nombre visible. Tras 3 secretos incorrectos,
+la IP queda bloqueada hasta que un admin la desbloquee desde el panel.
+Club de lectura | acceso restringido

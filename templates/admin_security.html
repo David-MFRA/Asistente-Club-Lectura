@@ -1,0 +1,121 @@
+{% extends '_base.html' %}
+{% block title %}Seguridad{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block head_extra %}
+<style>
+  h1 { margin: 0; font-size: 1.5rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+  .summary-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 18px 0 14px;
+  }
+  .summary-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 700;
+    background: rgba(245, 158, 11, .12);
+    border: 1px solid rgba(245, 158, 11, .28);
+    color: #fcd34d;
+  }
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 700;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--panel);
+  }
+  .ip {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .84rem;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: .82rem;
+  }
+  .empty-log {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">Auth</div>
+  <div>
+    <h1>Seguridad del admin</h1>
+    <div class="sub">Revisa IPs bloqueadas por intentos fallidos y desbloquealas cuando proceda.</div>
+  </div>
+</div>
+
+<div class="summary-row">
+  <span class="summary-pill">{{ rows | length }} IPs bloqueadas</span>
+  <a class="filter-pill" href="/admin/logs?category=auth">Ver eventos auth</a>
+</div>
+
+<div class="card" style="padding:0">
+  {% if rows %}
+  <div class="table-wrap" style="max-height:70vh">
+    <table>
+      <thead>
+        <tr>
+          <th>IP</th>
+          <th>Intentos</th>
+          <th>Primer fallo</th>
+          <th>Ultimo fallo</th>
+          <th>Bloqueada</th>
+          <th>Motivo</th>
+          <th>Accion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="ip">{{ row.ip }}</td>
+          <td>{{ row.failed_attempts }}</td>
+          <td class="muted">{{ (row.first_failed_at | string)[:16] if row.first_failed_at else '-' }}</td>
+          <td class="muted">{{ (row.last_failed_at | string)[:16] if row.last_failed_at else '-' }}</td>
+          <td class="muted">{{ (row.blocked_at | string)[:16] if row.blocked_at else '-' }}</td>
+          <td class="muted">{{ row.block_reason or '-' }}</td>
+          <td>
+            <form method="post" action="/admin/security/unblock" style="margin:0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="ip" value="{{ row.ip }}">
+              <button class="btn btn-primary btn-sm" type="submit">Desbloquear</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-log">
+    <div>No hay IPs bloqueadas ahora mismo.</div>
+    <div style="font-size:.83rem;margin-top:6px">Cuando alguien alcance 3 secretos incorrectos, aparecera aqui para revision manual.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head', title: 'Seguridad del admin', desc: 'Esta vista centraliza los bloqueos persistentes por IP del panel.' },
+  { selector: '.summary-row', title: 'Resumen', desc: 'Puedes saltar a los logs de autenticacion para revisar el contexto del bloqueo.' },
+  { selector: 'table', title: 'IPs bloqueadas', desc: 'Cada fila muestra intentos, marcas de tiempo y un boton para desbloquear.' }
+];
+</script>
+{% endblock %}

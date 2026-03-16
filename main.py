@@ -5,10 +5,9 @@ import logging
 import unicodedata
 import time as _time
 import asyncio
-from datetime import datetime, timedelta
-import secrets
+from datetime import datetime
 
-from flask import Flask, request, render_template, redirect, url_for, session, Response, flash, get_flashed_messages, jsonify
+from flask import Flask
 
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -17,6 +16,7 @@ import books_api
 import trivia
 import recommendations
 import db
+from app.admin_panel import install_admin_panel
 from app.bootstrap import serve
 from app.config import (
     ADMIN_SECRET as CFG_ADMIN_SECRET,
@@ -32,128 +32,16 @@ from app.config import (
 )
 from app.formatting import bold, code, esc, italic
 from app.messages import DEFAULT_MESSAGES as SHARED_DEFAULT_MESSAGES, get_text as shared_get_text
+from app.public_site import install_public_site_routes
 from app.services.bot_context import (
     build_help_text,
     build_private_keyboard,
     build_welcome_text,
     get_contextual_commands,
 )
-from app.services.admin_audit import (
-    audit_admin,
-    flush_pending_admin_audit,
-    get_admin_actor,
-    get_request_ip,
-    prepare_admin_audit,
-    remember_admin_identity,
-)
 from app.services.input_limits import InputValidationError, normalize_bug_description
-from app.services.observability import ObservabilityTracker
-from app.services.runtime_limits import SlidingWindowRateLimiter, TTLCache
-from app.runtime.jobs import RuntimeJobs
 from app.runtime_factory import build_runtime_services, build_webhook_handler
-from app.telegram.access import TelegramAccessControl
-from app.telegram.callbacks import CallbackHandler
-from app.telegram.commands.books import BookHandlers
-from app.telegram.commands.extras import ExtraHandlers
-from app.telegram.commands.meetings import MeetingHandlers
-from app.telegram.commands.themes import ThemeHandlers
-from app.telegram.messaging import TelegramMessagingService
-from app.telegram.polling import PollAnswerHandler, WebhookHandler
 from app.telegram.registry import register_handlers
-from app.web.admin.routes import register_admin_routes
-from app.web.admin.messaging import (
-    add_scheduled_message,
-    delete_scoped_admin_message,
-    delete_scheduled_message,
-    preview_admin_message,
-    render_admin_messages,
-    render_scheduler,
-    render_sent_messages,
-    reset_admin_message,
-    save_scoped_admin_message,
-    send_custom_message,
-    update_admin_message,
-)
-from app.web.admin.ai import (
-    ask_admin_ai,
-    render_ai_questions,
-    render_ai_quote,
-    send_ai_questions,
-    send_ai_quote,
-)
-from app.web.admin.catalog import (
-    add_meeting_date_option,
-    add_waitlist_entry,
-    close_meeting_date,
-    create_meeting as create_meeting_page,
-    delete_db_row,
-    delete_meeting as delete_meeting_page,
-    delete_waitlist_entry,
-    edit_book as edit_book_page,
-    export_books,
-    render_admin_db,
-    render_attendance,
-    render_close_voting,
-    render_gallery,
-    render_history,
-    render_meeting_detail,
-    render_meetings,
-    render_ranking,
-    render_themes,
-    render_waitlist,
-    save_gallery_notes,
-    suggest_waitlist_to_group,
-    execute_sql_query,
-    truncate_db_table,
-    update_db_row,
-    update_meeting as update_meeting_page,
-)
-from app.web.admin.demo import (
-    clear_demo_data,
-    render_demo_page,
-    run_demo_step as run_admin_demo_step,
-    seed_demo_data,
-)
-from app.web.admin.operations import (
-    assign_book_to_meeting,
-    send_dm_reminders,
-    send_manual_meeting_info,
-    send_manual_meeting_reminder,
-    send_manual_reading_reminder,
-    send_pin_all,
-)
-from app.web.admin.monitoring import render_admin_audit, render_admin_bugs, render_admin_logs, update_admin_bug
-from app.web.admin.insights import (
-    get_security_alerts,
-    render_admin_bot_context,
-    render_admin_search,
-    render_admin_simulator,
-    update_admin_bot_context,
-)
-from app.web.admin.polls import (
-    close_dates_poll,
-    close_poll,
-    close_theme_poll,
-    create_book_poll,
-    create_dates_poll,
-    create_theme_poll,
-    pick_book_winner,
-)
-from app.web.admin.site import (
-    activate_cycle,
-    advance_to_books,
-    close_cycle,
-    handle_public_settings,
-    pick_theme_winner,
-    rename_cycle,
-    render_admin_cycle,
-    render_admin_help,
-    render_admin_poster,
-    render_public_page,
-    set_cycle_theme,
-    unlock_proposals,
-)
-from app.web.admin.wizard import wizard_announce_date, wizard_lock_and_poll, wizard_new_cycle
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
@@ -193,8 +81,6 @@ if not BOT_TOKEN:
     raise RuntimeError("Falta BOT_TOKEN")
 if not WEBHOOK_URL:
     raise RuntimeError("Falta WEBHOOK_URL")
-
-_admin_login_attempts: dict = {}  # {remote_addr: [timestamps]}
 
 def _check_cooldown(user_id: int, command: str, seconds: int = 20) -> bool:
     """Devuelve True si puede ejecutar (no está en cooldown). Actualiza el timestamp."""
@@ -249,97 +135,6 @@ poll_answer_handler = runtime_services.poll_answer_handler
 
 flask_app = Flask(__name__)
 flask_app.secret_key = FLASK_SECRET_KEY
-flask_app.config.update(
-    SESSION_COOKIE_NAME="club_admin_session",
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=str(WEBHOOK_URL).startswith("https://"),
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
-)
-
-# --------------------------------------------------
-# MARKDOWN V2 HELPERS
-# --------------------------------------------------
-
-
-# --------------------------------------------------
-# JINJA FILTER — datetime-local format
-# --------------------------------------------------
-
-@flask_app.template_filter('dt_local')
-def dt_local_filter(value):
-    """Convierte datetime a formato YYYY-MM-DDTHH:MM para input datetime-local."""
-    if not value:
-        return ''
-    return str(value).replace(' ', 'T')[:16]
-
-# --------------------------------------------------
-# AUTH HELPERS
-# --------------------------------------------------
-
-def is_admin_logged():
-    return session.get("admin_logged") is True
-
-def require_admin():
-    if not is_admin_logged():
-        return redirect(url_for("admin_login"))
-    return None
-
-def _is_login_rate_limited(remote_addr: str, *, max_attempts: int = 8, window_seconds: int = 900):
-    now = _time.time()
-    attempts = [ts for ts in _admin_login_attempts.get(remote_addr, []) if now - ts < window_seconds]
-    _admin_login_attempts[remote_addr] = attempts
-    return len(attempts) >= max_attempts
-
-
-def _register_login_failure(remote_addr: str):
-    now = _time.time()
-    attempts = [ts for ts in _admin_login_attempts.get(remote_addr, []) if now - ts < 900]
-    attempts.append(now)
-    _admin_login_attempts[remote_addr] = attempts
-    return len(attempts)
-
-
-def _clear_login_failures(remote_addr: str):
-    _admin_login_attempts.pop(remote_addr, None)
-
-
-def get_csrf_token():
-    """Genera (o devuelve) el token CSRF de la sesión actual."""
-    if "csrf_token" not in session:
-        session["csrf_token"] = secrets.token_hex(16)
-    return session["csrf_token"]
-
-flask_app.jinja_env.globals["csrf_token"] = get_csrf_token
-
-@flask_app.before_request
-def csrf_protect():
-    """Valida el token CSRF en todos los POST administrativos y legacy."""
-    request.environ["_request_started_at"] = _time.monotonic()
-    if request.method != "POST":
-        return
-    if request.path in ("/admin/login", "/webhook"):
-        return
-    if not is_admin_logged():
-        return  # require_admin() ya maneja accesos sin sesión
-    token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
-    if not token or token != session.get("csrf_token"):
-        logger.warning("CSRF inválido en %s desde %s", request.path, request.remote_addr)
-        from flask import abort
-        abort(403)
-
-
-@flask_app.after_request
-def admin_audit_after_request(response):
-    started_at = request.environ.get("_request_started_at")
-    if started_at is not None:
-        observability.record_request(
-            request.method,
-            request.path,
-            response.status_code,
-            int((_time.monotonic() - started_at) * 1000),
-        )
-    return flush_pending_admin_audit(response)
 
 # --------------------------------------------------
 # ASYNC BRIDGE — run coroutines from sync Flask routes
@@ -463,6 +258,7 @@ async def announce_winner(book, cycle_key=None):
     except Exception:
         pass
     await send_to_group(text, parse_mode="HTML", reply_markup=reply_markup, message_type="winner_announcement")
+
 
 # --------------------------------------------------
 # TELEGRAM COMMANDS
@@ -1214,6 +1010,38 @@ async def _auto_close_cycle():
 
 
 # --------------------------------------------------
+# FLASK ROUTES — site publico + panel admin compartido
+# --------------------------------------------------
+
+# Estas rutas dependen de handlers runtime definidos en este archivo. Si se
+# registran demasiado pronto, el import de `main.py` puede fallar con
+# `NameError` antes de que el proceso siquiera arranque.
+install_public_site_routes(flask_app, webhook_url=WEBHOOK_URL)
+install_admin_panel(
+    flask_app,
+    admin_secret=ADMIN_SECRET,
+    webhook_url=WEBHOOK_URL,
+    observability=observability,
+    run_async=_run_async,
+    send_to_group=send_to_group,
+    send_and_pin=send_and_pin,
+    send_meeting_reminder=send_meeting_reminder,
+    send_reading_reminder=send_reading_reminder,
+    announce_winner=announce_winner,
+    logger=logger,
+    telegram_app=telegram_app,
+    telegram_chat_id=TELEGRAM_CHAT_ID,
+    default_messages=DEFAULT_MESSAGES,
+    group_invite_link=GROUP_INVITE_LINK,
+    reload_custom_reminders=lambda: _reload_custom_reminders(),
+    utcnow=lambda: datetime.utcnow(),
+    admin_search_limiter=admin_search_limiter,
+    poll_formatting={"bold": bold, "italic": italic, "esc": esc},
+    webhook_handler=webhook_handler,
+)
+
+
+# --------------------------------------------------
 # BOT ADDED TO NEW CHAT
 # --------------------------------------------------
 
@@ -1696,166 +1524,6 @@ register_handlers(telegram_app, {
     "handle_poll_answer": _trace_bot_handler("handle_poll_answer", handle_poll_answer, category="poll", clear_pending=False),
     "private_text_handler": _trace_bot_handler("private_text_handler", private_text_handler, category="message", clear_pending=False),
 })
-
-# --------------------------------------------------
-# FLASK — AUTH
-# --------------------------------------------------
-
-@flask_app.get("/")
-def home():
-    return redirect(url_for("public_page"), 301)
-
-
-@flask_app.get("/robots.txt")
-def robots_txt():
-    canonical = db.get_config("public_canonical_url", "").strip()
-    sitemap_url = f"{canonical}/sitemap.xml" if canonical else ""
-    lines = [
-        "User-agent: *",
-        "Allow: /",
-        "Disallow: /admin",
-        "Disallow: /webhook",
-    ]
-    if sitemap_url:
-        lines.append(f"Sitemap: {sitemap_url}")
-    return Response("\n".join(lines), mimetype="text/plain")
-
-
-@flask_app.get("/sitemap.xml")
-@flask_app.get("/publico/sitemap.xml")
-def sitemap_xml():
-    canonical = db.get_config("public_canonical_url", "").strip()
-    if not canonical:
-        canonical = WEBHOOK_URL.rstrip("/")
-    xml = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f'<url><loc>{canonical}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>'
-        f'<url><loc>{canonical}/publico</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>'
-        "</urlset>"
-    )
-    return Response(xml, mimetype="application/xml")
-
-@flask_app.get("/google8715cced54138a71.html")
-@flask_app.get("/publico/google8715cced54138a71.html")
-def google_site_verification():
-    return Response("google-site-verification: google8715cced54138a71.html", mimetype="text/html")
-
-
-@flask_app.get("/favicon.ico")
-def favicon():
-    return Response(
-        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📚</text></svg>""",
-        mimetype="image/svg+xml",
-    )
-
-@flask_app.get("/health")
-def health():
-    return {"status": "running"}, 200
-
-@flask_app.get("/admin/login")
-def admin_login():
-    if is_admin_logged():
-        return redirect(url_for("admin_dashboard"))
-    return render_template("admin_login.html", display_name=session.get("admin_display_name", ""))
-
-@flask_app.post("/admin/login")
-def admin_login_post():
-    remote_addr = get_request_ip()
-    display_name = request.form.get("display_name", "").strip()
-    if _is_login_rate_limited(remote_addr):
-        logger.warning("Login admin bloqueado por rate limit desde %s", remote_addr)
-        audit_admin(
-            "admin_login",
-            actor=display_name or f"admin@{remote_addr}",
-            target_type="session",
-            target_id=remote_addr,
-            status="blocked",
-            result="rate_limited",
-            extra={"display_name": display_name or None},
-        )
-        return render_template("admin_login.html", error="Demasiados intentos. Espera unos minutos.", display_name=display_name), 429
-    secret = request.form.get("secret", "").strip()
-    if not ADMIN_SECRET:
-        return "ADMIN_SECRET no configurado", 500
-    if secret != ADMIN_SECRET:
-        attempts = _register_login_failure(remote_addr)
-        logger.warning("Login admin fallido desde %s (intento %d)", remote_addr, attempts)
-        audit_admin(
-            "admin_login",
-            actor=display_name or f"admin@{remote_addr}",
-            target_type="session",
-            target_id=remote_addr,
-            status="error",
-            result="invalid_secret",
-            extra={"attempt": attempts, "display_name": display_name or None},
-        )
-        return render_template("admin_login.html", error="Secreto incorrecto", display_name=display_name), 403
-    _clear_login_failures(remote_addr)
-    session.clear()
-    actor = remember_admin_identity(display_name)
-    session["admin_logged"] = True
-    session["csrf_token"] = secrets.token_hex(16)
-    session.permanent = True
-    audit_admin(
-        "admin_login",
-        actor=actor,
-        target_type="session",
-        target_id=remote_addr,
-        status="ok",
-        result="login_ok",
-        extra={"display_name": display_name or None},
-    )
-    db.log_event("admin", "Inicio de sesión en el panel", category="auth", actor="admin")
-    logger.info("Login admin correcto desde %s", remote_addr)
-    return redirect(url_for("admin_dashboard"))
-
-@flask_app.post("/admin/logout")
-def admin_logout():
-    actor = get_admin_actor()
-    remote_addr = get_request_ip()
-    db.log_event("admin", "Cierre de sesión del panel", category="auth", actor="admin")
-    audit_admin(
-        "admin_logout",
-        actor=actor,
-        target_type="session",
-        target_id=remote_addr,
-        status="ok",
-        result="logout_ok",
-    )
-    session.clear()
-    return redirect(url_for("admin_login"))
-
-register_admin_routes(
-    flask_app,
-    require_admin=require_admin,
-    run_async=_run_async,
-    send_to_group=send_to_group,
-    send_and_pin=send_and_pin,
-    send_meeting_reminder=send_meeting_reminder,
-    send_reading_reminder=send_reading_reminder,
-    announce_winner=announce_winner,
-    logger=logger,
-    telegram_app=telegram_app,
-    telegram_chat_id=TELEGRAM_CHAT_ID,
-    default_messages=DEFAULT_MESSAGES,
-    group_invite_link=GROUP_INVITE_LINK,
-    reload_custom_reminders=lambda: _reload_custom_reminders(),
-    utcnow=lambda: datetime.utcnow(),
-    get_request_ip=get_request_ip,
-    admin_search_limiter=admin_search_limiter,
-    poll_formatting={"bold": bold, "italic": italic, "esc": esc},
-    observability=observability,
-)
-
-
-# --------------------------------------------------
-# WEBHOOK
-# --------------------------------------------------
-
-@flask_app.post("/webhook")
-def webhook():
-    return webhook_handler.handle_request(request)
 
 # --------------------------------------------------
 # STARTUP / SHUTDOWN

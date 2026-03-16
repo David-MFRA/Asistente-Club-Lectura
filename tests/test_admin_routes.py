@@ -63,6 +63,9 @@ def _default_state():
             "final_date": "2026-03-01 19:30",
         },
         "themes": [{"id": 21, "name": "Desiertos", "cycle_key": "2026-04", "created_by": "admin", "is_active": True}],
+        "public_proposals": [winner],
+        "top_theme": {"id": 21, "name": "Desiertos", "votes": 4},
+        "gallery": [],
         "winner": winner,
         "dashboard_state": {
             "step": "meeting_scheduled",
@@ -114,6 +117,8 @@ def _default_state():
                 "created_at": "2026-03-15 10:00",
             }
         ],
+        "public_access_logs": [],
+        "blocked_admin_ips": {},
         "bugs": [
             {
                 "id": 3,
@@ -199,6 +204,15 @@ class FakeDb(types.ModuleType):
     def get_themes(self, cycle_key=None):
         return copy.deepcopy(self.state["themes"])
 
+    def get_book_proposals(self, cycle_key=None):
+        return copy.deepcopy(self.state["public_proposals"])
+
+    def get_top_theme(self, cycle_key=None):
+        return copy.deepcopy(self.state["top_theme"])
+
+    def get_galeria_data(self, limit=3):
+        return copy.deepcopy(self.state["gallery"][:limit])
+
     def get_open_polls(self, poll_type="books", cycle_key=None):
         return copy.deepcopy(self.state["open_book_polls"]) if poll_type == "books" else []
 
@@ -246,6 +260,75 @@ class FakeDb(types.ModuleType):
         if status:
             rows = [row for row in rows if row["status"] == status]
         return copy.deepcopy(rows)
+
+    def log_public_page_access(self, **kwargs):
+        row = {
+            "id": len(self.state["public_access_logs"]) + 1,
+            "route": kwargs.get("route", "/publico"),
+            "method": kwargs.get("method", "GET"),
+            "ip": kwargs.get("ip"),
+            "user_agent": kwargs.get("user_agent"),
+            "referrer": kwargs.get("referrer"),
+            "query_string": kwargs.get("query_string"),
+            "created_at": "2026-03-15 12:30",
+        }
+        self.state["public_access_logs"].insert(0, row)
+
+    def get_public_page_access_logs(self, limit=300, ip=None):
+        rows = list(self.state["public_access_logs"])
+        if ip:
+            rows = [row for row in rows if row["ip"] == ip]
+        return copy.deepcopy(rows[:limit])
+
+    def is_admin_ip_blocked(self, ip):
+        row = self.state["blocked_admin_ips"].get((ip or "").strip())
+        return bool(row and row.get("blocked_at"))
+
+    def register_admin_login_failure(self, ip, block_after=3):
+        key = (ip or "").strip() or "unknown"
+        row = dict(self.state["blocked_admin_ips"].get(key) or {})
+        attempts = int(row.get("failed_attempts") or 0) + 1
+        is_blocked = attempts >= block_after
+        updated = {
+            "ip": key,
+            "failed_attempts": attempts,
+            "first_failed_at": row.get("first_failed_at") or "2026-03-15 11:58",
+            "last_failed_at": "2026-03-15 12:00",
+            "blocked_at": "2026-03-15 12:00" if is_blocked else None,
+            "block_reason": f"admin_login_failed_{block_after}x" if is_blocked else None,
+        }
+        self.state["blocked_admin_ips"][key] = updated
+        return {
+            **copy.deepcopy(updated),
+            "is_blocked": is_blocked,
+            "just_blocked": is_blocked and not row.get("blocked_at"),
+        }
+
+    def clear_admin_login_failures(self, ip):
+        key = (ip or "").strip()
+        row = self.state["blocked_admin_ips"].get(key)
+        if not row or row.get("blocked_at"):
+            return 0
+        self.state["blocked_admin_ips"].pop(key, None)
+        return 1
+
+    def get_admin_ip_state(self, ip):
+        row = self.state["blocked_admin_ips"].get((ip or "").strip())
+        return copy.deepcopy(row) if row else None
+
+    def get_blocked_admin_ips(self, limit=200):
+        rows = [row for row in self.state["blocked_admin_ips"].values() if row.get("blocked_at")]
+        rows.sort(key=lambda row: (row.get("blocked_at") or "", row.get("last_failed_at") or ""), reverse=True)
+        return copy.deepcopy(rows[:limit])
+
+    def unblock_admin_ip(self, ip):
+        key = (ip or "").strip()
+        row = self.state["blocked_admin_ips"].get(key)
+        if not row or not row.get("blocked_at"):
+            return None
+        released = copy.deepcopy(row)
+        self.state["blocked_admin_ips"].pop(key, None)
+        return released
 
     def update_bug_report(self, report_id, status, admin_notes=None):
         for row in self.state["bugs"]:
@@ -498,6 +581,10 @@ class AdminRoutesTests(unittest.TestCase):
             response = client.get("/admin/login")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Panel de administracion", response.get_data(as_text=True))
+        self.assertEqual(
+            response.headers.get("X-Robots-Tag"),
+            "noindex, nofollow, noarchive",
+        )
 
     def test_login_redirects_to_dashboard(self):
         app, _ = build_test_app()
@@ -514,6 +601,7 @@ class AdminRoutesTests(unittest.TestCase):
             cycle_response = client.get("/admin/ciclo")
             scheduler_response = client.get("/admin/scheduler")
             bugs_response = client.get("/admin/bugs?status=open")
+            public_settings_response = client.get("/admin/public-settings")
         self.assertEqual(cycle_response.status_code, 200)
         self.assertIn("Lectura de", cycle_response.get_data(as_text=True))
         self.assertEqual(scheduler_response.status_code, 200)
@@ -521,6 +609,75 @@ class AdminRoutesTests(unittest.TestCase):
         self.assertEqual(bugs_response.status_code, 200)
         self.assertIn("No carga el panel", bugs_response.get_data(as_text=True))
         self.assertNotIn("Error puntual", bugs_response.get_data(as_text=True))
+        self.assertEqual(public_settings_response.status_code, 200)
+        self.assertIn("URL canonica", public_settings_response.get_data(as_text=True))
+
+    def test_public_page_access_has_own_log_section(self):
+        app, fake_db = build_test_app()
+        with app.test_client() as client:
+            response = client.get(
+                "/publico?utm=web",
+                headers={
+                    "X-Forwarded-For": "203.0.113.10",
+                    "Referer": "https://club.example.com/",
+                    "User-Agent": "CodexTest/1.0",
+                },
+            )
+            login(client)
+            logs_response = client.get("/admin/public-access")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(logs_response.status_code, 200)
+        self.assertEqual(fake_db.state["public_access_logs"][0]["ip"], "203.0.113.10")
+        self.assertIn("203.0.113.10", logs_response.get_data(as_text=True))
+        self.assertIn("CodexTest/1.0", logs_response.get_data(as_text=True))
+        public_html = response.get_data(as_text=True)
+        self.assertIn("data:image/svg+xml;base64,", public_html)
+        self.assertNotIn("api.qrserver.com", public_html)
+
+    def test_admin_ip_is_blocked_after_three_failed_logins(self):
+        app, fake_db = build_test_app()
+        with app.test_client() as client:
+            headers = {"X-Forwarded-For": "198.51.100.8"}
+            first = client.post("/admin/login", data={"display_name": "Tester", "secret": "wrong-1"}, headers=headers)
+            second = client.post("/admin/login", data={"display_name": "Tester", "secret": "wrong-2"}, headers=headers)
+            third = client.post("/admin/login", data={"display_name": "Tester", "secret": "wrong-3"}, headers=headers)
+            fourth = client.post("/admin/login", data={"display_name": "Tester", "secret": "supersecret"}, headers=headers)
+        self.assertEqual(first.status_code, 403)
+        self.assertEqual(second.status_code, 403)
+        self.assertEqual(third.status_code, 423)
+        self.assertEqual(fourth.status_code, 423)
+        self.assertTrue(fake_db.is_admin_ip_blocked("198.51.100.8"))
+        blocked_rows = [row for row in fake_db.state["admin_audit_rows"] if row.get("status") == "blocked"]
+        self.assertTrue(blocked_rows)
+        self.assertIn("bloqueada", fourth.get_data(as_text=True).lower())
+
+    def test_admin_security_page_can_unblock_ips(self):
+        app, fake_db = build_test_app()
+        fake_db.state["blocked_admin_ips"]["198.51.100.8"] = {
+            "ip": "198.51.100.8",
+            "failed_attempts": 3,
+            "first_failed_at": "2026-03-15 11:58",
+            "last_failed_at": "2026-03-15 12:00",
+            "blocked_at": "2026-03-15 12:00",
+            "block_reason": "admin_login_failed_3x",
+        }
+        with app.test_client() as client:
+            login(client)
+            security_page = client.get("/admin/security")
+            token = get_csrf_token(client)
+            unblock_response = client.post(
+                "/admin/security/unblock",
+                data={"ip": "198.51.100.8", "csrf_token": token},
+                follow_redirects=True,
+            )
+        self.assertEqual(security_page.status_code, 200)
+        self.assertIn("198.51.100.8", security_page.get_data(as_text=True))
+        self.assertEqual(unblock_response.status_code, 200)
+        self.assertNotIn("198.51.100.8", fake_db.state["blocked_admin_ips"])
+        self.assertIn("desbloqueada", unblock_response.get_data(as_text=True).lower())
+        self.assertTrue(
+            any(row["action"] == "admin_ip_unblock" for row in fake_db.state["admin_audit_rows"])
+        )
 
     def test_db_page_respects_read_only_policy_and_blocks_sql(self):
         os.environ["ADMIN_DB_READ_ONLY"] = "1"

@@ -1,37 +1,33 @@
-Simulador · Club de Lectura
-📚
+Simulador | Club de Lectura
+CL
 ">
 Saltar al contenido
 Club de Lectura
 Panel operativo
 Dashboard
-Operar
-▾
-⚡ Ciclo rapido
-🔄 Ciclo detallado
-📅 Reuniones
-🏷️ Tematicas
-👥 Asistencia
-🏆 Ranking
-Sistema
-✉️ Mensajes
-⏰ Automatizacion
-📋 Mensajes enviados
-📜 Historico
-🏛️ Galeria
-🗄️ Base de datos
-📤 Exportar CSV
-🎯 Demo
-📚 Lista espera
-🖼️ Cartel
-🌐 Publica
-⚙️ Pagina
-📋 Logs
-🐛 Bugs
-❓ Ayuda
-🎯
+Ciclos
+Reuniones
+Temas
+Asistencia
+Ranking
+Mensajes
+Automatizacion
+Enviados
+Historico
+Galeria
+Base de datos
+Exportar CSV
+Demo
+Pagina publica
+SEO y pagina
+Accesos publicos
+Seguridad
+Logs
+Bugs
+Ayuda
+Tour
 Salir
-☰
+Menu
 🧪
 Simulador del bot
 Previsualiza ciclo, mensajes, encuestas y ayudas contextuales sin tocar Telegram ni datos reales.
@@ -68,3 +64,7 @@ Menu contextual
 🙋 /asistir
 ❌ /noasistir
 👥 /asistencia
+📈 /progreso
+🐛 /bug
+📚 /proponer
+🗳️ /propuestas

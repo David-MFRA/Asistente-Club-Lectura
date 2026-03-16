@@ -39,9 +39,13 @@ def install_admin_panel(
     poll_formatting,
     webhook_handler,
 ):
-    from app.web.admin.routes import register_admin_routes
+    """
+    Registra el panel admin compartido.
 
-    admin_login_attempts = {}
+    Este modulo es la fuente de verdad del login web, CSRF, auditoria y rutas
+    administrativas. `main.py` solo deberia delegar aqui para evitar divergencias.
+    """
+    from app.web.admin.routes import register_admin_routes
 
     flask_app.config.update(
         SESSION_COOKIE_NAME="club_admin_session",
@@ -65,21 +69,16 @@ def install_admin_panel(
             return redirect(url_for("admin_login"))
         return None
 
-    def is_login_rate_limited(remote_addr: str, *, max_attempts: int = 8, window_seconds: int = 900):
-        now = _time.time()
-        attempts = [ts for ts in admin_login_attempts.get(remote_addr, []) if now - ts < window_seconds]
-        admin_login_attempts[remote_addr] = attempts
-        return len(attempts) >= max_attempts
+    # El bloqueo por IP vive en DB para que sobreviva reinicios y funcione igual
+    # si el despliegue usa varios procesos o workers.
+    def is_admin_ip_blocked(remote_addr: str):
+        return db.is_admin_ip_blocked(remote_addr)
 
     def register_login_failure(remote_addr: str):
-        now = _time.time()
-        attempts = [ts for ts in admin_login_attempts.get(remote_addr, []) if now - ts < 900]
-        attempts.append(now)
-        admin_login_attempts[remote_addr] = attempts
-        return len(attempts)
+        return db.register_admin_login_failure(remote_addr, block_after=3)
 
     def clear_login_failures(remote_addr: str):
-        admin_login_attempts.pop(remote_addr, None)
+        return db.clear_admin_login_failures(remote_addr)
 
     def get_csrf_token():
         if "csrf_token" not in session:
@@ -112,6 +111,10 @@ def install_admin_panel(
                 response.status_code,
                 int((_time.monotonic() - started_at) * 1000),
             )
+        if request.path.startswith("/admin"):
+            # Las pantallas del panel no deben indexarse aunque alguien enlace
+            # una URL privada desde fuera del sitio.
+            response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
         return flush_pending_admin_audit(response)
 
     @flask_app.get("/admin/login")
@@ -124,28 +127,53 @@ def install_admin_panel(
     def admin_login_post():
         remote_addr = get_request_ip()
         display_name = request.form.get("display_name", "").strip()
-        if is_login_rate_limited(remote_addr):
-            logger.warning("Login admin bloqueado por rate limit desde %s", remote_addr)
+        if is_admin_ip_blocked(remote_addr):
+            logger.warning("Login admin bloqueado para IP ya bloqueada %s", remote_addr)
             audit_admin(
                 "admin_login",
                 actor=display_name or f"admin@{remote_addr}",
                 target_type="session",
                 target_id=remote_addr,
                 status="blocked",
-                result="rate_limited",
+                result="ip_blocked",
                 extra={"display_name": display_name or None},
             )
             return render_template(
                 "admin_login.html",
-                error="Demasiados intentos. Espera unos minutos.",
+                error="Esta IP esta bloqueada tras 3 intentos fallidos.",
                 display_name=display_name,
-            ), 429
+            ), 423
         secret = request.form.get("secret", "").strip()
         if not admin_secret:
             return "ADMIN_SECRET no configurado", 500
         if secret != admin_secret:
-            attempts = register_login_failure(remote_addr)
-            logger.warning("Login admin fallido desde %s (intento %d)", remote_addr, attempts)
+            failure_state = register_login_failure(remote_addr)
+            attempts = int(failure_state.get("failed_attempts") or 0)
+            if failure_state.get("is_blocked"):
+                logger.warning("Login admin bloqueado tras %d intentos desde %s", attempts, remote_addr)
+                audit_admin(
+                    "admin_login",
+                    actor=display_name or f"admin@{remote_addr}",
+                    target_type="session",
+                    target_id=remote_addr,
+                    status="blocked",
+                    result="blocked_after_invalid_secret",
+                    extra={"attempt": attempts, "display_name": display_name or None},
+                )
+                if failure_state.get("just_blocked"):
+                    db.log_event(
+                        "admin",
+                        f"IP bloqueada tras intentos fallidos: {remote_addr}",
+                        category="auth",
+                        actor="security",
+                        extra={"ip": remote_addr, "attempts": attempts},
+                    )
+                return render_template(
+                    "admin_login.html",
+                    error="Esta IP ha sido bloqueada al alcanzar 3 intentos fallidos.",
+                    display_name=display_name,
+                ), 423
+            logger.warning("Login admin fallido desde %s (intento %d de 3)", remote_addr, attempts)
             audit_admin(
                 "admin_login",
                 actor=display_name or f"admin@{remote_addr}",
@@ -157,7 +185,7 @@ def install_admin_panel(
             )
             return render_template(
                 "admin_login.html",
-                error="Secreto incorrecto",
+                error=f"Secreto incorrecto. Intento {attempts} de 3.",
                 display_name=display_name,
             ), 403
         clear_login_failures(remote_addr)

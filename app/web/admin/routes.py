@@ -76,6 +76,9 @@ from app.web.admin.monitoring import (
     render_admin_audit,
     render_admin_bugs,
     render_admin_logs,
+    render_admin_security,
+    render_public_access_logs,
+    unblock_admin_ip,
     update_admin_bug,
 )
 from app.web.admin.operations import (
@@ -714,6 +717,18 @@ def register_admin_routes(
     @flask_app.get("/admin/logs")
     def admin_logs():
         return render_admin_logs(require_admin)
+
+    @flask_app.get("/admin/public-access")
+    def admin_public_access():
+        return render_public_access_logs(require_admin)
+
+    @flask_app.get("/admin/security")
+    def admin_security():
+        return render_admin_security(require_admin)
+
+    @flask_app.post("/admin/security/unblock")
+    def admin_security_unblock():
+        return unblock_admin_ip(require_admin)
 
     @flask_app.get("/admin/audit")
     def admin_audit():

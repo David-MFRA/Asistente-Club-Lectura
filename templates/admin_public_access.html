@@ -1,0 +1,176 @@
+{% extends '_base.html' %}
+{% block title %}Accesos Publicos{% endblock %}
+{% block main_class %}main--lg{% endblock %}
+
+{% block head_extra %}
+<style>
+  h1 { margin: 0; font-size: 1.5rem; }
+  .sub { margin-top: 4px; color: var(--muted); font-size: .88rem; }
+
+  .section-tabs,
+  .summary-row,
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .section-tabs { margin: 18px 0 14px; }
+  .summary-row { margin-bottom: 14px; }
+  .filter-bar { margin-bottom: 18px; }
+
+  .filter-pill,
+  .summary-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 700;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--panel);
+  }
+
+  .filter-pill:hover,
+  .filter-pill.active {
+    background: rgba(99, 102, 241, .2);
+    border-color: rgba(99, 102, 241, .4);
+    color: #a5b4fc;
+  }
+
+  .summary-pill {
+    background: rgba(14, 165, 164, .12);
+    border-color: rgba(14, 165, 164, .24);
+    color: #99f6e4;
+  }
+
+  .filter-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-input {
+    min-width: 220px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+  }
+
+  .muted {
+    color: var(--muted);
+    font-size: .82rem;
+  }
+
+  .ip {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .82rem;
+  }
+
+  .meta {
+    max-width: 260px;
+    white-space: normal;
+    word-break: break-word;
+    color: var(--muted);
+    font-size: .82rem;
+  }
+
+  .ts {
+    color: var(--muted);
+    font-size: .78rem;
+    white-space: nowrap;
+  }
+
+  .empty-log {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="page-badge">Web</div>
+  <div>
+    <h1>Accesos a la pagina publica</h1>
+    <div class="sub">Vista separada para revisar visitas a <code>/publico</code> sin mezclar trafico web con logs internos.</div>
+  </div>
+</div>
+
+<div class="section-tabs">
+  <a class="filter-pill" href="/admin/logs">Logs operativos</a>
+  <a class="filter-pill active" href="/admin/public-access">Accesos pagina publica</a>
+</div>
+
+<div class="summary-row">
+  <span class="summary-pill">{{ total_rows }} accesos cargados</span>
+  <span class="summary-pill">{{ unique_ips }} IPs unicas</span>
+</div>
+
+<div class="filter-bar">
+  <form class="filter-form" method="get" action="/admin/public-access">
+    <label class="muted" for="ip">Filtrar por IP</label>
+    <input class="filter-input" id="ip" name="ip" type="text" value="{{ ip_filter }}" placeholder="Ej. 203.0.113.10">
+    <button class="btn btn-primary btn-sm" type="submit">Aplicar</button>
+    {% if ip_filter %}
+      <a class="filter-pill" href="/admin/public-access">Limpiar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card" style="padding:0">
+  {% if rows %}
+  <div class="table-wrap" style="max-height:70vh">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ruta</th>
+          <th>IP</th>
+          <th>Referrer</th>
+          <th>User-Agent</th>
+          <th>Query</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="muted">{{ row.id }}</td>
+          <td><code>{{ row.route }}</code></td>
+          <td class="ip">{{ row.ip or '-' }}</td>
+          <td class="meta">{{ row.referrer or '-' }}</td>
+          <td class="meta">{{ row.user_agent or '-' }}</td>
+          <td class="meta">{{ row.query_string or '-' }}</td>
+          <td class="ts">{{ (row.created_at | string)[:16] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-log">
+    <div>No hay accesos registrados{% if ip_filter %} para esa IP{% endif %}.</div>
+    <div style="font-size:.83rem;margin-top:6px">Los accesos se guardan automaticamente cuando alguien abre la pagina publica.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.PAGE_TOUR = [
+  { selector: '.page-head', title: 'Accesos publicos', desc: 'Esta vista separa el trafico web de la operativa interna del club.' },
+  { selector: '.summary-row', title: 'Resumen rapido', desc: 'Puedes ver cuantos accesos y cuantas IPs distintas aparecen en la carga actual.' },
+  { selector: '.filter-bar', title: 'Filtro por IP', desc: 'Sirve para revisar una IP concreta cuando quieras investigar visitas o pruebas.' },
+  { selector: 'table', title: 'Detalle', desc: 'Cada fila conserva ruta, IP, referrer, user-agent, query string y fecha del acceso.' },
+];
+</script>
+{% endblock %}

@@ -4,6 +4,7 @@ import json
 from contextlib import contextmanager
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
+from typing import Any, TypedDict
 
 from app.db_migrations import apply_migrations
 from app.services.identity_backfill import backfill_historical_user_identity
@@ -14,6 +15,30 @@ from app.services.input_limits import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Tipos ligeros para documentar las formas mas usadas en la capa de persistencia.
+# No reemplazan una ORM, pero evitan seguir pasando `dict` anonimos sin contexto.
+class PublicPageAccessLogRow(TypedDict):
+    id: int
+    route: str
+    method: str
+    ip: str | None
+    user_agent: str | None
+    referrer: str | None
+    query_string: str | None
+    created_at: Any
+
+
+class AdminBlockedIPState(TypedDict, total=False):
+    ip: str
+    failed_attempts: int
+    first_failed_at: Any | None
+    last_failed_at: Any | None
+    blocked_at: Any | None
+    block_reason: str | None
+    is_blocked: bool
+    just_blocked: bool
 
 
 def _utcnow():
@@ -2764,6 +2789,177 @@ def get_events(limit: int = 300, event_type: str = None, category: str = None):
         params.append(limit)
         cur.execute(f"SELECT * FROM app_events {where} ORDER BY created_at DESC LIMIT %s", params)
         return [dict(r) for r in cur.fetchall()]
+
+
+def log_public_page_access(
+    *,
+    route: str,
+    method: str = "GET",
+    ip: str = None,
+    user_agent: str = None,
+    referrer: str = None,
+    query_string: str = None,
+):
+    """Guarda trafico de la web publica aparte para no mezclarlo con logs operativos."""
+    try:
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO public_page_access_log (route, method, ip, user_agent, referrer, query_string)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    (route or "").strip() or "/publico",
+                    (method or "GET").strip().upper()[:10],
+                    (ip or "").strip() or None,
+                    (user_agent or "").strip()[:500] or None,
+                    (referrer or "").strip()[:500] or None,
+                    (query_string or "").strip()[:500] or None,
+                ),
+            )
+    except Exception as exc:
+        logger.warning("log_public_page_access DB write failed: %s", exc)
+
+
+def get_public_page_access_logs(limit: int = 300, ip: str = None) -> list[PublicPageAccessLogRow]:
+    with get_cursor() as cur:
+        conds, params = [], []
+        if ip:
+            conds.append("ip = %s"); params.append(ip)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        params.append(limit)
+        cur.execute(
+            f"SELECT * FROM public_page_access_log {where} ORDER BY created_at DESC LIMIT %s",
+            params,
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def is_admin_ip_blocked(ip: str) -> bool:
+    ip = (ip or "").strip()
+    if not ip:
+        return False
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM admin_blocked_ips
+            WHERE ip = %s AND blocked_at IS NOT NULL
+            """,
+            (ip,),
+        )
+        return cur.fetchone() is not None
+
+
+def register_admin_login_failure(ip: str, *, block_after: int = 3) -> AdminBlockedIPState:
+    """
+    Persiste los fallos de login admin por IP.
+
+    Se guarda en PostgreSQL para que el bloqueo sobreviva reinicios y siga funcionando
+    aunque la app tenga varios workers.
+    """
+    ip = (ip or "").strip() or "unknown"
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_blocked_ips (
+                ip, failed_attempts, first_failed_at, last_failed_at, block_reason
+            )
+            VALUES (%s, 1, NOW(), NOW(), NULL)
+            ON CONFLICT (ip) DO UPDATE
+            SET
+                failed_attempts = admin_blocked_ips.failed_attempts + 1,
+                last_failed_at = NOW()
+            RETURNING ip, failed_attempts, blocked_at, block_reason
+            """,
+            (ip,),
+        )
+        row = dict(cur.fetchone())
+        just_blocked = False
+        if not row.get("blocked_at") and row["failed_attempts"] >= block_after:
+            cur.execute(
+                """
+                UPDATE admin_blocked_ips
+                SET blocked_at = NOW(), block_reason = %s
+                WHERE ip = %s
+                RETURNING ip, failed_attempts, blocked_at, block_reason
+                """,
+                (f"admin_login_failed_{block_after}x", ip),
+            )
+            row = dict(cur.fetchone())
+            just_blocked = True
+    row["is_blocked"] = bool(row.get("blocked_at"))
+    row["just_blocked"] = just_blocked
+    return row
+
+
+def clear_admin_login_failures(ip: str):
+    """Limpia solo los intentos aun no bloqueados; los bloqueos requieren accion manual."""
+    ip = (ip or "").strip()
+    if not ip:
+        return 0
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            DELETE FROM admin_blocked_ips
+            WHERE ip = %s AND blocked_at IS NULL
+            """,
+            (ip,),
+        )
+        return cur.rowcount
+
+
+def get_admin_ip_state(ip: str) -> AdminBlockedIPState | None:
+    ip = (ip or "").strip()
+    if not ip:
+        return None
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT ip, failed_attempts, first_failed_at, last_failed_at, blocked_at, block_reason
+            FROM admin_blocked_ips
+            WHERE ip = %s
+            """,
+            (ip,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_blocked_admin_ips(limit: int = 200) -> list[AdminBlockedIPState]:
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT ip, failed_attempts, first_failed_at, last_failed_at, blocked_at, block_reason
+            FROM admin_blocked_ips
+            WHERE blocked_at IS NOT NULL
+            ORDER BY blocked_at DESC, last_failed_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
+def unblock_admin_ip(ip: str) -> AdminBlockedIPState | None:
+    """
+    El desbloqueo elimina la fila para que la IP vuelva a un estado limpio y no
+    arrastre intentos historicos a la siguiente autenticacion.
+    """
+    ip = (ip or "").strip()
+    if not ip:
+        return None
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            DELETE FROM admin_blocked_ips
+            WHERE ip = %s AND blocked_at IS NOT NULL
+            RETURNING ip, failed_attempts, first_failed_at, last_failed_at, blocked_at, block_reason
+            """,
+            (ip,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def log_admin_audit(

@@ -1,37 +1,33 @@
-Dashboard · Club de Lectura
-📚
+Dashboard | Club de Lectura
+CL
 ">
 Saltar al contenido
 Club de Lectura
 Panel operativo
 Dashboard
-Operar
-▾
-⚡ Ciclo rapido
-🔄 Ciclo detallado
-📅 Reuniones
-🏷️ Tematicas
-👥 Asistencia
-🏆 Ranking
-Sistema
-✉️ Mensajes
-⏰ Automatizacion
-📋 Mensajes enviados
-📜 Historico
-🏛️ Galeria
-🗄️ Base de datos
-📤 Exportar CSV
-🎯 Demo
-📚 Lista espera
-🖼️ Cartel
-🌐 Publica
-⚙️ Pagina
-📋 Logs
-🐛 Bugs
-❓ Ayuda
-🎯
+Ciclos
+Reuniones
+Temas
+Asistencia
+Ranking
+Mensajes
+Automatizacion
+Enviados
+Historico
+Galeria
+Base de datos
+Exportar CSV
+Demo
+Pagina publica
+SEO y pagina
+Accesos publicos
+Seguridad
+Logs
+Bugs
+Ayuda
+Tour
 Salir
-☰
+Menu
 Torre de control
 Reunion programada
 La reunion ya tiene fecha y falta comunicarla.
@@ -39,7 +35,6 @@ Buscador global
 Buscar
 Simular bot
 Contexto bot
-Mensajes
 Auditoria
 Alertas
 FLASK_SECRET_KEY no configurada
@@ -51,12 +46,15 @@ Ver seguridad →
 ADMIN_SECRET ausente
 El panel no deberia exponerse sin secreto de administracion configurado.
 Bloqueante →
+Webhook posiblemente inactivo
+La ultima llamada valida al webhook fue hace 53h.
+Revisar logs →
 Recordatorio semanal desactivado
 Revisa el programador para activarlo.
 Abrir programador →
 Ahora mismo
 2 ciclo(s) activo(s)
-4 alerta(s) por revisar
+5 alerta(s) por revisar
 Libro activo: Dune
 Anunciar fecha al grupo
 Vista rapida del ciclo
@@ -68,3 +66,5 @@ Revisa asistentes y programa recordatorios.
 Deja preparados mensajes de lectura o debate.
 Observabilidad
 12
+requests
+0

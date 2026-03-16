@@ -7,8 +7,14 @@ from flask import flash, redirect, render_template, request, url_for
 import ai_features
 import db
 from app.messages import get_text
-from app.services.admin_audit import prepare_admin_audit
+from app.services.admin_audit import get_request_ip, prepare_admin_audit
 from app.services.bot_context import get_contextual_commands
+from app.services.public_site import (
+    DEFAULT_PUBLIC_DESCRIPTION,
+    build_public_seo_view,
+    get_public_site_settings,
+    save_public_site_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,24 +48,20 @@ def _set_phase(phase):
 
 
 def _public_settings_snapshot(group_invite_link):
-    return {
-        "club_name": db.get_config("public_club_name", "Tribu de Libros"),
-        "city": db.get_config("public_city", "Leon, Espana"),
-        "description": db.get_config("public_description", ""),
-        "invite_link": db.get_config("public_invite_link", "") or group_invite_link,
-        "pub_theme": db.get_config("public_theme", "amber"),
-        "hero_title": db.get_config("public_hero_title", "Leemos, debatimos y crecemos."),
-        "section_libro": db.get_config("public_section_libro", "El libro que estamos leyendo"),
-        "section_reunion": db.get_config("public_section_reunion", "Proxima reunion"),
-        "section_propuestas": db.get_config("public_section_propuestas", "Propuestas en votacion"),
-        "section_bot": db.get_config("public_section_bot", "Como funciona el bot?"),
-        "section_historia": db.get_config("public_section_historia", "Lo que hemos leido juntos"),
-        "join_title": db.get_config("public_join_title", "Te unes al club?"),
-        "join_body": db.get_config("public_join_body", "Somos un grupo de lectores apasionados. Unete, propon libros y queda con nosotros."),
-    }
+    return get_public_site_settings(group_invite_link, default_base_url="")
 
 
 def render_public_page(group_invite_link):
+    # La pagina publica tiene su propio log para que el equipo pueda revisar trafico
+    # sin mezclar visitas web con eventos internos del bot o del panel.
+    db.log_public_page_access(
+        route=request.path,
+        method=request.method,
+        ip=get_request_ip(),
+        user_agent=request.headers.get("User-Agent"),
+        referrer=request.headers.get("Referer"),
+        query_string=request.query_string.decode("utf-8", errors="ignore"),
+    )
     current_cycle = db.get_current_cycle_key()
     winner = db.get_winner_book(current_cycle)
     meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
@@ -67,14 +69,11 @@ def render_public_page(group_invite_link):
     top_theme = db.get_top_theme(current_cycle)
     attendees = db.get_attendance(meeting["id"]) if meeting else []
     galeria = db.get_galeria_data(limit=3)
-    invite_link = db.get_config("public_invite_link", "") or group_invite_link
-    canonical_url = db.get_config("public_canonical_url", "").strip() or "https://asistente-club-lectura-1.onrender.com"
-    default_description = (
-        "Club de lectura mensual en Leon. Elegimos libros juntos, debatimos y quedamos "
-        "en persona cada mes. Unete gratis y propon el proximo libro."
+    settings = get_public_site_settings(
+        group_invite_link,
+        default_base_url=request.url_root.rstrip("/"),
     )
-    settings = _public_settings_snapshot(group_invite_link)
-    settings["description"] = settings["description"] or default_description
+    seo = build_public_seo_view(settings, winner=winner, meeting=meeting)
     public_commands = get_contextual_commands("private", cycle_key=current_cycle, is_admin=False)[:6]
     return render_template(
         "public.html",
@@ -84,12 +83,16 @@ def render_public_page(group_invite_link):
         top_theme=top_theme,
         attendees=attendees,
         galeria=galeria,
-        group_invite_link=invite_link,
-        canonical_url=canonical_url,
+        group_invite_link=settings.invite_link,
         og_image=(winner or {}).get("cover"),
         public_commands=public_commands,
         current_cycle=current_cycle,
-        **settings,
+        meeting_start_iso=seo.meeting_start_iso,
+        qr_image_data_uri=seo.qr_image_data_uri,
+        seo_title=seo.title,
+        seo_description=seo.description or DEFAULT_PUBLIC_DESCRIPTION,
+        google_site_verification_token=seo.google_site_verification_token,
+        **settings.to_template_context(),
     )
 
 
@@ -98,31 +101,25 @@ def handle_public_settings(require_admin, group_invite_link):
     if auth:
         return auth
     if request.method == "POST":
-        before = _public_settings_snapshot(group_invite_link)
-        db.set_config("public_club_name", request.form.get("club_name", "").strip() or "Tribu de Libros")
-        db.set_config("public_city", request.form.get("city", "").strip() or "Leon, Espana")
-        db.set_config("public_description", request.form.get("description", "").strip())
-        db.set_config("public_invite_link", request.form.get("invite_link", "").strip())
-        db.set_config("public_theme", request.form.get("theme", "amber"))
-        db.set_config("public_hero_title", request.form.get("hero_title", "").strip() or "Leemos, debatimos y crecemos.")
-        db.set_config("public_section_libro", request.form.get("section_libro", "").strip() or "El libro que estamos leyendo")
-        db.set_config("public_section_reunion", request.form.get("section_reunion", "").strip() or "Proxima reunion")
-        db.set_config("public_section_propuestas", request.form.get("section_propuestas", "").strip() or "Propuestas en votacion")
-        db.set_config("public_section_bot", request.form.get("section_bot", "").strip() or "Como funciona el bot?")
-        db.set_config("public_section_historia", request.form.get("section_historia", "").strip() or "Lo que hemos leido juntos")
-        db.set_config("public_join_title", request.form.get("join_title", "").strip() or "Te unes al club?")
-        db.set_config("public_join_body", request.form.get("join_body", "").strip())
-        after = _public_settings_snapshot(group_invite_link)
+        before, after = save_public_site_settings(
+            request.form,
+            group_invite_link,
+            default_base_url=request.url_root.rstrip("/"),
+        )
         prepare_admin_audit(
             action="public_settings_update",
             target_type="public_page",
             target_id="main",
-            before=before,
-            after=after,
+            before=before.to_template_context(),
+            after=after.to_template_context(),
         )
         flash("Configuracion de la pagina publica guardada", "success")
         return redirect(url_for("admin_public_settings"))
-    return render_template("admin_public_settings.html", **_public_settings_snapshot(group_invite_link))
+    settings = get_public_site_settings(
+        group_invite_link,
+        default_base_url=request.url_root.rstrip("/"),
+    )
+    return render_template("admin_public_settings.html", **settings.to_template_context())
 
 
 def render_admin_poster(require_admin):

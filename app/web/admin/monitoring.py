@@ -5,6 +5,7 @@ from app.services.admin_audit import prepare_admin_audit
 
 
 def render_admin_logs(require_admin):
+    """Vista de logs operativos generales del sistema."""
     auth = require_admin()
     if auth:
         return auth
@@ -21,6 +22,61 @@ def render_admin_logs(require_admin):
         event_type=event_type,
         category=category,
     )
+
+
+def render_public_access_logs(require_admin):
+    """Vista dedicada al trafico de la pagina publica."""
+    auth = require_admin()
+    if auth:
+        return auth
+    ip_filter = request.args.get("ip", "").strip()
+    rows = db.get_public_page_access_logs(limit=300, ip=ip_filter or None)
+    unique_ips = len({row.get("ip") for row in rows if row.get("ip")})
+    return render_template(
+        "admin_public_access.html",
+        rows=rows,
+        ip_filter=ip_filter,
+        total_rows=len(rows),
+        unique_ips=unique_ips,
+    )
+
+
+def render_admin_security(require_admin):
+    """Panel de seguridad ligera para revisar y desbloquear IPs vetadas del admin."""
+    auth = require_admin()
+    if auth:
+        return auth
+    rows = db.get_blocked_admin_ips(limit=200)
+    return render_template(
+        "admin_security.html",
+        rows=rows,
+    )
+
+
+def unblock_admin_ip(require_admin):
+    """Revierte un bloqueo persistente para que la IP vuelva a empezar desde cero."""
+    auth = require_admin()
+    if auth:
+        return auth
+    ip = request.form.get("ip", "").strip()
+    if not ip:
+        flash("IP invalida", "danger")
+        return redirect(url_for("admin_security"))
+    before = db.get_admin_ip_state(ip)
+    released = db.unblock_admin_ip(ip)
+    if not released:
+        flash(f"La IP {ip} no estaba bloqueada.", "warning")
+        return redirect(url_for("admin_security"))
+    prepare_admin_audit(
+        action="admin_ip_unblock",
+        target_type="ip",
+        target_id=ip,
+        before=before,
+        after={"ip": ip, "blocked_at": None, "failed_attempts": 0},
+    )
+    db.log_event("admin", f"IP desbloqueada: {ip}", category="auth", actor="security")
+    flash(f"IP {ip} desbloqueada", "success")
+    return redirect(url_for("admin_security"))
 
 
 def render_admin_audit(require_admin):

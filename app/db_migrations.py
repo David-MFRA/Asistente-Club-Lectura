@@ -39,6 +39,7 @@ def apply_migrations(cur):
         ("001_baseline_schema", _migration_001_baseline_schema),
         ("002_identity_and_indexes", _migration_002_identity_and_indexes),
         ("003_cycles_and_reminders_backfill", _migration_003_cycles_and_reminders_backfill),
+        ("004_public_access_and_admin_ip_blocks", _migration_004_public_access_and_admin_ip_blocks),
     ]
     for version, func in migrations:
         if version in applied:
@@ -521,3 +522,41 @@ def _migration_003_cycles_and_reminders_backfill(cur):
                 bool(reminder.get("enabled", True)),
             ),
         )
+
+
+def _migration_004_public_access_and_admin_ip_blocks(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS public_page_access_log (
+            id SERIAL PRIMARY KEY,
+            route TEXT NOT NULL,
+            method VARCHAR(10) NOT NULL DEFAULT 'GET',
+            ip TEXT,
+            user_agent TEXT,
+            referrer TEXT,
+            query_string TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_blocked_ips (
+            ip TEXT PRIMARY KEY,
+            failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+            first_failed_at TIMESTAMPTZ,
+            last_failed_at TIMESTAMPTZ,
+            blocked_at TIMESTAMPTZ,
+            block_reason TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_public_page_access_created ON public_page_access_log (created_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_public_page_access_ip_created ON public_page_access_log (ip, created_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_admin_blocked_ips_blocked_at ON admin_blocked_ips (blocked_at DESC)"
+    )

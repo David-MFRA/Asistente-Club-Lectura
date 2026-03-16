@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Panel{% endblock %} · Club de Lectura</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>{% block title %}Panel{% endblock %} | Club de Lectura</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23101828'/><text x='50' y='62' font-size='34' text-anchor='middle' fill='%23f8fafc' font-family='Arial,sans-serif'>CL</text></svg>">
   <link rel="stylesheet" href="/static/css/design-system.css">
   <link rel="stylesheet" href="/static/css/admin.css">
   {% block head_extra %}{% endblock %}
@@ -12,240 +13,259 @@
 <body>
 <a class="skip-link" href="#main-content">Saltar al contenido</a>
 
-<!-- ── HEADER ── -->
+{# Cabecera comun del panel. Aqui concentramos accesos a operaciones, sitio publico y seguridad. #}
 <header class="header">
   <a class="header-brand" href="/admin">
-    <div class="header-logo">📚</div>
+    <div class="header-logo">CL</div>
     <div>
       <div class="header-title">Club de Lectura</div>
       <div class="header-sub">Panel operativo</div>
     </div>
   </a>
+
   <nav class="header-nav" aria-label="Navegacion principal">
     <a class="nav-link {% if request.path == '/admin' %}active{% endif %}" href="/admin">Dashboard</a>
-    <div class="nav-drop">
-      <button class="nav-link">Operar <span class="caret">▾</span></button>
-      <div class="drop-menu"><div class="drop-menu-inner">
-        <a class="drop-item" href="/admin/ciclo/easy">⚡ Ciclo rapido</a>
-        <a class="drop-item" href="/admin/ciclo">🔄 Ciclo detallado</a>
-        <a class="drop-item" href="/meetings">📅 Reuniones</a>
-        <a class="drop-item" href="/themes">🏷️ Tematicas</a>
-        <div class="drop-sep"></div>
-        <a class="drop-item" href="/attendance">👥 Asistencia</a>
-        <a class="drop-item" href="/ranking">🏆 Ranking</a>
-      </div></div>
-    </div>
-    <div class="nav-drop">
-      <button class="nav-link">Sistema <span class="caret">▾</span></button>
-      <div class="drop-menu"><div class="drop-menu-inner">
-        <a class="drop-item" href="/admin/messages">✉️ Mensajes</a>
-        <a class="drop-item" href="/admin/scheduler">⏰ Automatizacion</a>
-        <a class="drop-item" href="/admin/sent-messages">📋 Mensajes enviados</a>
-        <a class="drop-item" href="/admin/historico">📜 Historico</a>
-        <a class="drop-item" href="/admin/galeria">🏛️ Galeria</a>
-        <a class="drop-item" href="/admin/db">🗄️ Base de datos</a>
-        <a class="drop-item" href="/export">📤 Exportar CSV</a>
-        <div class="drop-sep"></div>
-        <a class="drop-item" href="/admin/demo">🎯 Demo</a>
-      </div></div>
-    </div>
-    <div class="nav-sep"></div>
-    <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages">✉️ Mensajes</a>
-    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler">⏰ Automatizacion</a>
-    <a class="nav-link {% if request.path == '/admin/waitlist' %}active{% endif %}" href="/admin/waitlist">📚 Lista espera</a>
-    <a class="nav-link {% if request.path == '/admin/poster' %}active{% endif %}" href="/admin/poster">🖼️ Cartel</a>
-    <div class="nav-sep"></div>
-    <a class="nav-link" href="/publico" target="_blank">🌐 Publica</a>
-    <a class="nav-link {% if request.path == '/admin/public-settings' %}active{% endif %}" href="/admin/public-settings">⚙️ Pagina</a>
-    <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">📋 Logs</a>
-    <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs">🐛 Bugs</a>
-    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">❓ Ayuda</a>
-    <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta página" aria-label="Iniciar tour guiado">🎯</button>
+    <a class="nav-link {% if request.path.startswith('/admin/ciclo') %}active{% endif %}" href="/admin/ciclo">Ciclos</a>
+    <a class="nav-link {% if request.path == '/meetings' %}active{% endif %}" href="/meetings">Reuniones</a>
+    <a class="nav-link {% if request.path == '/themes' %}active{% endif %}" href="/themes">Temas</a>
+    <a class="nav-link {% if request.path == '/attendance' %}active{% endif %}" href="/attendance">Asistencia</a>
+    <a class="nav-link {% if request.path == '/ranking' %}active{% endif %}" href="/ranking">Ranking</a>
+
+    <span class="nav-sep"></span>
+
+    <a class="nav-link {% if request.path == '/admin/messages' %}active{% endif %}" href="/admin/messages">Mensajes</a>
+    <a class="nav-link {% if request.path == '/admin/scheduler' %}active{% endif %}" href="/admin/scheduler">Automatizacion</a>
+    <a class="nav-link {% if request.path == '/admin/sent-messages' %}active{% endif %}" href="/admin/sent-messages">Enviados</a>
+    <a class="nav-link {% if request.path == '/admin/historico' %}active{% endif %}" href="/admin/historico">Historico</a>
+    <a class="nav-link {% if request.path == '/admin/galeria' %}active{% endif %}" href="/admin/galeria">Galeria</a>
+    <a class="nav-link {% if request.path == '/admin/db' %}active{% endif %}" href="/admin/db">Base de datos</a>
+    <a class="nav-link {% if request.path == '/export' %}active{% endif %}" href="/export">Exportar CSV</a>
+    <a class="nav-link {% if request.path == '/admin/demo' %}active{% endif %}" href="/admin/demo">Demo</a>
+
+    <span class="nav-sep"></span>
+
+    <a class="nav-link" href="/publico" target="_blank" rel="noopener">Pagina publica</a>
+    <a class="nav-link {% if request.path == '/admin/public-settings' %}active{% endif %}" href="/admin/public-settings">SEO y pagina</a>
+    <a class="nav-link {% if request.path == '/admin/public-access' %}active{% endif %}" href="/admin/public-access">Accesos publicos</a>
+    <a class="nav-link {% if request.path == '/admin/security' %}active{% endif %}" href="/admin/security">Seguridad</a>
+    <a class="nav-link {% if request.path == '/admin/logs' %}active{% endif %}" href="/admin/logs">Logs</a>
+    <a class="nav-link {% if request.path == '/admin/bugs' %}active{% endif %}" href="/admin/bugs">Bugs</a>
+    <a class="nav-link {% if request.path == '/admin/help' %}active{% endif %}" href="/admin/help">Ayuda</a>
+    <button class="nav-link" id="page-tour-btn" onclick="startPageTour()" style="display:none" title="Tour guiado de esta pagina" aria-label="Iniciar tour guiado">Tour</button>
     {% block nav_extra %}{% endblock %}
+
     <form action="/admin/logout" method="post" style="display:inline;margin:0">
       <button class="nav-link" type="submit" style="color:#fca5a5;margin-left:2px" aria-label="Cerrar sesion">Salir</button>
     </form>
   </nav>
-  <!-- Hamburger visible solo en móvil -->
-  <button class="mob-menu-btn" id="drawer-toggle" onclick="openDrawer()" aria-label="Abrir menú" aria-controls="drawer" aria-expanded="false">☰</button>
+
+  <button
+    class="mob-menu-btn"
+    id="drawer-toggle"
+    onclick="openDrawer()"
+    aria-label="Abrir menu"
+    aria-controls="drawer"
+    aria-expanded="false"
+  >
+    Menu
+  </button>
 </header>
 
-<!-- ── TOASTS ── -->
 <div id="toast-container" style="position:fixed;bottom:24px;right:24px;z-index:9990;display:flex;flex-direction:column;gap:10px;pointer-events:none;max-width:360px"></div>
 
 {% with messages = get_flashed_messages(with_categories=True) %}
   {% if messages %}
   <script>
-  (function(){
-    var toasts = {{ messages | tojson }};
-    window._pendingToasts = toasts;
+  (function() {
+    window._pendingToasts = {{ messages | tojson }};
   })();
   </script>
   {% endif %}
 {% endwith %}
 
-<!-- ── CONTENT ── -->
 <main class="main {% block main_class %}{% endblock %}" id="main-content" tabindex="-1">
-
   {% block content %}{% endblock %}
 </main>
 
-<!-- ── DRAWER (menú móvil) ── -->
 <div class="drawer-backdrop" id="drawer-backdrop"></div>
 <div class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-handle"></div>
   <nav class="drawer-links" aria-label="Navegacion movil">
-    <a class="drawer-link" href="/admin">🏠 Dashboard</a>
-    <a class="drawer-link" href="/admin/ciclo/easy">⚡ Ciclo rapido</a>
-    <a class="drawer-link" href="/admin/ciclo">🔄 Ciclo detallado</a>
-    <a class="drawer-link" href="/meetings">📅 Reuniones</a>
-    <a class="drawer-link" href="/themes">🏷️ Tematicas</a>
-    <a class="drawer-link" href="/attendance">👥 Asistencia</a>
-    <a class="drawer-link" href="/ranking">🏆 Ranking</a>
-    <a class="drawer-link" href="/admin/historico">📜 Historico</a>
-    <a class="drawer-link" href="/admin/galeria">🏛️ Galeria</a>
-    <a class="drawer-link" href="/admin/messages">✉️ Mensajes</a>
-    <a class="drawer-link" href="/admin/scheduler">⏰ Automatizacion</a>
-    <a class="drawer-link" href="/admin/sent-messages">📋 Mensajes enviados</a>
-    <a class="drawer-link" href="/admin/waitlist">📚 Lista espera</a>
-    <a class="drawer-link" href="/admin/poster">🖼️ Cartel</a>
-    <a class="drawer-link" href="/admin/db">🗄️ Base de datos</a>
-    <a class="drawer-link" href="/admin/demo">🎯 Demo</a>
-    <a class="drawer-link" href="/publico" target="_blank">🌐 Ver publica</a>
-    <a class="drawer-link" href="/admin/public-settings">⚙️ Pagina publica</a>
-    <a class="drawer-link" href="/admin/logs">📋 Logs</a>
-    <a class="drawer-link" href="/admin/bugs">🐛 Bugs</a>
-    <a class="drawer-link" href="/admin/help">❓ Ayuda</a>
+    <a class="drawer-link" href="/admin">Dashboard</a>
+    <a class="drawer-link" href="/admin/ciclo/easy">Ciclo rapido</a>
+    <a class="drawer-link" href="/admin/ciclo">Ciclo detallado</a>
+    <a class="drawer-link" href="/meetings">Reuniones</a>
+    <a class="drawer-link" href="/themes">Temas</a>
+    <a class="drawer-link" href="/attendance">Asistencia</a>
+    <a class="drawer-link" href="/ranking">Ranking</a>
+    <a class="drawer-link" href="/admin/messages">Mensajes</a>
+    <a class="drawer-link" href="/admin/scheduler">Automatizacion</a>
+    <a class="drawer-link" href="/admin/sent-messages">Mensajes enviados</a>
+    <a class="drawer-link" href="/admin/historico">Historico</a>
+    <a class="drawer-link" href="/admin/galeria">Galeria</a>
+    <a class="drawer-link" href="/admin/waitlist">Lista de espera</a>
+    <a class="drawer-link" href="/admin/poster">Cartel</a>
+    <a class="drawer-link" href="/admin/db">Base de datos</a>
+    <a class="drawer-link" href="/admin/demo">Demo</a>
+    <a class="drawer-link" href="/publico" target="_blank" rel="noopener">Pagina publica</a>
+    <a class="drawer-link" href="/admin/public-settings">SEO y pagina</a>
+    <a class="drawer-link" href="/admin/public-access">Accesos publicos</a>
+    <a class="drawer-link" href="/admin/security">Seguridad</a>
+    <a class="drawer-link" href="/admin/logs">Logs</a>
+    <a class="drawer-link" href="/admin/bugs">Bugs</a>
+    <a class="drawer-link" href="/admin/help">Ayuda</a>
     <form action="/admin/logout" method="post" style="margin:0">
-      <button class="drawer-link" type="submit" style="color:#fca5a5;width:100%;text-align:left;background:none;border:none;padding:0" aria-label="Cerrar sesion">🚪 Salir</button>
+      <button class="drawer-link" type="submit" style="color:#fca5a5;width:100%;text-align:left;background:none;border:none;padding:0" aria-label="Cerrar sesion">Salir</button>
     </form>
   </nav>
 </div>
 
-<!-- ── AI MODAL ── -->
-<button class="ai-fab" onclick="openAI()" aria-label="Asistente IA">🤖</button>
+<button class="ai-fab" onclick="openAI()" aria-label="Asistente IA">IA</button>
 <div class="ai-backdrop" id="ai-backdrop" onclick="closeAI()"></div>
 <div class="ai-modal" id="ai-modal">
   <div class="ai-modal-header">
-    <div class="ai-modal-title">🤖 Asistente IA</div>
-    <button class="ai-close" onclick="closeAI()">✕</button>
+    <div class="ai-modal-title">Asistente IA</div>
+    <button class="ai-close" onclick="closeAI()">Cerrar</button>
   </div>
   <div class="ai-messages" id="ai-messages">
-    <div class="ai-message ai-message-bot">¡Hola! Soy tu asistente para el club de lectura. ¿En qué puedo ayudarte?</div>
+    <div class="ai-message ai-message-bot">Hola. Puedo ayudarte a operar el club y revisar el panel.</div>
   </div>
   <div class="ai-suggestions" id="ai-suggestions">
     {% block ai_suggestions %}
-    <button onclick="askAI('¿Cuál es el libro actual?')">📖 Libro actual</button>
-    <button onclick="askAI('¿Cuándo es la próxima reunión?')">📅 Próxima reunión</button>
-    <button onclick="askAI('¿Quién va a la reunión?')">👥 Asistentes</button>
-    <button onclick="askAI('Redacta un recordatorio para el grupo')">✉️ Redactar recordatorio</button>
+    <button onclick="askAI('Cual es el libro actual?')">Libro actual</button>
+    <button onclick="askAI('Cuando es la proxima reunion?')">Proxima reunion</button>
+    <button onclick="askAI('Quien va a la reunion?')">Asistentes</button>
+    <button onclick="askAI('Redacta un recordatorio para el grupo')">Recordatorio</button>
     {% endblock %}
   </div>
   <div class="ai-input-row">
-    <textarea class="ai-input" id="ai-input" rows="1" placeholder="Pregunta algo sobre el club…"></textarea>
-    <button class="ai-send" id="ai-send" onclick="sendAI()">➤</button>
+    <textarea class="ai-input" id="ai-input" rows="1" placeholder="Pregunta algo sobre el club..."></textarea>
+    <button class="ai-send" id="ai-send" onclick="sendAI()">Enviar</button>
   </div>
 </div>
 
 {% block extra_modals %}{% endblock %}
 
-<!-- ── SHARED TOUR OVERLAY ── -->
 <div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:9997;pointer-events:auto" aria-modal="true"></div>
 <div id="tour-highlight" style="display:none"></div>
 <div id="tour-tooltip" style="display:none;width:330px;background:#0a0f1e;color:#f1f5f9;border:2px solid #6366f1;border-radius:16px;padding:20px 20px 16px;box-shadow:0 20px 50px rgba(0,0,0,.85);backdrop-filter:blur(20px)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <span id="tour-counter" style="font-size:.73rem;color:#a5b4fc;font-weight:800;letter-spacing:.04em"></span>
-    <button id="tour-close" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#94a3b8;cursor:pointer;font-size:.8rem;padding:3px 9px;border-radius:7px;font-family:inherit">✕ Cerrar</button>
+    <button id="tour-close" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#94a3b8;cursor:pointer;font-size:.8rem;padding:3px 9px;border-radius:7px;font-family:inherit">Cerrar</button>
   </div>
   <div id="tour-title" style="font-size:1.02rem;font-weight:800;margin-bottom:8px;color:#f1f5f9"></div>
   <div id="tour-desc" style="font-size:.88rem;color:#cbd5e1;line-height:1.6;margin-bottom:16px"></div>
   <div style="display:flex;gap:8px">
-    <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">← Anterior</button>
-    <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente →</button>
+    <button id="tour-prev" class="btn btn-soft btn-sm" style="flex:1">Anterior</button>
+    <button id="tour-next" class="btn btn-primary btn-sm" style="flex:1">Siguiente</button>
   </div>
 </div>
 
 <script src="/static/js/admin.js"></script>
 {% block extra_js %}{% endblock %}
 <script>
-// ── TOAST SYSTEM ──────────────────────────────────────────────
-(function(){
-  var ICONS = {success:'✅', danger:'❌', warning:'⚠️', info:'ℹ️'};
-  var COLORS = {
-    success:'rgba(16,185,129,.12)', danger:'rgba(239,68,68,.12)',
-    warning:'rgba(245,158,11,.12)', info:'rgba(99,102,241,.12)'
+(function() {
+  var icons = { success: "OK", danger: "ERR", warning: "WARN", info: "INFO" };
+  var colors = {
+    success: "rgba(16,185,129,.12)",
+    danger: "rgba(239,68,68,.12)",
+    warning: "rgba(245,158,11,.12)",
+    info: "rgba(99,102,241,.12)"
   };
-  var BORDERS = {
-    success:'rgba(16,185,129,.35)', danger:'rgba(239,68,68,.35)',
-    warning:'rgba(245,158,11,.35)', info:'rgba(99,102,241,.35)'
+  var borders = {
+    success: "rgba(16,185,129,.35)",
+    danger: "rgba(239,68,68,.35)",
+    warning: "rgba(245,158,11,.35)",
+    info: "rgba(99,102,241,.35)"
   };
 
-  function showToast(cat, msg){
-    var container = document.getElementById('toast-container');
-    if(!container) return;
-    var t = document.createElement('div');
-    t.style.cssText = [
-      'pointer-events:auto',
-      'background:' + (COLORS[cat]||COLORS.info),
-      'border:1px solid ' + (BORDERS[cat]||BORDERS.info),
-      'border-radius:12px',
-      'padding:12px 16px',
-      'display:flex','align-items:flex-start','gap:10px',
-      'backdrop-filter:blur(16px)',
-      'box-shadow:0 8px 28px rgba(0,0,0,.4)',
-      'font-size:.88rem','line-height:1.5','color:#f1f5f9',
-      'opacity:0','transform:translateX(40px)',
-      'transition:opacity .25s ease,transform .25s ease',
-      'cursor:pointer','max-width:360px','word-break:break-word'
-    ].join(';');
-    t.innerHTML = '<span style="flex-shrink:0;font-size:1.05rem">' + (ICONS[cat]||'ℹ️') + '</span>'
-      + '<span>' + msg + '</span>';
-    t.onclick = function(){ dismiss(t); };
-    container.appendChild(t);
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        t.style.opacity = '1';
-        t.style.transform = 'translateX(0)';
+  function showToast(category, message) {
+    var container = document.getElementById("toast-container");
+    if (!container) return;
+    var toast = document.createElement("div");
+    toast.style.cssText = [
+      "pointer-events:auto",
+      "background:" + (colors[category] || colors.info),
+      "border:1px solid " + (borders[category] || borders.info),
+      "border-radius:12px",
+      "padding:12px 16px",
+      "display:flex",
+      "align-items:flex-start",
+      "gap:10px",
+      "backdrop-filter:blur(16px)",
+      "box-shadow:0 8px 28px rgba(0,0,0,.4)",
+      "font-size:.88rem",
+      "line-height:1.5",
+      "color:#f1f5f9",
+      "opacity:0",
+      "transform:translateX(40px)",
+      "transition:opacity .25s ease,transform .25s ease",
+      "cursor:pointer",
+      "max-width:360px",
+      "word-break:break-word"
+    ].join(";");
+    toast.innerHTML = "<span style='flex-shrink:0;font-size:1.05rem'>" +
+      (icons[category] || icons.info) +
+      "</span><span>" + message + "</span>";
+    toast.onclick = function() { dismiss(toast); };
+    container.appendChild(toast);
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        toast.style.opacity = "1";
+        toast.style.transform = "translateX(0)";
       });
     });
-    var timer = setTimeout(function(){ dismiss(t); }, 5000);
-    function dismiss(el){
+    var timer = setTimeout(function() { dismiss(toast); }, 5000);
+
+    function dismiss(element) {
       clearTimeout(timer);
-      el.style.opacity = '0';
-      el.style.transform = 'translateX(40px)';
-      setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 260);
+      element.style.opacity = "0";
+      element.style.transform = "translateX(40px)";
+      setTimeout(function() {
+        if (element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      }, 260);
     }
   }
 
   window.showToast = showToast;
-
-  document.addEventListener('DOMContentLoaded', function(){
+  document.addEventListener("DOMContentLoaded", function() {
     var pending = window._pendingToasts || [];
-    pending.forEach(function(item, i){
-      setTimeout(function(){ showToast(item[0], item[1]); }, i * 180);
+    pending.forEach(function(item, index) {
+      setTimeout(function() {
+        showToast(item[0], item[1]);
+      }, index * 180);
     });
   });
 })();
 </script>
 <script>
-// ── CSRF: inyectar token en todos los formularios POST del panel ──
 (function() {
-  const token = "{{ csrf_token() }}";
-  document.querySelectorAll('form').forEach(function(f) {
-    if ((f.method || '').toLowerCase() !== 'post') return;
-    if (f.querySelector('input[name="csrf_token"]')) return;
-    var inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'csrf_token'; inp.value = token;
-    f.appendChild(inp);
+  var token = "{{ csrf_token() }}";
+  document.querySelectorAll("form").forEach(function(form) {
+    if ((form.method || "").toLowerCase() !== "post") return;
+    if (form.querySelector('input[name="csrf_token"]')) return;
+    var input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "csrf_token";
+    input.value = token;
+    form.appendChild(input);
   });
-  // Para peticiones fetch/AJAX al admin
-  var origFetch = window.fetch;
-  window.fetch = function(url, opts) {
-    opts = opts || {};
-    if (opts.method && opts.method.toUpperCase() === 'POST' && typeof url === 'string' && url.startsWith('/') && url !== '/webhook') {
-      opts.headers = Object.assign({}, opts.headers, { 'X-CSRF-Token': token });
+
+  var originalFetch = window.fetch;
+  window.fetch = function(url, options) {
+    options = options || {};
+    if (
+      options.method &&
+      options.method.toUpperCase() === "POST" &&
+      typeof url === "string" &&
+      url.startsWith("/") &&
+      url !== "/webhook"
+    ) {
+      options.headers = Object.assign({}, options.headers, { "X-CSRF-Token": token });
     }
-    return origFetch(url, opts);
+    return originalFetch(url, options);
   };
 })();
 </script>

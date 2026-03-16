@@ -5,18 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 {# ── SEO ── #}
-{% set seo_title = club_name ~ " — Club de lectura en " ~ city.split(",")[0] %}
-{% set seo_desc = description if description else "Somos un club de lectura en " ~ city ~ ". Proponemos libros, votamos y quedamos cada mes. Únete gratis." %}
 <title>{{ seo_title }}</title>
-<meta name="description" content="{{ seo_desc }}">
+<meta name="description" content="{{ seo_description }}">
 <meta name="robots" content="index, follow">
-<meta name="google-site-verification" content="E8RQ-2Ojv_i9bIbkgk_Pudbk2JJnSXexaJ0nCWb1l_A">
+{% if google_site_verification_token %}<meta name="google-site-verification" content="{{ google_site_verification_token }}">{% endif %}
 {% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
 
 {# Open Graph #}
 <meta property="og:type"        content="website">
 <meta property="og:title"       content="{{ seo_title }}">
-<meta property="og:description" content="{{ seo_desc }}">
+<meta property="og:description" content="{{ seo_description }}">
 <meta property="og:locale"      content="es_ES">
 {% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
 {% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
@@ -24,7 +22,7 @@
 {# Twitter Card #}
 <meta name="twitter:card"        content="{% if og_image %}summary_large_image{% else %}summary{% endif %}">
 <meta name="twitter:title"       content="{{ seo_title }}">
-<meta name="twitter:description" content="{{ seo_desc }}">
+<meta name="twitter:description" content="{{ seo_description }}">
 {% if og_image %}<meta name="twitter:image" content="{{ og_image }}">{% endif %}
 
 {# Structured data — LocalBusiness #}
@@ -33,7 +31,7 @@
   "@context": "https://schema.org",
   "@type": "Organization",
   "name": {{ club_name | tojson }},
-  "description": {{ seo_desc | tojson }},
+  "description": {{ seo_description | tojson }},
   "url": {{ (canonical_url or "") | tojson }},
   "address": {
     "@type": "PostalAddress",
@@ -52,7 +50,7 @@
   "author": {{ (winner.author or "") | tojson }},
   "image": {{ (winner.cover or "") | tojson }},
   "numberOfPages": {{ winner.pages or 0 }},
-  "description": {{ (winner.description or seo_desc) | tojson }}
+  "description": {{ (winner.description or seo_description) | tojson }}
 }
 </script>
 {% endif %}
@@ -62,7 +60,7 @@
   "@context": "https://schema.org",
   "@type": "Event",
   "name": {{ meeting.name | tojson }},
-  "startDate": {{ (meeting.final_date|string if meeting.final_date else "") | tojson }},
+  "startDate": {{ (meeting_start_iso or "") | tojson }},
   "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
   "eventStatus": "https://schema.org/EventScheduled",
   "location": {
@@ -654,7 +652,7 @@ footer a:hover{color:var(--amber)}
       </div>
       {% if group_invite_link %}
       <a class="hero-qr" href="{{ group_invite_link }}" target="_blank" rel="noopener">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ group_invite_link | urlencode }}&bgcolor=ffffff&color=07090f&margin=6" alt="QR Unirse" width="80" height="80" loading="lazy">
+        <img src="{{ qr_image_data_uri }}" alt="QR Unirse" width="80" height="80" loading="lazy">
         <div class="hero-qr-body">
           <span class="hero-qr-eyebrow">Escanea con el móvil</span>
           <div class="hero-qr-title">Únete al grupo</div>

@@ -17,10 +17,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      - name: Quality checks
+        run: |
+          python -m ruff check app/public_site.py app/services/public_site.py scripts/check_utf8.py
+          python -m black --check app/public_site.py app/services/public_site.py scripts/check_utf8.py
+          python scripts/check_utf8.py
 
       - name: Syntax check
-        run: python -m py_compile main.py db.py app/messages.py app/services/bot_context.py app/services/admin_guidance.py app/web/admin/insights.py app/web/admin/routes.py
+        run: python -m py_compile main.py db.py app/admin_panel.py app/public_site.py app/services/public_site.py app/messages.py app/services/bot_context.py app/services/admin_guidance.py app/web/admin/insights.py app/web/admin/monitoring.py app/web/admin/routes.py app/web/admin/site.py scripts/check_utf8.py
 
       - name: Run tests
         run: python -m unittest discover -s tests

@@ -2,11 +2,14 @@ from telegram.ext import CallbackQueryHandler, ChatMemberHandler, CommandHandler
 
 
 def register_handlers(telegram_app, handlers):
-    """Registra todos los handlers del bot desde un unico punto."""
+    """Registra todos los handlers del bot desde un unico punto.
+
+    Las votaciones se hacen con encuestas nativas de Telegram, asi que aqui
+    exponemos solo acciones de consulta, propuestas y asistencia.
+    """
     telegram_app.add_handler(CommandHandler("start", handlers["start"]))
     telegram_app.add_handler(CommandHandler("proponer", handlers["proponer"]))
     telegram_app.add_handler(CommandHandler("propuestas", handlers["propuestas"]))
-    telegram_app.add_handler(CommandHandler("votar", handlers["votar"]))
     telegram_app.add_handler(CommandHandler("resultados", handlers["resultados"]))
     telegram_app.add_handler(CommandHandler("reunion", handlers["reunion"]))
     telegram_app.add_handler(CommandHandler("asistir", handlers["asistir"]))
@@ -14,7 +17,6 @@ def register_handlers(telegram_app, handlers):
     telegram_app.add_handler(CommandHandler("asistencia", handlers["asistencia"]))
     telegram_app.add_handler(CommandHandler("tema", handlers["tema"]))
     telegram_app.add_handler(CommandHandler("temas", handlers["temas"]))
-    telegram_app.add_handler(CommandHandler("votar_tema", handlers["votar_tema"]))
     telegram_app.add_handler(CommandHandler("trivia", handlers["trivia_cmd"]))
     telegram_app.add_handler(CommandHandler("recomendar", handlers["recomendar"]))
     telegram_app.add_handler(CommandHandler("libro", handlers["libro_cmd"]))

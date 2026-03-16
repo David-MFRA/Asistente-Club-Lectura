@@ -3,7 +3,6 @@ from time import time
 import books_api
 import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 from app.services.bot_context import get_soft_guidance
 from app.services.input_limits import InputValidationError, normalize_book_query
 
@@ -35,12 +34,21 @@ class BookHandlers:
 
         title = " ".join(context.args).strip()
         if not title:
-            context.user_data["pending_proponer"] = True
-            context.user_data["pending_proponer_started_at"] = time()
+            flow_token = str(int(time() * 1000))
+            context.user_data["active_flow"] = {
+                "kind": "book_proposal",
+                "step": "await_query",
+                "token": flow_token,
+                "started_at": time(),
+                "draft": {},
+            }
             db.log_event("bot", "Flujo /proponer pendiente iniciado", category="command", actor=user.first_name or user.username or str(user.id))
             await update.message.reply_text(
-                "Que libro quieres proponer?\n\nEscribe el titulo del libro y lo buscare:",
+                "Que libro quieres proponer?\n\nEscribe el titulo y te ensenare una ficha antes de confirmarlo.",
                 parse_mode=None,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("Cancelar", callback_data=f"flow:{flow_token}:cancel")]]
+                ),
             )
             return
         try:
@@ -82,7 +90,8 @@ class BookHandlers:
                 if len(description) > 300:
                     description = description[:297] + "..."
                 lines.append(f"\n_{self.esc(description)}_")
-            lines.append("\n_Usa /propuestas y /votar para participar._")
+            lines.append("\n_Usa /propuestas para seguir el ranking y vota en la encuesta fijada del grupo._")
+            lines.append("_Siguiente paso util: revisa /reunion o propone otro libro._")
             caption = "\n".join(lines)
 
             if book.get("cover"):
@@ -117,16 +126,14 @@ class BookHandlers:
                     f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
                     f"   {stars} {self.bold(str(book['votes']))} voto{'s' if book['votes'] != 1 else ''}"
                 )
-            lines.append("\n_Pulsa un boton para votar directamente:_")
-            keyboard = []
-            for book in books[:10]:
-                pos = book.get("cycle_position", book["proposal_id"])
-                label = f"Votar {pos}. {book['title'][:24]}"
-                keyboard.append([InlineKeyboardButton(label, callback_data=f"vb:{book['proposal_id']}")])
+            lines.append("\n_La votacion se hace en la encuesta fijada del grupo._")
+            if db.get_open_polls("books", cycle_key):
+                lines.append("_Abre el mensaje fijado para votar y usa /resultados para seguir como va._")
+            else:
+                lines.append("_Ahora mismo no hay encuesta activa; cuando se abra aparecera fijada en el grupo._")
             await update.message.reply_text(
                 "\n".join(lines),
                 parse_mode="MarkdownV2",
-                reply_markup=InlineKeyboardMarkup(keyboard),
             )
         except Exception:
             self.logger.exception("Error en /propuestas")
@@ -135,53 +142,10 @@ class BookHandlers:
     async def votar(self, update, context):
         if not await self.allowed(update):
             return
-        user = update.effective_user
-        cycle_key = db.get_current_cycle_key()
-        self.logger.info("/votar: user=%s id=%d args=%r", user.first_name or user.username, user.id, context.args)
-        if not self.check_cooldown(update.effective_user.id, "votar", 10):
-            await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
-            return
-        if not context.args:
-            await update.message.reply_text(
-                f"Usa {self.code('/votar numero')} - el numero es la posicion en /propuestas.",
-                parse_mode="MarkdownV2",
-            )
-            return
-        try:
-            num = int(context.args[0])
-            books = db.get_book_proposals(cycle_key)
-            proposal = next((book for book in books if book.get("cycle_position") == num), None)
-            if not proposal:
-                proposal = db.get_proposal_by_id(num)
-            if not proposal:
-                guidance = get_soft_guidance("votar", cycle_key=cycle_key)
-                await update.message.reply_text(
-                    guidance or f"No existe la propuesta #{num}. Usa /propuestas para ver la lista.",
-                    parse_mode=None,
-                )
-                return
-
-            proposal_id = proposal["proposal_id"]
-            user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
-            ok = db.vote_book(proposal_id, user_name, user.id)
-            if ok:
-                proposal = db.get_proposal_by_id(proposal_id)
-                book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
-                self.logger.info("/votar: exito %s -> '%s' (proposal_id=%d)", user_name, book_name, proposal_id)
-                db.log_event("bot", f"Voto libro registrado para {book_name}", category="book", actor=user_name)
-                await update.message.reply_text(
-                    f"{self.bold('Voto registrado')} para _{self.esc(book_name)}_\\.\nUsa /propuestas para ver el ranking\\.",
-                    parse_mode="MarkdownV2",
-                )
-            else:
-                self.logger.debug("/votar: duplicado %s -> proposal_id=%d", user_name, proposal_id)
-                db.log_event("bot", f"Voto duplicado sobre propuesta #{proposal_id}", category="command", actor=user_name)
-                await update.message.reply_text("Ya habias votado esa propuesta.", parse_mode=None)
-        except ValueError:
-            await update.message.reply_text("El ID debe ser un numero.", parse_mode=None)
-        except Exception:
-            self.logger.exception("Error en /votar")
-            await update.message.reply_text("Error registrando el voto.", parse_mode=None)
+        await update.message.reply_text(
+            "Las votaciones ya no se hacen con /votar.\n\nUsa la encuesta fijada del grupo y /propuestas para ver el ranking.",
+            parse_mode=None,
+        )
 
     async def resultados(self, update, context):
         if not await self.allowed(update):

@@ -55,12 +55,12 @@ Dune
 Reunion
 Debate Dune
 Comandos
-20
+18
 private
 Escenario activo
 Simula empate final de votos para validar mensajes y decisiones.
 Menu contextual
-📅 /reunion
+🗓️ /reunion
 🙋 /asistir
 ❌ /noasistir
 👥 /asistencia

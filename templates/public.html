@@ -481,6 +481,29 @@ nav{
   display:block;
 }
 
+.faq-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:16px;
+}
+.faq-card{
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--border2);
+  border-radius:16px;
+  padding:20px;
+}
+.faq-q{
+  font-family:var(--font-serif);
+  font-size:1.05rem;
+  color:var(--cream);
+  margin-bottom:10px;
+}
+.faq-a{
+  font-size:.9rem;
+  color:var(--muted);
+  line-height:1.65;
+}
+
 /* ── GALLERY / PAST READS ────────────────────── */
 .past-scroll{
   display:flex;gap:18px;
@@ -610,6 +633,7 @@ footer a:hover{color:var(--amber)}
     <a class="nav-link" href="#libro">Libro</a>
     <a class="nav-link" href="#reunion">Reunión</a>
     <a class="nav-link" href="#bot">El bot</a>
+    <a class="nav-link" href="#faq">FAQ</a>
     <a class="nav-link" href="#historia">Historia</a>
     {% if group_invite_link %}
     <a class="nav-cta" href="{{ group_invite_link }}" target="_blank" rel="noopener">
@@ -684,7 +708,7 @@ footer a:hover{color:var(--amber)}
 <section class="section" id="libro">
   <span class="section-label reveal">Ciclo actual</span>
   <h2 class="section-title reveal">{{ section_libro | default("El libro que estamos leyendo", true) }}</h2>
-  <p class="section-sub reveal">Elegido por votación del grupo. Cada ciclo proponemos títulos y votamos el favorito.</p>
+  <p class="section-sub reveal">Elegido por la encuesta del grupo. Cada ciclo proponemos titulos y cerramos la lectura favorita con una votacion fijada en Telegram.</p>
 
   {% if winner %}
   <div class="book-card reveal">
@@ -711,7 +735,7 @@ footer a:hover{color:var(--amber)}
   <div class="book-card reveal" style="grid-template-columns:1fr;text-align:center;padding:48px">
     <div style="font-size:3rem;margin-bottom:14px">🗳️</div>
     <div style="font-family:var(--font-serif);font-size:1.3rem;color:var(--cream);margin-bottom:8px">Las votaciones están abiertas</div>
-    <div style="color:var(--muted);font-size:.9rem">Aún no hay libro elegido. Únete al grupo para proponer y votar.</div>
+    <div style="color:var(--muted);font-size:.9rem">Aun no hay libro elegido. Unete al grupo para proponer y seguir la encuesta fijada.</div>
   </div>
   {% endif %}
 </section>
@@ -760,7 +784,7 @@ footer a:hover{color:var(--amber)}
 <section class="section" id="propuestas">
   <span class="section-label reveal">Ciclo actual</span>
   <h2 class="section-title reveal">{{ section_propuestas | default("Propuestas en votación", true) }}</h2>
-  <p class="section-sub reveal">Únete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para votar el siguiente libro.</p>
+  <p class="section-sub reveal">Unete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para ver el ranking y localizar la encuesta fijada del siguiente libro.</p>
 
   {% set max_votes = proposals[0].votes if proposals[0].votes > 0 else 1 %}
   <div class="proposals-list reveal">
@@ -777,7 +801,7 @@ footer a:hover{color:var(--amber)}
     {% endfor %}
   </div>
   <p style="margin-top:16px;font-size:.8rem;color:var(--muted);font-family:var(--font-mono)">
-    → Para votar: únete al grupo y escribe /propuestas
+    → Para votar: abre la encuesta fijada del grupo. /propuestas te ayuda a seguir el ranking.
   </p>
 </section>
 {% endif %}
@@ -787,7 +811,7 @@ footer a:hover{color:var(--amber)}
 <section class="section" id="bot">
   <span class="section-label reveal">Telegram Bot</span>
   <h2 class="section-title reveal">{{ section_bot | default("¿Cómo funciona el bot?", true) }}</h2>
-  <p class="section-sub reveal">El bot vive en el grupo de Telegram y también en privado. Es tu asistente del club: propones libros, votas, te apuntas a reuniones y mucho más con simples comandos.</p>
+  <p class="section-sub reveal">El bot vive en el grupo de Telegram y tambien en privado. Te guia para proponer libros, seguir las encuestas fijadas, confirmar asistencia y resolver dudas sin llenar el chat.</p>
 
   <div class="commands-grid">
     {% for command in public_commands %}
@@ -798,14 +822,16 @@ footer a:hover{color:var(--amber)}
       <div class="cmd-desc">
         {% if command.id == 'proponer' %}
           Escribe el titulo y el bot busca portada, autor, sinopsis y paginas para anadirlo a las propuestas del ciclo.
-        {% elif command.id in ('propuestas', 'votar') %}
-          Participa en la votacion del ciclo y sigue el ranking sin perderte en el chat.
+        {% elif command.id == 'propuestas' %}
+          Revisa el ranking del ciclo y usa la encuesta fijada del grupo para votar sin perderte en el chat.
         {% elif command.id == 'reunion' %}
           Consulta fecha, lugar, libro y estado de asistencia de la proxima quedada.
         {% elif command.id in ('asistir', 'noasistir', 'asistencia') %}
           Gestiona tu plaza en la reunion y comprueba quien se ha apuntado.
-        {% elif command.id in ('tema', 'temas', 'votar_tema') %}
-          Propone o vota la tematica que guiara las lecturas del siguiente ciclo.
+        {% elif command.id == 'tema' %}
+          Propone una tematica para el siguiente ciclo y confirmala antes de enviarla.
+        {% elif command.id == 'temas' %}
+          Revisa las tematicas del ciclo y sigue la encuesta fijada para votar la favorita.
         {% elif command.id == 'recomendar' %}
           Pide ideas de lectura relacionadas con la tematica activa del club.
         {% elif command.id == 'progreso' %}
@@ -817,7 +843,6 @@ footer a:hover{color:var(--amber)}
       <code class="cmd-example">
         {% if command.id == 'proponer' %}/proponer El nombre del viento
         {% elif command.id == 'propuestas' %}/propuestas
-        {% elif command.id == 'votar' %}/votar 2
         {% elif command.id == 'reunion' %}/reunion
         {% elif command.id == 'asistir' %}/asistir
         {% elif command.id == 'tema' %}/tema Novela historica
@@ -833,7 +858,32 @@ footer a:hover{color:var(--amber)}
 
   <div style="margin-top:24px;padding:20px 22px;background:rgba(78,205,196,.05);border:1px solid rgba(78,205,196,.15);border-radius:14px" class="reveal">
     <div style="font-family:var(--font-mono);font-size:.72rem;color:var(--teal);margin-bottom:6px;letter-spacing:.06em">CONSEJO</div>
-    <div style="font-size:.88rem;color:var(--cream2);line-height:1.6">El bot también funciona en <strong style="color:var(--cream)">privado</strong>. Escríbele directamente para usar todos los comandos sin llenar el grupo de mensajes. Al abrirlo por primera vez, pulsa <span style="font-family:var(--font-mono);color:var(--teal)">/start</span> y te explicará todo.</div>
+    <div style="font-size:.88rem;color:var(--cream2);line-height:1.6">El bot tambien funciona en <strong style="color:var(--cream)">privado</strong>. Escribelo directamente para usar atajos, flujos guiados y ayuda en lenguaje natural. Si le preguntas <span style="font-family:var(--font-mono);color:var(--teal)">como funciona</span> o <span style="font-family:var(--font-mono);color:var(--teal)">que hago ahora</span>, te orienta paso a paso.</div>
+  </div>
+</section>
+
+<section class="section" id="faq">
+  <span class="section-label reveal">Preguntas frecuentes</span>
+  <h2 class="section-title reveal">FAQ rapida para nuevos miembros</h2>
+  <p class="section-sub reveal">Lo justo para entender como funciona el club antes de entrar al grupo o escribir al bot.</p>
+
+  <div class="faq-grid">
+    <div class="faq-card reveal">
+      <div class="faq-q">¿Como funciona?</div>
+      <div class="faq-a">Cada ciclo elegimos una tematica, luego proponemos libros, votamos en la encuesta fijada de Telegram y cerramos una reunion para comentarlo juntos.</div>
+    </div>
+    <div class="faq-card reveal">
+      <div class="faq-q">¿Cada cuanto nos reunimos?</div>
+      <div class="faq-a">Normalmente una vez por ciclo. El bot y la pagina publica muestran la proxima reunion en cuanto la fecha esta cerrada o cuando la encuesta de fechas ya esta en marcha.</div>
+    </div>
+    <div class="faq-card reveal">
+      <div class="faq-q">¿Donde se vota?</div>
+      <div class="faq-a">Las votaciones se hacen siempre con encuestas nativas de Telegram fijadas en el grupo. El bot te ayuda a ver el ranking y a localizar la encuesta correcta.</div>
+    </div>
+    <div class="faq-card reveal">
+      <div class="faq-q">¿Como me uno?</div>
+      <div class="faq-a">Si tienes enlace, entra al grupo y despues abre el bot en privado con <span style="font-family:var(--font-mono);color:var(--teal)">/start</span>. Si aun no lo tienes, pidelo a un miembro o al equipo del club.</div>
+    </div>
   </div>
 </section>
 
@@ -885,7 +935,7 @@ footer a:hover{color:var(--amber)}
       {% if group_invite_link %}
         {{ join_body | default("Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros.", true) }}
       {% else %}
-        Habla con el bot en Telegram para empezar a participar. Propón libros, vota y queda con el club.
+        Habla con el bot en Telegram para empezar a participar. Propon libros, sigue las encuestas del grupo y queda con el club.
       {% endif %}
     </p>
     {% if group_invite_link %}

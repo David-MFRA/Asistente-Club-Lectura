@@ -47,7 +47,7 @@ ADMIN_SECRET ausente
 El panel no deberia exponerse sin secreto de administracion configurado.
 Bloqueante →
 Webhook posiblemente inactivo
-La ultima llamada valida al webhook fue hace 53h.
+La ultima llamada valida al webhook fue hace 54h.
 Revisar logs →
 Recordatorio semanal desactivado
 Revisa el programador para activarlo.

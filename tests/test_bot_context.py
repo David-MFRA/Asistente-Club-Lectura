@@ -96,7 +96,7 @@ class BotContextTests(unittest.TestCase):
             books=[],
         )
 
-    def test_get_contextual_commands_prioritizes_theme_voting(self):
+    def test_get_contextual_commands_prioritizes_theme_poll_follow_up(self):
         set_state(
             open_theme_poll={"id": 99},
             themes=[{"id": 1, "name": "Distopias"}],
@@ -105,7 +105,8 @@ class BotContextTests(unittest.TestCase):
         commands = bot_context.get_contextual_commands("private", "2026-03", is_admin=False)
         command_ids = [item["id"] for item in commands[:4]]
 
-        self.assertEqual(command_ids[:3], ["temas", "votar_tema", "tema"])
+        self.assertEqual(command_ids[:3], ["temas", "tema", "recomendar"])
+        self.assertNotIn("votar_tema", [item["id"] for item in commands])
         self.assertNotIn("admin_ayuda", [item["id"] for item in commands])
         self.assertNotIn("asistir", [item["id"] for item in commands])
 
@@ -132,6 +133,7 @@ class BotContextTests(unittest.TestCase):
         self.assertIn("Encuesta de libros abierta", text)
         self.assertIn("Ejemplos rapidos", text)
         self.assertIn("/propuestas", text)
+        self.assertIn("encuestas nativas", text)
         self.assertIn("Prioriza cerrar la votacion hoy.", text)
 
     def test_build_welcome_text_for_admin_mentions_admin_help(self):
@@ -145,6 +147,34 @@ class BotContextTests(unittest.TestCase):
         self.assertIn("Dune", text)
         self.assertIn("/admin_ayuda", text)
         self.assertIn("admin_ayuda", [item["id"] for item in commands])
+
+    def test_resolve_private_shortcut_supports_plain_labels(self):
+        self.assertEqual(bot_context.resolve_private_shortcut("Ver reunion"), "reunion")
+        self.assertEqual(bot_context.resolve_private_shortcut("Ayuda admin"), "admin_ayuda")
+
+    def test_answer_help_question_explains_pinned_poll(self):
+        set_state(open_book_polls=[{"id": 5}])
+
+        answer = bot_context.answer_help_question("donde se vota", cycle_key="2026-03")
+
+        self.assertIn("encuesta fijada", answer)
+        self.assertIn("/propuestas", answer)
+
+    def test_answer_help_question_can_suggest_next_steps(self):
+        set_state(
+            winner={"title": "Dune", "author": "Frank Herbert"},
+            meeting={"id": 1, "name": "Sesion Dune", "final_date": "2026-03-18 19:30"},
+        )
+
+        answer = bot_context.answer_help_question("que hago ahora", cycle_key="2026-03")
+
+        self.assertIn("Lo mas util ahora", answer)
+        self.assertIn("Ver reunion", answer)
+
+    def test_resolve_private_intent_understands_simple_language(self):
+        self.assertEqual(bot_context.resolve_private_intent("me apunto"), "asistir")
+        self.assertEqual(bot_context.resolve_private_intent("quiero proponer un libro"), "proponer")
+        self.assertEqual(bot_context.resolve_private_intent("menu"), "ayuda")
 
 
 if __name__ == "__main__":

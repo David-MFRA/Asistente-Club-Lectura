@@ -1,8 +1,6 @@
 ﻿import os
 import re
-import json
 import logging
-import unicodedata
 import time as _time
 import asyncio
 from datetime import datetime
@@ -34,12 +32,20 @@ from app.formatting import bold, code, esc, italic
 from app.messages import DEFAULT_MESSAGES as SHARED_DEFAULT_MESSAGES, get_text as shared_get_text
 from app.public_site import install_public_site_routes
 from app.services.bot_context import (
+    answer_help_question,
     build_help_text,
     build_private_keyboard,
     build_welcome_text,
     get_contextual_commands,
+    resolve_private_intent,
+    resolve_private_shortcut,
 )
-from app.services.input_limits import InputValidationError, normalize_bug_description
+from app.services.input_limits import (
+    InputValidationError,
+    normalize_book_query,
+    normalize_bug_description,
+    normalize_theme_name,
+)
 from app.runtime_factory import build_runtime_services, build_webhook_handler
 from app.telegram.registry import register_handlers
 
@@ -289,9 +295,9 @@ async def start(update, context):
         user = update.effective_user.first_name or update.effective_user.username or "miembro"
         text, commands = build_welcome_text(user, is_admin=is_admin)
         keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton(item) for item in row] for row in build_private_keyboard(commands)] + [[KeyboardButton("❓ /ayuda")]],
+            [[KeyboardButton(item) for item in row] for row in build_private_keyboard(commands)] + [[KeyboardButton("Ayuda")]],
             resize_keyboard=True,
-            input_field_placeholder="Elige una opción o escribe un comando…"
+            input_field_placeholder="Toca un atajo o escribe tu pregunta..."
         )
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
         return
@@ -362,6 +368,408 @@ async def recomendar(update, context):
     return await extra_handlers.recomendar(update, context)
 
 
+def _get_active_flow(context):
+    user_data = getattr(context, "user_data", None) or {}
+    flow = user_data.get("active_flow")
+    return flow if isinstance(flow, dict) else None
+
+
+def _set_active_flow(context, kind, step, token, *, draft=None, started_at=None):
+    context.user_data["active_flow"] = {
+        "kind": kind,
+        "step": step,
+        "token": token,
+        "started_at": started_at if started_at is not None else _time.time(),
+        "draft": draft or {},
+    }
+    return context.user_data["active_flow"]
+
+
+def _flow_callback(token, action, value=None):
+    suffix = f":{value}" if value is not None else ""
+    return f"flow:{token}:{action}{suffix}"
+
+
+def _flow_markup(token, rows):
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(label, callback_data=_flow_callback(token, action, value)) for label, action, value in row]
+            for row in rows
+        ]
+    )
+
+
+def _flow_cancel_markup(token):
+    return _flow_markup(token, [[("Cancelar", "cancel", None)]])
+
+
+def _clear_active_flow(context, actor=None, *, abandoned_by=None):
+    flow = _get_active_flow(context)
+    if not flow:
+        return None
+    context.user_data.pop("active_flow", None)
+    if actor:
+        duration_ms = int((_time.time() - float(flow.get("started_at") or _time.time())) * 1000)
+        db.log_event(
+            "bot",
+            f"Flujo {flow.get('kind')} cerrado",
+            category="flow",
+            actor=actor,
+            extra={
+                "kind": flow.get("kind"),
+                "step": flow.get("step"),
+                "abandoned_by": abandoned_by,
+                "duration_ms": duration_ms,
+            },
+        )
+    return flow
+
+
+def _book_flow_preview(book):
+    lines = ["Ficha encontrada para tu propuesta:", ""]
+    lines.append(book["title"])
+    if book.get("author"):
+        lines.append(book["author"])
+    if book.get("pages"):
+        lines.append(f"{book['pages']} paginas")
+    if book.get("description"):
+        description = str(book["description"])
+        if len(description) > 320:
+            description = description[:317] + "..."
+        lines.append("")
+        lines.append(description)
+    lines.append("")
+    lines.append("Confirma si quieres proponer este libro.")
+    return "\n".join(lines)
+
+
+def _theme_flow_preview(name, previous_cycles):
+    lines = [
+        "Vas a proponer esta tematica:",
+        "",
+        name,
+    ]
+    if previous_cycles:
+        lines.append("")
+        lines.append("Ya se uso en: " + ", ".join(previous_cycles[:3]))
+    lines.append("")
+    lines.append("Confirma si quieres enviarla.")
+    return "\n".join(lines)
+
+
+def _bug_flow_summary(description, area):
+    area_text = area if area else "Sin especificar"
+    return (
+        "Vas a enviar este reporte:\n\n"
+        f"Area: {area_text}\n"
+        f"Descripcion: {description}\n\n"
+        "Confirma para guardarlo y avisar al equipo."
+    )
+
+
+async def _handle_active_flow_text(update, context, text):
+    flow = _get_active_flow(context)
+    if not flow:
+        return False
+
+    actor = _bot_actor_label(update)
+    normalized_text = text.strip().lower()
+    if normalized_text in {"cancelar", "cancel", "salir"}:
+        _clear_active_flow(context, actor, abandoned_by="text_cancel")
+        await update.message.reply_text("Operacion cancelada.", parse_mode=None)
+        return True
+
+    if flow.get("kind") == "book_proposal" and flow.get("step") == "await_query":
+        try:
+            title = normalize_book_query(text)
+        except InputValidationError as exc:
+            await update.message.reply_text(str(exc), parse_mode=None)
+            return True
+        wait_msg = await update.message.reply_text(f"Buscando {title}...", parse_mode=None)
+        try:
+            book = books_api.google_books(title)
+            await wait_msg.delete()
+        except Exception:
+            logger.exception("Error buscando libro durante flujo guiado")
+            await wait_msg.edit_text("No pude buscar ese libro ahora mismo.", parse_mode=None)
+            return True
+        if not book:
+            await update.message.reply_text(
+                "No encontre ese libro. Prueba con otro titulo o pulsa Cancelar.",
+                parse_mode=None,
+                reply_markup=_flow_cancel_markup(flow["token"]),
+            )
+            return True
+        _set_active_flow(
+            context,
+            "book_proposal",
+            "confirm_book",
+            flow["token"],
+            draft={"book": book, "query": title},
+            started_at=flow.get("started_at"),
+        )
+        markup = _flow_markup(
+            flow["token"],
+            [
+                [("Confirmar", "confirm", None), ("Volver", "back", None)],
+                [("Cancelar", "cancel", None)],
+            ],
+        )
+        preview = _book_flow_preview(book)
+        if book.get("cover"):
+            await update.message.reply_photo(book["cover"], caption=preview, parse_mode=None, reply_markup=markup)
+        else:
+            await update.message.reply_text(preview, parse_mode=None, reply_markup=markup)
+        return True
+
+    if flow.get("kind") == "theme_proposal" and flow.get("step") == "await_query":
+        try:
+            name = normalize_theme_name(text)
+        except InputValidationError as exc:
+            await update.message.reply_text(str(exc), parse_mode=None)
+            return True
+        previous = [item["cycle_key"] for item in db.get_theme_previous_cycles(name)[:3]]
+        _set_active_flow(
+            context,
+            "theme_proposal",
+            "confirm_theme",
+            flow["token"],
+            draft={"name": name, "previous_cycles": previous},
+            started_at=flow.get("started_at"),
+        )
+        await update.message.reply_text(
+            _theme_flow_preview(name, previous),
+            parse_mode=None,
+            reply_markup=_flow_markup(
+                flow["token"],
+                [
+                    [("Confirmar", "confirm", None), ("Volver", "back", None)],
+                    [("Cancelar", "cancel", None)],
+                ],
+            ),
+        )
+        return True
+
+    if flow.get("kind") == "bug_report" and flow.get("step") == "await_description":
+        try:
+            description = normalize_bug_description(text)
+        except InputValidationError as exc:
+            await update.message.reply_text(str(exc), parse_mode=None)
+            return True
+        _set_active_flow(
+            context,
+            "bug_report",
+            "choose_bug_area",
+            flow["token"],
+            draft={"description": description},
+            started_at=flow.get("started_at"),
+        )
+        await update.message.reply_text(
+            "Elige el area del problema. Si no lo tienes claro, pulsa Sin especificar.",
+            parse_mode=None,
+            reply_markup=_flow_markup(
+                flow["token"],
+                [
+                    [("Bot", "area", "Bot"), ("Web", "area", "Web"), ("Otro", "area", "Otro")],
+                    [("Sin especificar", "area", "Sin especificar")],
+                    [("Cancelar", "cancel", None)],
+                ],
+            ),
+        )
+        return True
+
+    await update.message.reply_text(
+        "Usa los botones del flujo para confirmar, volver o cancelar.",
+        parse_mode=None,
+    )
+    return True
+
+
+async def _handle_flow_callback(update, context):
+    query = update.callback_query
+    data = (query.data or "").split(":")
+    if len(data) < 3:
+        await query.answer("Accion no valida.", show_alert=True)
+        return True
+    _, token, action, *rest = data
+    flow = _get_active_flow(context)
+    actor = _bot_actor_label(update)
+    if not flow or flow.get("token") != token:
+        await query.answer("Ese paso ya no esta activo. Empieza de nuevo desde el teclado privado.", show_alert=True)
+        return True
+
+    if action == "cancel":
+        _clear_active_flow(context, actor, abandoned_by="callback_cancel")
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.answer("Operacion cancelada.")
+        await query.message.reply_text("He cancelado el flujo actual.", parse_mode=None)
+        return True
+
+    if action == "back":
+        if flow.get("kind") == "book_proposal":
+            _set_active_flow(context, "book_proposal", "await_query", token, draft={}, started_at=flow.get("started_at"))
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.answer("Volvemos al titulo.")
+            await query.message.reply_text(
+                "Vale. Escribe otro titulo para volver a buscarlo.",
+                parse_mode=None,
+                reply_markup=_flow_cancel_markup(token),
+            )
+            return True
+        if flow.get("kind") == "theme_proposal":
+            _set_active_flow(context, "theme_proposal", "await_query", token, draft={}, started_at=flow.get("started_at"))
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.answer("Volvemos al nombre de la tematica.")
+            await query.message.reply_text(
+                "Escribe otra tematica o pulsa Cancelar.",
+                parse_mode=None,
+                reply_markup=_flow_cancel_markup(token),
+            )
+            return True
+        if flow.get("kind") == "bug_report":
+            current_description = flow.get("draft", {}).get("description")
+            await query.edit_message_reply_markup(reply_markup=None)
+            if flow.get("step") == "confirm_bug" and current_description:
+                _set_active_flow(
+                    context,
+                    "bug_report",
+                    "choose_bug_area",
+                    token,
+                    draft={"description": current_description},
+                    started_at=flow.get("started_at"),
+                )
+                await query.answer("Vuelves a elegir el area.")
+                await query.message.reply_text(
+                    "Elige otra area para el reporte.",
+                    parse_mode=None,
+                    reply_markup=_flow_markup(
+                        token,
+                        [
+                            [("Bot", "area", "Bot"), ("Web", "area", "Web"), ("Otro", "area", "Otro")],
+                            [("Sin especificar", "area", "Sin especificar")],
+                            [("Cancelar", "cancel", None)],
+                        ],
+                    ),
+                )
+                return True
+            _set_active_flow(context, "bug_report", "await_description", token, draft={}, started_at=flow.get("started_at"))
+            await query.answer("Volvemos a la descripcion.")
+            await query.message.reply_text(
+                "Cuéntame de nuevo el problema y lo revisamos antes de enviarlo.",
+                parse_mode=None,
+                reply_markup=_flow_cancel_markup(token),
+            )
+            return True
+
+    if action == "area" and flow.get("kind") == "bug_report":
+        area = rest[0] if rest else "Sin especificar"
+        description = flow.get("draft", {}).get("description", "")
+        _set_active_flow(
+            context,
+            "bug_report",
+            "confirm_bug",
+            token,
+            draft={"description": description, "area": area},
+            started_at=flow.get("started_at"),
+        )
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.answer("Area guardada.")
+        await query.message.reply_text(
+            _bug_flow_summary(description, area),
+            parse_mode=None,
+            reply_markup=_flow_markup(
+                token,
+                [
+                    [("Confirmar", "confirm", None), ("Volver", "back", None)],
+                    [("Cancelar", "cancel", None)],
+                ],
+            ),
+        )
+        return True
+
+    if action == "confirm":
+        user = update.effective_user
+        user_name = user.username or user.first_name or str(user.id)
+        if flow.get("kind") == "book_proposal" and flow.get("step") == "confirm_book":
+            book = flow.get("draft", {}).get("book")
+            await query.edit_message_reply_markup(reply_markup=None)
+            _clear_active_flow(context, actor, abandoned_by="confirm")
+            result = db.insert_book(book, user_name, cycle_key=db.get_current_cycle_key(), proposed_by_user_id=user.id)
+            if not result.get("inserted", True):
+                await query.answer("Ese libro ya estaba propuesto.", show_alert=True)
+                await query.message.reply_text(
+                    f"{book['title']} ya estaba propuesto en este ciclo.",
+                    parse_mode=None,
+                )
+                return True
+            db.log_event("bot", f"Libro propuesto: {book['title']}", category="book", actor=user_name)
+            await query.answer("Libro propuesto.")
+            await query.message.reply_text(
+                (
+                    f"Libro propuesto: {book['title']}\n"
+                    f"Siguiente paso util: revisa /propuestas, /reunion o propone otro libro."
+                ),
+                parse_mode=None,
+            )
+            return True
+        if flow.get("kind") == "theme_proposal" and flow.get("step") == "confirm_theme":
+            name = flow.get("draft", {}).get("name", "")
+            await query.edit_message_reply_markup(reply_markup=None)
+            _clear_active_flow(context, actor, abandoned_by="confirm")
+            row = db.create_theme(name, created_by=user_name, cycle_key=db.get_current_cycle_key())
+            if row:
+                db.log_event("bot", f"Tematica propuesta: {name}", category="theme", actor=user_name)
+                await query.answer("Tematica propuesta.")
+                await query.message.reply_text(
+                    (
+                        f"Tematica propuesta: {name}\n"
+                        "Siguiente paso util: revisa /temas, abre la encuesta fijada del grupo o propone otra."
+                    ),
+                    parse_mode=None,
+                )
+            else:
+                await query.answer("Esa tematica ya existia.", show_alert=True)
+                await query.message.reply_text(
+                    f"La tematica {name} ya existe en este ciclo.",
+                    parse_mode=None,
+                )
+            return True
+        if flow.get("kind") == "bug_report" and flow.get("step") == "confirm_bug":
+            description = flow.get("draft", {}).get("description", "")
+            area = flow.get("draft", {}).get("area")
+            await query.edit_message_reply_markup(reply_markup=None)
+            _clear_active_flow(context, actor, abandoned_by="confirm")
+            report_id = db.create_bug_report(user.id, user_name, description)
+            db.log_event(
+                "bot",
+                f"Bug reportado por {user_name}: {description[:80]}",
+                category="bug",
+                actor=user_name,
+                extra={"area": area},
+            )
+            await query.answer("Reporte enviado.")
+            await query.message.reply_text(
+                (
+                    f"Reporte #{report_id} recibido. Gracias por avisar.\n"
+                    "Siguiente paso util: usa /ayuda si quieres revisar lo que puedes hacer ahora."
+                ),
+                parse_mode=None,
+            )
+            for admin_id in ADMIN_TELEGRAM_IDS:
+                try:
+                    await telegram_app.bot.send_message(
+                        chat_id=admin_id,
+                        text=f"🐛 Nuevo bug #{report_id}\n👤 {user_name}\n🏷 Area: {area or 'Sin especificar'}\n\n{description}",
+                        parse_mode=None,
+                    )
+                except Exception:
+                    pass
+            return True
+
+    await query.answer("Ese paso ya no encaja con el flujo actual.", show_alert=True)
+    return True
+
+
 # --------------------------------------------------
 # INLINE KEYBOARD CALLBACK HANDLER
 # --------------------------------------------------
@@ -370,6 +778,8 @@ async def button_handler(update, context):
     if not await _allowed(update):
         await update.callback_query.answer("⛔ No tienes permiso para usar esta función.", show_alert=True)
         return
+    if (update.callback_query.data or "").startswith("flow:"):
+        return await _handle_flow_callback(update, context)
     return await callback_handler_service.handle(update, context)
 
 
@@ -1227,12 +1637,13 @@ async def bug_cmd(update, context):
         return
     description = " ".join(context.args).strip() if context.args else ""
     if not description:
-        context.user_data["pending_bug"] = True
-        context.user_data["pending_bug_started_at"] = _time.time()
+        flow_token = str(int(_time.time() * 1000))
+        _set_active_flow(context, "bug_report", "await_description", flow_token, draft={})
         await update.message.reply_text(
-            "Cuentame brevemente el problema y lo guardo como reporte.\n\n"
-            "Ejemplo: El comando /votar no responde o la encuesta no se cierra.",
-            parse_mode=None
+            "Cuéntame brevemente el problema y lo revisaremos antes de enviarlo.\n\n"
+            "Ejemplo: no encuentro la encuesta del grupo o el boton de reunion no responde.",
+            parse_mode=None,
+            reply_markup=_flow_cancel_markup(flow_token),
         )
         return
     user = update.effective_user
@@ -1274,6 +1685,9 @@ def _clear_pending_flow(context, actor, command_name):
     user_data = getattr(context, "user_data", None)
     if user_data is None:
         return []
+    active_flow = user_data.get("active_flow")
+    if isinstance(active_flow, dict):
+        _clear_active_flow(context, actor, abandoned_by=command_name)
     pending_map = {
         "pending_proponer": "proponer",
         "pending_tema": "tema",
@@ -1344,6 +1758,43 @@ def _trace_bot_handler(name, handler, *, category="command", clear_pending=True)
     return _wrapped
 
 
+async def _invoke_private_action(update, context, action_name):
+    """Comparte el mismo dispatcher para teclado privado y lenguaje natural."""
+    action_map = {
+        "start": start,
+        "ayuda": ayuda_cmd,
+        "proponer": proponer,
+        "propuestas": propuestas,
+        "resultados": resultados,
+        "tema": tema,
+        "temas": temas,
+        "reunion": reunion,
+        "asistir": asistir,
+        "noasistir": noasistir,
+        "asistencia": asistencia,
+        "proponer_fecha": proponer_fecha_cmd,
+        "libro": libro_cmd,
+        "acta": acta_cmd,
+        "progreso": progreso_cmd,
+        "estadisticas": estadisticas_cmd,
+        "recomendar": recomendar,
+        "lista_espera": lista_espera_cmd,
+        "trivia": trivia_cmd,
+        "bug": bug_cmd,
+        "admin_ayuda": admin_ayuda_cmd,
+    }
+    handler = action_map.get(action_name)
+    if handler is None:
+        return False
+
+    # Limpiamos estados legacy cuando el usuario cambia de accion desde privado
+    # para que no compitan con el flujo guiado actual.
+    _clear_pending_flow(context, _bot_actor_label(update), action_name)
+    context.args = []
+    await handler(update, context)
+    return True
+
+
 async def private_text_handler(update, context):
     """Responde a mensajes de texto libre en chats privados guiando al usuario."""
     if update.effective_chat.type != "private":
@@ -1356,10 +1807,16 @@ async def private_text_handler(update, context):
         return
 
     text = (update.message.text or "").strip()
-    text_lower = text.lower()
     u = update.effective_user
     actor = _bot_actor_label(update)
     logger.debug("private_text: user=%s id=%d text=%r", u.first_name or u.username, u.id, text[:80])
+
+    if await _handle_active_flow_text(update, context, text):
+        return
+
+    shortcut = resolve_private_shortcut(text)
+    if shortcut and await _invoke_private_action(update, context, shortcut):
+        return
 
     # Handle pending /proponer state
     if context.user_data.get("pending_proponer"):
@@ -1431,45 +1888,26 @@ async def private_text_handler(update, context):
             await update.message.reply_text("Cuéntame brevemente qué ha fallado.", parse_mode=None)
         return
 
-    # Saludos
-    if any(w in text_lower for w in ("hola", "hi", "hello", "buenas", "hey", "ola")):
-        await start(update, context)
+    help_answer = answer_help_question(text, cycle_key=db.get_current_cycle_key())
+    if help_answer:
+        await update.message.reply_text(help_answer, parse_mode="HTML")
         return
 
-    if any(fragment in text_lower for fragment in ("voy a la reunion", "voy a la reunión", "me apunto", "ire a la reunion", "ire a la reunión")):
-        context.args = []
-        await meeting_handlers.asistir(update, context)
+    intent = resolve_private_intent(text)
+    if intent and await _invoke_private_action(update, context, intent):
         return
 
-    if any(fragment in text_lower for fragment in ("cuando es la proxima", "cuando es la próxima", "proxima reunion", "próxima reunion", "proxima reunión", "próxima reunión")):
-        context.args = []
-        await meeting_handlers.reunion(update, context)
-        return
-
-    if any(fragment in text_lower for fragment in ("que se lee", "qué se lee", "libro actual", "que estamos leyendo", "qué estamos leyendo")):
-        context.args = []
-        await libro_cmd(update, context)
-        return
-
-    if any(fragment in text_lower for fragment in ("quiero proponer", "que propongo", "qué propongo", "proponer un libro", "propongo un libro")):
-        context.args = []
-        await book_handlers.proponer(update, context)
-        return
-
-    if any(fragment in text_lower for fragment in ("quiero proponer tema", "proponer tematica", "proponer temática", "tema para el club")):
-        context.args = []
-        await theme_handlers.tema(update, context)
-        return
-
-    # Guía genérica
     await update.message.reply_text(
         "Puedo ayudarte tambien si me escribes en lenguaje natural.\n\n"
         "Prueba por ejemplo:\n"
+        "- como funciona el bot\n"
+        "- donde se vota\n"
+        "- que hago ahora\n"
         "- voy a la reunion\n"
         "- que se lee ahora\n"
         "- quiero proponer un libro\n"
-        "- cuando es la proxima\n\n"
-        "Si prefieres comandos, usa /ayuda para ver el menu contextual.",
+        "- como reporto un problema\n\n"
+        "Si prefieres comandos, toca un atajo del teclado o usa /ayuda.",
         parse_mode=None
     )
 
@@ -1486,7 +1924,6 @@ register_handlers(telegram_app, {
     "start": _trace_bot_handler("start", start),
     "proponer": _trace_bot_handler("proponer", proponer),
     "propuestas": _trace_bot_handler("propuestas", propuestas),
-    "votar": _trace_bot_handler("votar", votar),
     "resultados": _trace_bot_handler("resultados", resultados),
     "reunion": _trace_bot_handler("reunion", reunion),
     "asistir": _trace_bot_handler("asistir", asistir),
@@ -1494,7 +1931,6 @@ register_handlers(telegram_app, {
     "asistencia": _trace_bot_handler("asistencia", asistencia),
     "tema": _trace_bot_handler("tema", tema),
     "temas": _trace_bot_handler("temas", temas),
-    "votar_tema": _trace_bot_handler("votar_tema", votar_tema),
     "trivia_cmd": _trace_bot_handler("trivia", trivia_cmd),
     "recomendar": _trace_bot_handler("recomendar", recomendar),
     "libro_cmd": _trace_bot_handler("libro", libro_cmd),

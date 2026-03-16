@@ -103,7 +103,7 @@ class RuntimeJobs:
 
     async def refresh_bot_command_menu(self):
         current_cycle = self.db.get_current_cycle_key()
-        user_commands = [BotCommand("start", "👋 Bienvenida y opciones utiles")]
+        user_commands = [BotCommand("start", "Bienvenida y opciones utiles")]
         contextual = self.get_contextual_commands("private", cycle_key=current_cycle, is_admin=False)
         user_commands.extend(
             [
@@ -114,7 +114,6 @@ class RuntimeJobs:
                     "ayuda",
                     "proponer",
                     "propuestas",
-                    "votar",
                     "resultados",
                     "libro",
                     "tema",
@@ -130,13 +129,12 @@ class RuntimeJobs:
                     "lista_espera",
                     "proponer_fecha",
                     "bug",
-                    "votar_tema",
                     "trivia",
                 }
             ]
         )
         if not any(cmd.command == "ayuda" for cmd in user_commands):
-            user_commands.insert(0, BotCommand("ayuda", "❓ Ver el menu contextual"))
+            user_commands.insert(0, BotCommand("ayuda", "Ver el menu contextual"))
         try:
             await self.telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllGroupChats())
             await self.telegram_app.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
@@ -148,20 +146,20 @@ class RuntimeJobs:
     async def register_runtime_bot_commands(self):
         user_commands = await self.refresh_bot_command_menu()
         admin_extra = [
-            BotCommand("preguntas", "🤖 Generar preguntas de debate con IA"),
-            BotCommand("cita", "✨ Generar cita literaria del libro actual"),
-            BotCommand("admin_ayuda", "🛠️ Ayuda de administrador"),
-            BotCommand("ciclo", "🔄 Ver ciclo activo"),
-            BotCommand("nuevo_ciclo", "🆕 Crear nuevo ciclo"),
-            BotCommand("cerrar_ciclo", "🔒 Cerrar ciclo actual"),
-            BotCommand("anuncio", "📢 Enviar mensaje al grupo"),
-            BotCommand("anunciar_ganador", "🎉 Anunciar libro ganador"),
-            BotCommand("encuesta_libros", "📊 Lanzar encuesta de libros"),
-            BotCommand("encuesta_temas", "📊 Lanzar encuesta de tematicas"),
-            BotCommand("enviar_recordatorio", "🔔 Enviar recordatorio de reunion"),
-            BotCommand("enviar_lectura", "📖 Enviar recordatorio de lectura"),
-            BotCommand("fijar", "📌 Fijar mensaje en el grupo"),
-            BotCommand("desfijar", "📍 Desfijar mensaje actual"),
+            BotCommand("preguntas", "Generar preguntas de debate con IA"),
+            BotCommand("cita", "Generar cita literaria del libro actual"),
+            BotCommand("admin_ayuda", "Ayuda de administrador"),
+            BotCommand("ciclo", "Ver ciclo activo"),
+            BotCommand("nuevo_ciclo", "Crear nuevo ciclo"),
+            BotCommand("cerrar_ciclo", "Cerrar ciclo actual"),
+            BotCommand("anuncio", "Enviar mensaje al grupo"),
+            BotCommand("anunciar_ganador", "Anunciar libro ganador"),
+            BotCommand("encuesta_libros", "Lanzar encuesta de libros"),
+            BotCommand("encuesta_temas", "Lanzar encuesta de tematicas"),
+            BotCommand("enviar_recordatorio", "Enviar recordatorio de reunion"),
+            BotCommand("enviar_lectura", "Enviar recordatorio de lectura"),
+            BotCommand("fijar", "Fijar mensaje en el grupo"),
+            BotCommand("desfijar", "Desfijar mensaje actual"),
         ]
         for admin_id in self.admin_ids:
             try:

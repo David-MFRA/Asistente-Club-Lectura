@@ -127,6 +127,32 @@ class RuntimeJobsTests(unittest.TestCase):
 
         self.assertEqual(len(bot.calls), 4)
 
+    def test_refresh_bot_command_menu_skips_manual_vote_commands(self):
+        bot = FakeBot()
+        jobs = RuntimeJobs(
+            db=FakeDB(),
+            scheduler=FakeScheduler(),
+            telegram_app=SimpleNamespace(bot=bot),
+            logger=FakeLogger(),
+            webhook_url="https://example.com",
+            admin_ids=["1"],
+            get_contextual_commands=lambda *args, **kwargs: [
+                {"id": "ayuda", "emoji": "?", "desc": "Ayuda"},
+                {"id": "propuestas", "emoji": "#", "desc": "Ver propuestas"},
+                {"id": "votar", "emoji": "!", "desc": "Voto manual antiguo"},
+                {"id": "temas", "emoji": "*", "desc": "Ver temas"},
+                {"id": "votar_tema", "emoji": "+", "desc": "Voto tematico antiguo"},
+            ],
+        )
+
+        commands = asyncio.run(jobs.refresh_bot_command_menu())
+        command_names = [item.command for item in commands]
+
+        self.assertIn("propuestas", command_names)
+        self.assertIn("temas", command_names)
+        self.assertNotIn("votar", command_names)
+        self.assertNotIn("votar_tema", command_names)
+
 
 if __name__ == "__main__":
     unittest.main()

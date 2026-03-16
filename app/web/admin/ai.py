@@ -130,7 +130,7 @@ async def ask_admin_ai(require_admin, utcnow, logger):
         "- Encuestas: las encuestas de tematica y libros son encuestas nativas de Telegram. Los votos se registran en tiempo real. El admin las cierra manualmente desde el panel.",
         "- Si hay mas de 10 propuestas de libros se crean varias encuestas (partes). El ganador se anuncia cuando se cierran todas.",
         "- Fechas: desde /meeting/<id> se anaden opciones de fecha, se lanza encuesta o se fija manualmente. Al cerrar la encuesta se anuncia la fecha al grupo con botones de asistencia.",
-        "- Comandos de usuario: /proponer (proponer libro), /votar (votar libro), /propuestas (ver propuestas), /libro (libro activo), /reunion (info reunion), /asistir, /noasistir, /progreso, /estadisticas, /trivia, /recomendar.",
+        "- Comandos de usuario: /proponer (proponer libro), /propuestas (ver propuestas), /libro (libro activo), /reunion (info reunion), /asistir, /noasistir, /progreso, /estadisticas, /trivia, /recomendar y /bug.",
         "- Comandos admin (en Telegram): /preguntas (genera preguntas de debate con IA), /cita (cita literaria con IA), /anuncio, /anunciar_ganador, /encuesta_libros, /encuesta_temas, /fijar, /desfijar, /enviar_recordatorio, /nuevo_ciclo, /cerrar_ciclo.",
         "- Recordatorios automaticos: lunes 10:00 recordatorio de reunion, cada 2 dias recordatorio de lectura, diario si la reunion es hoy/manana.",
         "- IA: el asistente usa Groq API. Desde el dashboard hay un modal 🤖 para preguntas libres. /preguntas y /cita generan contenido y lo envian al grupo.",

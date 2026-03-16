@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db
@@ -14,9 +16,75 @@ class CallbackHandler:
             return (meeting["id"], meeting) if meeting else (None, None)
         return int(value), None
 
+    def _attendance_markup(self, meeting):
+        keyboard = [[
+            InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
+        ]]
+        keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
+        if meeting.get("book_id"):
+            keyboard.append([InlineKeyboardButton("Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
+        return InlineKeyboardMarkup(keyboard)
+
+    def _attendance_text(self, meeting):
+        attendees = db.get_attendance(meeting["id"])
+        names = ", ".join(attendees) if attendees else "nadie"
+        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha cerrada"
+        lines = [
+            f"Reunion: {meeting['name']}",
+            f"Fecha: {date_text}",
+            f"Apuntados ({len(attendees)}): {names}",
+        ]
+        if meeting.get("location"):
+            lines.append(f"Lugar: {meeting['location']}")
+        lines.append("")
+        lines.append("Pulsa Asistir o No voy. Los botones siguen visibles para todo el grupo.")
+        return "\n".join(lines)
+
+    async def _edit_message_content(self, query, *, text, reply_markup):
+        message = query.message
+        if getattr(message, "photo", None) or getattr(message, "caption", None):
+            await query.edit_message_caption(
+                caption=text,
+                parse_mode=None,
+                reply_markup=reply_markup,
+            )
+            return
+        await query.edit_message_text(
+            text=text,
+            parse_mode=None,
+            reply_markup=reply_markup,
+        )
+
+    async def _send_meeting_info(self, query, context, meeting_id):
+        meeting = db.get_meeting(meeting_id)
+        if not meeting:
+            await query.answer("No encuentro esa reunion ahora mismo.", show_alert=True)
+            return
+        attendees = db.get_attendance(meeting_id)
+        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+        status_map = {"draft": "Borrador", "scheduled": "Confirmada", "closed": "Cerrada"}
+        lines = [
+            meeting["name"],
+            "",
+            f"Fecha: {date_text}",
+            f"Estado: {status_map.get(meeting.get('status'), meeting.get('status', ''))}",
+            f"Asistentes: {len(attendees)}",
+        ]
+        if meeting.get("location"):
+            lines.append(f"Lugar: {meeting['location']}")
+        if meeting.get("notes"):
+            lines.append("")
+            lines.append(str(meeting["notes"])[:500])
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="\n".join(lines),
+            parse_mode=None,
+        )
+        await query.answer("Te mando los detalles en este chat.")
+
     async def handle(self, update, context):
         query = update.callback_query
-        await query.answer()
         data = query.data or ""
         user = update.effective_user.first_name or update.effective_user.username or "alguien"
         user_id = update.effective_user.id if update.effective_user else None
@@ -25,26 +93,32 @@ class CallbackHandler:
         try:
             if data.startswith("vb:"):
                 proposal_id = int(data.split(":")[1])
-                ok = db.vote_book(proposal_id, user, user_id)
                 proposal = db.get_proposal_by_id(proposal_id)
                 book_name = proposal["title"] if proposal else f"propuesta #{proposal_id}"
-                if ok:
-                    db.log_event("bot", f"Voto inline registrado para {book_name}", category="callback", actor=user)
-                    await query.answer(f"Voto registrado para '{book_name}'", show_alert=True)
-                else:
-                    db.log_event("bot", f"Voto inline duplicado para {book_name}", category="callback", actor=user)
-                    await query.answer(f"Ya habias votado '{book_name}'", show_alert=True)
+                db.log_event(
+                    "bot",
+                    f"Intento de voto inline antiguo para {book_name}",
+                    category="callback",
+                    actor=user,
+                )
+                await query.answer(
+                    "La votacion ahora se hace en la encuesta oficial fijada del grupo.",
+                    show_alert=True,
+                )
                 return
 
             if data.startswith("vt:"):
                 theme_id = int(data.split(":")[1])
-                ok = db.vote_theme(theme_id, user, user_id)
-                if ok:
-                    db.log_event("bot", f"Voto inline de tematica registrado #{theme_id}", category="callback", actor=user)
-                    await query.answer("Voto de tematica registrado", show_alert=True)
-                else:
-                    db.log_event("bot", f"Voto inline de tematica duplicado #{theme_id}", category="callback", actor=user)
-                    await query.answer("Ya habias votado esa tematica", show_alert=True)
+                db.log_event(
+                    "bot",
+                    f"Intento de voto inline antiguo de tematica #{theme_id}",
+                    category="callback",
+                    actor=user,
+                )
+                await query.answer(
+                    "La votacion de tematicas ahora se hace en la encuesta oficial fijada del grupo.",
+                    show_alert=True,
+                )
                 return
 
             if data.startswith("attend:"):
@@ -57,19 +131,13 @@ class CallbackHandler:
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
                 if ok:
-                    attendees = db.get_attendance(meeting_id)
-                    names = ", ".join(attendees) if attendees else "nadie"
                     db.log_event("bot", f"Asistencia inline registrada para {meeting_name}", category="callback", actor=user)
-                    await query.answer(f"Apuntado a '{meeting_name}'")
-                    await query.edit_message_text(
-                        f"{user} apuntado a {meeting_name}\n\n"
-                        f"Apuntados ({len(attendees)}): {names}\n\n"
-                        "Usa /noasistir para quitarte.",
-                        parse_mode=None,
-                        reply_markup=InlineKeyboardMarkup(
-                            [[InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting_id}")]]
-                        ),
+                    await self._edit_message_content(
+                        query,
+                        text=self._attendance_text(meeting),
+                        reply_markup=self._attendance_markup(meeting),
                     )
+                    await query.answer(f"Apuntado a '{meeting_name}'")
                 else:
                     db.log_event("bot", f"Asistencia inline duplicada para {meeting_name}", category="callback", actor=user)
                     await query.answer(f"Ya estas apuntado a '{meeting_name}'", show_alert=True)
@@ -84,18 +152,18 @@ class CallbackHandler:
                 db.remove_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
-                attendees = db.get_attendance(meeting_id)
-                names = ", ".join(attendees) if attendees else "nadie"
                 db.log_event("bot", f"Asistencia inline cancelada para {meeting_name}", category="callback", actor=user)
-                await query.answer(f"Te has quitado de '{meeting_name}'")
-                await query.edit_message_text(
-                    f"{user} se ha quitado de {meeting_name}\n\n"
-                    f"Quedan ({len(attendees)}): {names}",
-                    parse_mode=None,
-                    reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting_id}")]]
-                    ),
+                await self._edit_message_content(
+                    query,
+                    text=self._attendance_text(meeting),
+                    reply_markup=self._attendance_markup(meeting),
                 )
+                await query.answer(f"Te has quitado de '{meeting_name}'")
+                return
+
+            if data.startswith("meetinginfo:"):
+                meeting_id = int(data.split(":")[1])
+                await self._send_meeting_info(query, context, meeting_id)
                 return
 
             if data.startswith("bookinfo:"):
@@ -118,6 +186,7 @@ class CallbackHandler:
                             text="\n".join(lines),
                             parse_mode=None,
                         )
+                        await query.answer("Te mando la ficha del libro en este chat.")
                     else:
                         await query.answer("No se encontro el libro", show_alert=True)
                 else:

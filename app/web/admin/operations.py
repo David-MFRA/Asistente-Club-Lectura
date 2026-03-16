@@ -13,14 +13,14 @@ async def send_manual_meeting_reminder(require_admin, send_meeting_reminder, log
     auth = require_admin()
     if auth:
         return auth
-    logger.info("Admin: enviando recordatorio de reunión manualmente")
+    logger.info("Admin: enviando recordatorio de reunion manualmente")
     try:
         await send_meeting_reminder()
         db.log_event("admin", "Recordatorio de reunion enviado manualmente", category="meeting", actor="admin")
-        flash("Recordatorio de reunión enviado al grupo", "success")
+        flash("Recordatorio de reunion enviado al grupo", "success")
     except Exception:
         logger.exception("Error enviando recordatorio de reunion manual")
-        flash("Error enviando el recordatorio de reunión", "danger")
+        flash("Error enviando el recordatorio de reunion", "danger")
     return redirect(url_for("admin_dashboard"))
 
 
@@ -44,7 +44,7 @@ async def send_manual_meeting_info(require_admin, send_to_group, logger):
     try:
         meeting = db.get_latest_scheduled_meeting()
         if not meeting:
-            flash("No hay reunión activa para anunciar", "warning")
+            flash("No hay reunion activa para anunciar", "warning")
             return redirect(url_for("admin_dashboard"))
 
         date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha confirmada"
@@ -62,24 +62,25 @@ async def send_manual_meeting_info(require_admin, send_to_group, logger):
             f"{location_line}"
             f"{book_line}"
             f"{attend_line}\n\n"
-            f"✅ Apúntate con /asistir\n"
-            f"❌ Si no puedes venir, usa /noasistir"
+            "✅ Apuntate con los botones o con /asistir\n"
+            "❌ Si no puedes venir, usa los botones o /noasistir"
         )
         keyboard = [[
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+            InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
+            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
         ]]
+        keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
         await send_to_group(
             text,
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
             message_type="meeting_info",
         )
-        logger.info("Admin: info de reunión enviada (meeting_id=%d)", meeting["id"])
-        flash("Info de reunión enviada al grupo con botones de asistencia", "success")
+        logger.info("Admin: info de reunion enviada (meeting_id=%d)", meeting["id"])
+        flash("Info de reunion enviada al grupo con botones de asistencia", "success")
     except Exception:
         logger.exception("Error enviando info de reunion")
-        flash("Error enviando la información", "danger")
+        flash("Error enviando la informacion", "danger")
     return redirect(url_for("admin_dashboard"))
 
 
@@ -110,20 +111,29 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
                 chat_id=member["user_id"],
                 text=(
                     f"📚 Hola, <b>{hesc(name)}</b>.\n\n"
-                    f"Te recuerdo la próxima reunión del club:\n\n"
+                    "Te recuerdo la proxima reunion del club:\n\n"
                     f"🫶 <b>{hesc(meeting['name'])}</b>\n"
                     f"🗓 <b>{hesc(date_text)}</b>"
                     f"{location_line}\n\n"
-                    f"Responde en el grupo con /asistir o /noasistir para confirmar. 📖"
+                    "Puedes confirmar desde estos botones o revisar primero los detalles."
                 ),
                 parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton("Voy", callback_data=f"attend:{meeting_id}"),
+                            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting_id}"),
+                        ],
+                        [InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting_id}")],
+                    ]
+                ),
             )
             sent += 1
         except Exception:
             logger.warning("DM fallido para user_id=%s (%s)", member.get("user_id"), name)
             failed += 1
 
-    logger.info("Admin: DMs reunión: %d enviados, %d fallidos", sent, failed)
+    logger.info("Admin: DMs reunion: %d enviados, %d fallidos", sent, failed)
     flash(
         f"Recordatorios enviados: {sent} enviados, {failed} no alcanzados.",
         "success" if sent > 0 else "warning",
@@ -142,7 +152,7 @@ async def send_pin_all(require_admin, send_and_pin, logger):
             flash("No hay reuniones activas para fijar", "danger")
             return redirect(url_for("admin_dashboard"))
 
-        parts = ["📌 <b>Próximas reuniones del club</b>\n"]
+        parts = ["📌 <b>Proximas reuniones del club</b>\n"]
         keyboard = []
 
         for index, meeting in enumerate(upcoming[:5], 1):
@@ -160,12 +170,12 @@ async def send_pin_all(require_admin, send_and_pin, logger):
             short_name = meeting["name"][:20]
             keyboard.append(
                 [
-                    InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
-                    InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+                    InlineKeyboardButton(f"Asistir {short_name}", callback_data=f"attend:{meeting['id']}"),
+                    InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
                 ]
             )
 
-        parts.append("\n✨ Pulsa un botón para apuntarte o avisar si no vienes.")
+        parts.append("\nPulsa un boton para apuntarte o avisar si no vienes.")
 
         sent, pinned = await send_and_pin(
             "\n\n".join(parts),

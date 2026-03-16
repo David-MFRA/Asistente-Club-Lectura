@@ -53,8 +53,19 @@ class MeetingHandlers:
             if meeting.get("notes"):
                 lines.append("")
                 lines.append(str(meeting["notes"])[:500])
+            if meeting.get("status") != "closed":
+                lines.append("")
+                lines.append("Siguiente paso util: usa los botones de abajo o /asistir, /noasistir y /libro.")
 
             keyboard = []
+            keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
+            if meeting.get("status") != "closed":
+                keyboard.append(
+                    [
+                        InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
+                        InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
+                    ]
+                )
             if meeting.get("book_id"):
                 keyboard.append([InlineKeyboardButton("Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
 
@@ -93,7 +104,11 @@ class MeetingHandlers:
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees)
                 await update.message.reply_text(
-                    f"{user} se apunto a {meeting['name']}\n\nApuntados ({len(attendees)}):\n{names}",
+                    (
+                        f"{user} se apunto a {meeting['name']}\n\n"
+                        f"Apuntados ({len(attendees)}):\n{names}\n\n"
+                        "Siguiente paso util: usa /asistencia, /reunion o /libro."
+                    ),
                     parse_mode=None,
                 )
             else:
@@ -133,7 +148,11 @@ class MeetingHandlers:
                 attendees = db.get_attendance(meeting["id"])
                 names = "\n".join(f"  - {name}" for name in attendees) if attendees else "Nadie de momento"
                 await update.message.reply_text(
-                    f"{user} se ha quitado de {meeting['name']}\n\nQuedan ({len(attendees)}):\n{names}",
+                    (
+                        f"{user} se ha quitado de {meeting['name']}\n\n"
+                        f"Quedan ({len(attendees)}):\n{names}\n\n"
+                        "Siguiente paso util: usa /reunion o /asistencia para revisar el estado."
+                    ),
                     parse_mode=None,
                 )
             else:
@@ -163,7 +182,11 @@ class MeetingHandlers:
             attendees = db.get_attendance(meeting["id"])
             names = "\n".join(f"  - {self.esc(name)}" for name in attendees) if attendees else "_Nadie apuntado todavia_"
             await update.message.reply_text(
-                f"{self.bold('Asistencia')} - {self.italic(meeting['name'])}\n\n{names}",
+                (
+                    f"{self.bold('Asistencia')} - {self.italic(meeting['name'])}\n\n"
+                    f"{names}\n\n"
+                    "Siguiente paso util: usa /asistir, /noasistir o /reunion."
+                ),
                 parse_mode="MarkdownV2",
             )
         except Exception:

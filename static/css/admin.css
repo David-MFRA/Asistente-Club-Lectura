@@ -71,22 +71,26 @@ summary:focus-visible {
 .header-sub   { font-size: .74rem; color: var(--muted); margin-top: 1px; }
 
 .header-nav {
-  display: flex; align-items: center; gap: 1px; margin-left: auto;
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
 }
 .nav-link {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 7px;
   padding: 6px 10px; border-radius: 9px;
   color: var(--muted); text-decoration: none;
   font-size: .82rem; font-weight: 600;
   transition: background .13s ease, color .13s ease; white-space: nowrap;
   border: none; background: none; cursor: pointer; position: relative;
 }
+.nav-emoji { font-size: .95rem; line-height: 1; }
 .nav-link:hover { color: var(--text); background: rgba(255,255,255,.07); }
 .nav-link.active {
   color: #a5b4fc;
   background: rgba(99,102,241,.14);
   border: 1px solid rgba(99,102,241,.25);
 }
+.nav-link--danger { color: #fca5a5; }
+.nav-link--danger:hover { color: #fecaca; background: rgba(239,68,68,.1); }
+.nav-inline-form { display: inline; margin: 0; }
 /* Visual separator before utility links */
 .nav-sep {
   width: 1px; height: 18px; background: var(--border);
@@ -102,8 +106,16 @@ summary:focus-visible {
 }
 .nav-drop .drop-menu-inner {
   background: rgba(15,23,42,.97); border: 1px solid var(--border);
-  border-radius: 12px; padding: 6px; min-width: 180px;
+  border-radius: 12px; padding: 6px; min-width: 220px;
   box-shadow: 0 12px 32px rgba(0,0,0,.4); backdrop-filter: blur(20px);
+}
+.drop-label {
+  padding: 6px 10px 8px;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
 }
 .nav-drop:hover .drop-menu,
 .nav-drop:focus-within .drop-menu { display: block; }
@@ -114,6 +126,10 @@ summary:focus-visible {
   font-size: .85rem; font-weight: 600; transition: .12s ease;
 }
 .drop-item:hover { background: var(--panel-h); color: #a5b4fc; }
+.drop-item.active {
+  background: rgba(99,102,241,.15);
+  color: #a5b4fc;
+}
 .drop-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .caret { font-size: .68rem; opacity: .6; margin-left: 2px; transition: .15s ease; }
 .nav-drop:hover .caret { opacity: 1; transform: rotate(180deg); }
@@ -337,6 +353,21 @@ details summary:hover { background: rgba(255,255,255,.04); }
   background: rgba(255,255,255,.2); border-radius: 2px; margin: 0 auto 16px;
 }
 .drawer-links { display: flex; flex-direction: column; gap: 4px; }
+.drawer-group {
+  padding-top: 10px;
+}
+.drawer-group + .drawer-group {
+  margin-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.drawer-group-title {
+  padding: 0 14px 8px;
+  color: #94a3b8;
+  font-size: .73rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 .drawer-link {
   display: flex; align-items: center; gap: 12px;
   padding: 13px 14px; border-radius: 12px;
@@ -345,6 +376,16 @@ details summary:hover { background: rgba(255,255,255,.04); }
 }
 .drawer-link:hover  { background: rgba(255,255,255,.08); }
 .drawer-link.active { background: rgba(99,102,241,.15); color: #a5b4fc; }
+.drawer-link--button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.drawer-link--danger { color: #fca5a5; }
+.drawer-link--danger:hover { background: rgba(239,68,68,.1); color: #fecaca; }
 
 /* ── AI MODAL ───────────────────────────────────────── */
 .ai-fab {

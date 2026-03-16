@@ -14,6 +14,12 @@
   .quick-link { display: block; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text); text-decoration: none; }
   .quick-link strong { display: block; margin-bottom: 4px; font-size: .92rem; }
   .quick-link span { color: var(--muted); font-size: .82rem; line-height: 1.5; display: block; }
+  .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 14px; }
+  .flow-step { border: 1px solid rgba(99,102,241,.18); background: rgba(99,102,241,.06); border-radius: 12px; padding: 14px; }
+  .flow-step strong { display: flex; align-items: center; gap: 8px; font-size: .92rem; margin-bottom: 8px; }
+  .flow-step p { margin-bottom: 8px; }
+  .flow-meta { font-size: .8rem; color: #cbd5e1; }
+  .flow-meta span { color: #a5b4fc; font-weight: 700; }
   .tip { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.25); border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #a5b4fc; margin-top: 10px; }
   .warn { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.25); border-radius: 8px; padding: 10px 14px; font-size: .82rem; color: #fcd34d; margin-top: 10px; }
   code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; color: var(--text); }
@@ -105,18 +111,57 @@
 </div>
 
 <div class="section">
-  <h2>Flujo recomendado del ciclo</h2>
-  <ol>
-    <li><strong>Crear ciclo</strong>: usa <a href="/admin/ciclo">/admin/ciclo</a> o el wizard. Define nombre y tematicas iniciales.</li>
-    <li><strong>Votar tematica</strong>: se lanza la encuesta y el grupo vota. Cierra la encuesta cuando toque.</li>
-    <li><strong>Abrir propuestas</strong>: los miembros usan <code>/proponer</code> y tu puedes anadir o limpiar propuestas desde el panel.</li>
-    <li><strong>Votar libros</strong>: lanza la encuesta de libros. Si hay varias partes, cierra todas antes de esperar anuncio final.</li>
-    <li><strong>Fijar reunion</strong>: crea o edita la reunion, anade opciones de fecha o fija la fecha manualmente.</li>
-    <li><strong>Anunciar asistencia</strong>: envia el mensaje con botones de asistencia y revisa asistentes.</li>
-    <li><strong>Seguir lectura</strong>: usa recordatorios, mensajes programados y, si quieres, IA para preguntas o citas.</li>
-    <li><strong>Cerrar ciclo</strong>: revisa lista de espera, historico y deja preparado el siguiente.</li>
-  </ol>
-  <div class="tip">La ayuda del bot tambien cambia por fase. Si notas que /ayuda no refleja bien el momento del ciclo, revisa <a href="/admin/bot-context">/admin/bot-context</a>.</div>
+  <h2>Flujo completo de un ciclo</h2>
+  <p>Este es el recorrido entero de un ciclo, desde que lo abres hasta que queda cerrado y listo el siguiente. Si solo quieres operar rapido, usa <a href="/admin/ciclo/easy">/admin/ciclo/easy</a>; si quieres entender la logica completa, sigue esta secuencia.</p>
+  <div class="flow-grid">
+    <div class="flow-step">
+      <strong>1. 🆕 Abrir ciclo</strong>
+      <p>Crea el nuevo ciclo en <a href="/admin/ciclo">/admin/ciclo</a>, revisa cual queda como activo y deja clara la tematica inicial si ya la conoces.</p>
+      <div class="flow-meta"><span>Pantallas:</span> /admin, /admin/ciclo</div>
+    </div>
+    <div class="flow-step">
+      <strong>2. 🏷️ Resolver tematica</strong>
+      <p>Si el club vota tema, abre la encuesta, espera resultados y cierrala cuando toque. Si la tematica ya esta decidida, aqui simplemente la confirmas.</p>
+      <div class="flow-meta"><span>Pantallas:</span> /themes, /admin/ciclo</div>
+    </div>
+    <div class="flow-step">
+      <strong>3. 📥 Recoger propuestas</strong>
+      <p>Durante esta fase los miembros usan <code>/proponer</code>. Desde el panel puedes revisar duplicados, limpiar propuestas flojas y completar datos si falta algo.</p>
+      <div class="flow-meta"><span>Bot:</span> /proponer, /propuestas</div>
+    </div>
+    <div class="flow-step">
+      <strong>4. 🗳️ Votar libros</strong>
+      <p>Lanza la encuesta de libros, comprueba que quede fijada y cierra todas las partes abiertas antes de dar un ganador por bueno.</p>
+      <div class="flow-meta"><span>Pantallas:</span> /admin/ciclo, /ranking</div>
+    </div>
+    <div class="flow-step">
+      <strong>5. 🏆 Confirmar ganador</strong>
+      <p>Cuando la votacion termina, valida el libro ganador, anuncia el resultado y deja el ciclo en estado de libro elegido para que el resto del sistema se alinee.</p>
+      <div class="flow-meta"><span>Apoyo:</span> /admin/messages, /admin/audit</div>
+    </div>
+    <div class="flow-step">
+      <strong>6. 🗓️ Fijar reunion</strong>
+      <p>Crea la reunion del ciclo, abre encuesta de fechas si hace falta y termina con una fecha definitiva, hora, lugar y texto de convocatoria coherentes.</p>
+      <div class="flow-meta"><span>Pantallas:</span> /meetings, /admin/ciclo</div>
+    </div>
+    <div class="flow-step">
+      <strong>7. 🙋 Gestionar asistencia y recordatorios</strong>
+      <p>Envia el mensaje de asistencia, revisa quien viene y programa recordatorios de lectura o de reunion segun se acerque la fecha.</p>
+      <div class="flow-meta"><span>Pantallas:</span> /attendance, /admin/scheduler, /admin/sent-messages</div>
+    </div>
+    <div class="flow-step">
+      <strong>8. 📚 Acompanamiento de lectura</strong>
+      <p>Con el libro ya en marcha, el bot puede mandar citas, preguntas o recordatorios. Aqui no cambias el ganador, sino que sostienes la participacion.</p>
+      <div class="flow-meta"><span>Apoyo:</span> /admin/messages, /admin/bot-context</div>
+    </div>
+    <div class="flow-step">
+      <strong>9. ✅ Cerrar ciclo</strong>
+      <p>Tras la reunion, deja el historico ordenado, revisa lista de espera si aplica, cierra tareas pendientes y abre el siguiente ciclo cuando toque.</p>
+      <div class="flow-meta"><span>Cierre:</span> /admin/historico, /admin/waitlist, /admin/ciclo</div>
+    </div>
+  </div>
+  <div class="tip">Regla practica: cada vez que cambias de fase, comprueba tres cosas en este orden: estado del ciclo, mensajes pendientes y reunion asociada. Si esas tres piezas estan alineadas, el resto suele caer solo.</div>
+  <div class="warn">Si notas que <code>/ayuda</code>, los botones del bot o la pantalla principal no encajan con el momento real del club, casi siempre hay una fase del ciclo mal cerrada o una reunion sin vincular. Revisa <a href="/admin/ciclo">/admin/ciclo</a> y <a href="/admin/bot-context">/admin/bot-context</a>.</div>
 </div>
 
 <div class="section">

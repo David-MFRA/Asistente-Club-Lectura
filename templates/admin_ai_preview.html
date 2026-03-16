@@ -28,14 +28,42 @@
   .tg-preview-label { color:var(--muted); font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
   .tg-bubble  { background:#1e2d3d; border-radius:18px 18px 18px 4px; padding:14px 16px; max-width:500px; border:1px solid rgba(255,255,255,.07); box-shadow:0 4px 16px rgba(0,0,0,.3); }
   .tg-sender  { font-size:.78rem; font-weight:700; color:#6fb3f2; margin-bottom:6px; }
-  .tg-text    { font-size:.93rem; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#e8edf2; }
   .tg-time    { font-size:.72rem; color:rgba(255,255,255,.35); text-align:right; margin-top:8px; }
+
+  /* Texto plano */
+  .tg-text-plain { font-size:.93rem; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#e8edf2; }
+
+  /* HTML mode: simula el renderizado de Telegram */
+  .tg-text-html { font-size:.93rem; line-height:1.6; word-break:break-word; color:#e8edf2; }
+  .tg-text-html b { font-weight:700; }
+  .tg-text-html i { font-style:italic; color:rgba(232,237,242,.9); }
+  .tg-text-html blockquote {
+    border-left:3px solid rgba(111,179,242,.55);
+    margin:10px 0 10px 2px;
+    padding:6px 12px;
+    color:rgba(232,237,242,.85);
+    background:rgba(111,179,242,.06);
+    border-radius:0 6px 6px 0;
+  }
+  .tg-text-html blockquote i { color:rgba(232,237,242,.85); }
 
   .notice { background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.22); border-radius:12px; padding:12px 14px; color:var(--muted); font-size:.86rem; margin-bottom:20px; line-height:1.5; }
   .notice strong { color:#a5b4fc; }
+  .notice-warn { background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.22); }
+  .notice-warn strong { color:#fde68a; }
 
   .preview-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
   .divider { height:1px; background:var(--border); margin:20px 0; }
+
+  /* Formulario edición manual inline */
+  .manual-edit-box { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:20px; }
+  .manual-edit-box h3 { font-size:.9rem; font-weight:700; margin-bottom:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .manual-edit-box textarea, .manual-edit-box input[type=text] {
+    width:100%; background:rgba(0,0,0,.25); border:1px solid var(--border); border-radius:8px;
+    color:var(--text); padding:8px 10px; font-size:.9rem; font-family:inherit; margin-bottom:10px; box-sizing:border-box;
+  }
+  .manual-edit-box textarea { resize:vertical; min-height:80px; }
+  .manual-edit-box label { font-size:.82rem; color:var(--muted); display:block; margin-bottom:4px; }
 
   @media(max-width:560px) {
     .page-title { font-size:1.2rem; }
@@ -50,11 +78,13 @@
 <div style="margin-bottom:24px">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
     <div class="page-title">
-      {% if content_type == 'questions' %}💬{% else %}✨{% endif %}
+      {% if content_type == 'questions' %}💬{% else %}📖{% endif %}
       {{ title }}
     </div>
     <span class="type-badge">
-      {% if content_type == 'questions' %}Preguntas IA{% else %}Cita IA{% endif %}
+      {% if content_type == 'questions' %}Preguntas IA
+      {% elif is_manual %}Cita manual
+      {% else %}Cita IA{% endif %}
     </span>
   </div>
   <div class="page-sub">Revisa el contenido antes de enviarlo al grupo de Telegram</div>
@@ -79,36 +109,66 @@
   <div class="tg-preview-label"><span>📱</span> Vista previa en Telegram</div>
   <div class="tg-bubble">
     <div class="tg-sender">Club de Lectura · Bot</div>
-    <div class="tg-text">{{ content }}</div>
+    {% if parse_mode == 'HTML' %}
+      <div class="tg-text-html">{{ content | safe }}</div>
+    {% else %}
+      <div class="tg-text-plain">{{ content }}</div>
+    {% endif %}
     <div class="tg-time">ahora</div>
   </div>
 </div>
 
-<div class="notice">
-  <strong>Nota:</strong> El contenido se generó con IA. Puedes regenerarlo si no te convence.
-  Una vez enviado, el mensaje aparecerá en el grupo de Telegram.
+{% if is_manual %}
+<div class="manual-edit-box">
+  <h3>✏️ Editar cita</h3>
+  <form action="{{ regen_url }}" method="post">
+    <label>Texto de la cita</label>
+    <textarea name="quote_text" placeholder="Escribe aquí el texto de la cita...">{{ form_quote_text }}</textarea>
+    <label>Autor</label>
+    <input type="text" name="author" value="{{ form_author }}" placeholder="Nombre del autor">
+    <label>Título del libro</label>
+    <input type="text" name="book_title" value="{{ form_book_title }}" placeholder="Título del libro">
+    <button type="submit" class="btn btn-soft" style="margin-top:4px">👁 Actualizar preview</button>
+  </form>
 </div>
+{% endif %}
+
+{% if content_type == 'quote' and not is_manual %}
+<div class="notice notice-warn">
+  <strong>Verifica la cita:</strong> La cita se obtiene de fuentes en español (Wikiquote, citas.in) o mediante IA.
+  Comprueba que sea auténtica antes de enviarla. Puedes regenerarla si no te convence.
+</div>
+{% elif content_type == 'questions' %}
+<div class="notice">
+  <strong>Nota:</strong> Las preguntas se generaron con IA analizando el libro del ciclo.
+  Son específicas para la obra y pensadas para facilitar el debate del club.
+</div>
+{% endif %}
 
 <div class="preview-actions">
   <form action="{{ send_url }}" method="post" style="display:contents">
     <input type="hidden" name="content" value="{{ content }}">
+    {% if parse_mode %}<input type="hidden" name="parse_mode" value="{{ parse_mode }}">{% endif %}
     <button type="submit" class="btn btn-success">📨 Enviar al grupo</button>
   </form>
-  <a class="btn btn-warning" href="{{ regen_url }}">🔄 Regenerar</a>
+  {% if is_manual %}
+    <a class="btn btn-warning" href="{{ manual_url }}">✏️ Nueva cita manual</a>
+  {% else %}
+    <a class="btn btn-warning" href="{{ regen_url }}">🔄 Regenerar</a>
+    {% if manual_url %}
+      <a class="btn btn-soft" href="{{ manual_url }}">✍️ Cita manual</a>
+    {% endif %}
+  {% endif %}
   <a class="btn btn-soft" href="/admin">✕ Cancelar</a>
 </div>
 
 <div class="divider"></div>
 
 <div style="color:var(--muted);font-size:.82rem;line-height:1.6">
-  <strong style="color:var(--text)">Sobre la generación:</strong><br>
-  {% if content_type == 'questions' %}
-  Las preguntas se generan con IA (Groq) analizando el libro del ciclo actual.
-  Son específicas para la obra y pensadas para facilitar el debate del club.
-  {% else %}
-  La cita se obtiene de fuentes en español (Wikiquote, citas.in) o mediante IA.
-  Verifica que la cita sea auténtica antes de enviarla.
-  {% endif %}
+  <strong style="color:var(--text)">Formato del mensaje:</strong><br>
+  El mensaje se envía con formato enriquecido (HTML de Telegram): el texto de la cita aparece
+  en cursiva dentro de un bloque con borde lateral, y el autor y título en negrita/cursiva.
+  La vista previa de arriba refleja exactamente cómo se verá en el grupo.
 </div>
 
 {% endblock %}

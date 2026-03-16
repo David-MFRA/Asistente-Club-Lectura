@@ -16,6 +16,7 @@ from app.web.admin.ai import (
     ask_admin_ai,
     render_ai_questions,
     render_ai_quote,
+    render_manual_quote,
     send_ai_questions,
     send_ai_quote,
 )
@@ -543,6 +544,10 @@ def register_admin_routes(
     @flask_app.post("/admin/ai/quote/send")
     def admin_ai_quote_send():
         return run_async(send_ai_quote(require_admin, logger, send_to_group))
+
+    @flask_app.route("/admin/ai/quote/manual", methods=["GET", "POST"])
+    def admin_ai_quote_manual():
+        return render_manual_quote(require_admin, logger)
 
     @flask_app.post("/admin/ai/ask")
     def admin_ai_ask():

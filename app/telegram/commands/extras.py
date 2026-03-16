@@ -168,14 +168,14 @@ class ExtraHandlers:
             if not winner:
                 await update.message.reply_text("No hay libro del ciclo activo.", parse_mode=None)
                 return
-            cache_key = f"cita:{winner.get('id') or winner['title']}:{winner.get('author', '')}"
+            cache_key = f"cita_html:{winner.get('id') or winner['title']}:{winner.get('author', '')}"
             quote = self._get_cached(cache_key)
             if quote is None:
                 wait = await update.message.reply_text("Buscando cita...", parse_mode=None)
-                quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
+                quote = ai_features.generate_book_quote_html(winner["title"], winner.get("author", ""))
                 await wait.delete()
                 self._set_cached(cache_key, quote, ttl_seconds=1800)
-            await update.message.reply_text(f"{quote}\n\nSobre '{winner['title']}'", parse_mode=None)
+            await update.message.reply_text(quote, parse_mode="HTML")
         except Exception:
             self.logger.exception("Error en /cita")
             await update.message.reply_text("Error generando cita.", parse_mode=None)

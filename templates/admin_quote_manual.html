@@ -1,0 +1,135 @@
+{% extends '_base.html' %}
+{% block title %}Cita manual · Club de Lectura{% endblock %}
+{% block main_class %}main--sm{% endblock %}
+
+{% block head_extra %}
+<style>
+  .page-title { font-size:1.4rem; font-weight:800; margin-bottom:4px; }
+  .page-sub   { color:var(--muted); font-size:.9rem; margin-bottom:24px; }
+
+  .form-card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:24px; margin-bottom:20px; }
+  .form-card h2 { font-size:1rem; font-weight:700; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+
+  .form-group { margin-bottom:16px; }
+  .form-group label { display:block; font-size:.84rem; color:var(--muted); margin-bottom:6px; font-weight:600; }
+  .form-group textarea,
+  .form-group input[type=text] {
+    width:100%; background:rgba(0,0,0,.25); border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:10px 12px; font-size:.93rem; font-family:inherit; box-sizing:border-box;
+    transition:border-color .15s;
+  }
+  .form-group textarea { resize:vertical; min-height:100px; }
+  .form-group textarea:focus,
+  .form-group input[type=text]:focus { outline:none; border-color:rgba(99,102,241,.5); }
+  .form-group .hint { font-size:.78rem; color:var(--muted); margin-top:4px; }
+
+  .tg-preview-live { background:rgba(0,0,0,.3); border-radius:18px; padding:16px; margin-bottom:20px; border:1px solid rgba(255,255,255,.06); display:none; }
+  .tg-preview-live.visible { display:block; }
+  .tg-preview-label { color:var(--muted); font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .tg-bubble  { background:#1e2d3d; border-radius:18px 18px 18px 4px; padding:14px 16px; max-width:500px; border:1px solid rgba(255,255,255,.07); box-shadow:0 4px 16px rgba(0,0,0,.3); }
+  .tg-sender  { font-size:.78rem; font-weight:700; color:#6fb3f2; margin-bottom:6px; }
+  .tg-text-html { font-size:.93rem; line-height:1.6; word-break:break-word; color:#e8edf2; }
+  .tg-text-html b { font-weight:700; }
+  .tg-text-html i { font-style:italic; color:rgba(232,237,242,.9); }
+  .tg-text-html blockquote {
+    border-left:3px solid rgba(111,179,242,.55);
+    margin:10px 0 10px 2px; padding:6px 12px;
+    color:rgba(232,237,242,.85); background:rgba(111,179,242,.06);
+    border-radius:0 6px 6px 0;
+  }
+  .tg-text-html blockquote i { color:rgba(232,237,242,.85); }
+  .tg-time { font-size:.72rem; color:rgba(255,255,255,.35); text-align:right; margin-top:8px; }
+
+  .actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+  @media(max-width:560px) {
+    .actions { flex-direction:column; }
+    .actions .btn { width:100%; justify-content:center; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div>
+  <div class="page-title">✍️ Cita manual</div>
+  <div class="page-sub">Escribe una cita para enviarla al grupo con formato literario</div>
+</div>
+
+<div class="form-card">
+  <h2>📖 Nueva cita</h2>
+  <form action="/admin/ai/quote/manual" method="post" id="quoteForm">
+
+    <div class="form-group">
+      <label for="quote_text">Texto de la cita <span style="color:#f87171">*</span></label>
+      <textarea id="quote_text" name="quote_text" placeholder="Escribe aquí el texto de la cita..." required>{% if winner %}{% endif %}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="author">Autor</label>
+      <input type="text" id="author" name="author" value="{{ winner.author if winner else '' }}" placeholder="Nombre del autor">
+    </div>
+
+    <div class="form-group">
+      <label for="book_title">Título del libro</label>
+      <input type="text" id="book_title" name="book_title" value="{{ winner.title if winner else '' }}" placeholder="Título del libro">
+      {% if winner %}<div class="hint">Prellenado con el libro del ciclo actual.</div>{% endif %}
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">👁 Ver preview y enviar</button>
+      <a href="/admin/ai/quote" class="btn btn-soft">✨ Generar con IA</a>
+      <a href="/admin" class="btn btn-soft">✕ Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<!-- Preview en tiempo real (JS) -->
+<div class="tg-preview-live" id="livePreview">
+  <div class="tg-preview-label"><span>📱</span> Preview en tiempo real</div>
+  <div class="tg-bubble">
+    <div class="tg-sender">Club de Lectura · Bot</div>
+    <div class="tg-text-html" id="previewContent"></div>
+    <div class="tg-time">ahora</div>
+  </div>
+</div>
+
+<script>
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildPreview() {
+  const qt = document.getElementById('quote_text').value.trim();
+  const author = document.getElementById('author').value.trim();
+  const title = document.getElementById('book_title').value.trim();
+  const preview = document.getElementById('livePreview');
+  const content = document.getElementById('previewContent');
+
+  if (!qt) { preview.classList.remove('visible'); return; }
+
+  const q = escHtml(qt.replace(/^[«"'\s]+|[»"'\s]+$/g, ''));
+  const a = escHtml(author);
+  const t = escHtml(title);
+
+  let attribution = '';
+  if (a && t) attribution = `— <b>${a}</b>\n<i>${t}</i>`;
+  else if (a) attribution = `— <b>${a}</b>`;
+  else if (t) attribution = `<i>${t}</i>`;
+
+  let html = `📖 <b>Cita del ciclo</b>\n\n<blockquote><i>«${q}»</i></blockquote>`;
+  if (attribution) html += `\n\n${attribution}`;
+
+  content.innerHTML = html.replace(/\n/g, '<br>');
+  preview.classList.add('visible');
+}
+
+['quote_text','author','book_title'].forEach(id => {
+  document.getElementById(id).addEventListener('input', buildPreview);
+});
+
+// Preview inicial si hay libro prellenado
+buildPreview();
+</script>
+
+{% endblock %}

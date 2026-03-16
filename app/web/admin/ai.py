@@ -68,15 +68,16 @@ def render_ai_quote(require_admin, logger):
         return redirect(url_for("admin_dashboard"))
     try:
         logger.info("Admin AI: generando cita para «%s»", winner["title"])
-        quote = ai_features.generate_book_quote(winner["title"], winner.get("author", ""))
-        content = f"{quote}\n\nSobre «{winner['title']}»"
+        content = ai_features.generate_book_quote_html(winner["title"], winner.get("author", ""))
         return render_template(
             "admin_ai_preview.html",
             content=content,
             winner=winner,
             content_type="quote",
+            parse_mode="HTML",
             send_url="/admin/ai/quote/send",
             regen_url="/admin/ai/quote",
+            manual_url="/admin/ai/quote/manual",
             title="Cita literaria",
         )
     except Exception:
@@ -94,12 +95,53 @@ async def send_ai_quote(require_admin, logger, send_to_group):
         flash("Contenido vacio", "danger")
         return redirect(url_for("admin_dashboard"))
     try:
-        await send_to_group(content, parse_mode=None, message_type="ai_quote")
+        await send_to_group(content, parse_mode="HTML", message_type="ai_quote")
+        db.log_event("admin", "Cita literaria enviada al grupo", category="ai", actor="admin")
         flash("Cita enviada al grupo", "success")
     except Exception:
         logger.exception("Error enviando cita AI")
         flash("Error enviando cita", "danger")
     return redirect(url_for("admin_dashboard"))
+
+
+def render_manual_quote(require_admin, logger):
+    auth = require_admin()
+    if auth:
+        return auth
+    winner = db.get_winner_book()
+    quote_text = request.form.get("quote_text", "").strip()
+    author = request.form.get("author", "").strip()
+    book_title = request.form.get("book_title", "").strip()
+
+    # Si es POST con contenido, mostrar preview
+    if request.method == "POST" and quote_text:
+        if not book_title and winner:
+            book_title = winner.get("title", "")
+        if not author and winner:
+            author = winner.get("author", "")
+        content = ai_features.format_quote_html(quote_text, author, book_title)
+        logger.info("Admin: preview cita manual para «%s»", book_title)
+        return render_template(
+            "admin_ai_preview.html",
+            content=content,
+            winner=winner,
+            content_type="quote",
+            parse_mode="HTML",
+            send_url="/admin/ai/quote/send",
+            regen_url="/admin/ai/quote/manual",
+            manual_url="/admin/ai/quote/manual",
+            title="Cita manual",
+            is_manual=True,
+            form_quote_text=quote_text,
+            form_author=author,
+            form_book_title=book_title,
+        )
+
+    # GET: mostrar formulario vacío
+    return render_template(
+        "admin_quote_manual.html",
+        winner=winner,
+    )
 
 
 async def ask_admin_ai(require_admin, utcnow, logger):

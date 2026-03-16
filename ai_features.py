@@ -1,4 +1,5 @@
 """Funciones de IA: Groq API + scraping de Goodreads."""
+import html as _html
 import os
 import logging
 import random
@@ -217,6 +218,40 @@ def generate_book_quote(book_title: str, author: str = "") -> str:
         return result
 
     return f"«Los libros son espejos: solo ves en ellos lo que ya llevas dentro.» — Sobre «{book_title}»"
+
+
+def format_quote_html(quote_text: str, author: str, book_title: str) -> str:
+    """Formatea una cita en HTML estilo Telegram (Opción A: blockquote + itálica + negrita)."""
+    q = _html.escape(quote_text.strip().strip("«»").strip('"\''))
+    a = _html.escape(author.strip()) if author else ""
+    t = _html.escape(book_title.strip()) if book_title else ""
+
+    if a and t:
+        attribution = f"— <b>{a}</b>\n<i>{t}</i>"
+    elif a:
+        attribution = f"— <b>{a}</b>"
+    elif t:
+        attribution = f"<i>{t}</i>"
+    else:
+        attribution = ""
+
+    header = "📖 <b>Cita del ciclo</b>\n\n"
+    body = f"<blockquote><i>«{q}»</i></blockquote>"
+    return header + body + (f"\n\n{attribution}" if attribution else "")
+
+
+def generate_book_quote_html(book_title: str, author: str = "") -> str:
+    """Obtiene una cita del libro formateada en HTML (Opción A)."""
+    plain = generate_book_quote(book_title, author)
+    # plain format: «quote» — Author  OR  «quote»
+    m = re.match(r"«(.+?)»(?:\s*[—\-]\s*(.+))?", plain, re.DOTALL)
+    if m:
+        qt = m.group(1).strip()
+        at = (m.group(2) or author or "").strip()
+    else:
+        qt = plain.strip()
+        at = author
+    return format_quote_html(qt, at, book_title)
 
 
 def suggest_book_for_theme(theme: str, pages_hint: int = 500) -> str | None:

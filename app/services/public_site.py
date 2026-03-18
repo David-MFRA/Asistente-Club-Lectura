@@ -71,12 +71,10 @@ def _normalize_canonical_url(raw_value: str | None, default_base_url: str) -> st
     if "://" not in candidate:
         candidate = "https://" + candidate.lstrip("/")
     parsed = urlsplit(candidate)
-    path = (parsed.path or "").strip() or "/publico"
-    if path == "/":
-        path = "/publico"
+    path = (parsed.path or "").strip() or "/"
     if not path.startswith("/"):
         path = "/" + path
-    path = path.rstrip("/") or "/publico"
+    path = path.rstrip("/") or "/"
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 

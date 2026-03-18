@@ -138,7 +138,7 @@ def register_admin_routes(
     poll_formatting,
     observability=None,
 ):
-    @flask_app.get("/admin")
+    @flask_app.get("/dashboard")
     def admin_dashboard():
         auth = require_admin()
         if auth:
@@ -183,6 +183,10 @@ def register_admin_routes(
             recent_audit=recent_audit,
             dashboard_focus=dashboard_focus,
         )
+
+    @flask_app.get("/admin")
+    def admin_dashboard_legacy():
+        return redirect(url_for("admin_dashboard"), code=301)
 
     @flask_app.post("/admin/book/add")
     def admin_book_add():
@@ -375,9 +379,18 @@ def register_admin_routes(
     def admin_galeria_notes(meeting_id):
         return save_gallery_notes(require_admin, meeting_id)
 
+    @flask_app.get("/")
+    def public_root():
+        return render_public_page(group_invite_link)
+
     @flask_app.get("/publico")
     def public_page():
-        return render_public_page(group_invite_link)
+        # La URL historica se mantiene como redireccion para consolidar SEO en la raiz.
+        return redirect(url_for("public_root"), code=301)
+
+    @flask_app.get("/publico/")
+    def public_page_slash():
+        return redirect(url_for("public_root"), code=301)
 
     @flask_app.route("/admin/public-settings", methods=["GET", "POST"])
     def admin_public_settings():

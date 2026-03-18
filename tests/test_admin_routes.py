@@ -586,13 +586,16 @@ class AdminRoutesTests(unittest.TestCase):
             "noindex, nofollow, noarchive",
         )
 
-    def test_login_redirects_to_dashboard(self):
+    def test_dashboard_route_renders_and_legacy_admin_redirects(self):
         app, _ = build_test_app()
         with app.test_client() as client:
             login(client)
-            response = client.get("/admin", follow_redirects=False)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Torre de control", response.get_data(as_text=True))
+            dashboard_response = client.get("/dashboard", follow_redirects=False)
+            legacy_response = client.get("/admin", follow_redirects=False)
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertIn("Torre de control", dashboard_response.get_data(as_text=True))
+        self.assertEqual(legacy_response.status_code, 301)
+        self.assertEqual(legacy_response.headers["Location"], "/dashboard")
 
     def test_cycle_scheduler_and_bugs_routes_render(self):
         app, _ = build_test_app()
@@ -612,27 +615,32 @@ class AdminRoutesTests(unittest.TestCase):
         self.assertEqual(public_settings_response.status_code, 200)
         self.assertIn("URL canonica", public_settings_response.get_data(as_text=True))
 
-    def test_public_page_access_has_own_log_section(self):
+    def test_public_root_is_canonical_and_publico_redirects(self):
         app, fake_db = build_test_app()
         with app.test_client() as client:
             response = client.get(
-                "/publico?utm=web",
+                "/?utm=web",
                 headers={
                     "X-Forwarded-For": "203.0.113.10",
                     "Referer": "https://club.example.com/",
                     "User-Agent": "CodexTest/1.0",
                 },
             )
+            legacy_response = client.get("/publico", follow_redirects=False)
             login(client)
             logs_response = client.get("/admin/public-access")
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(legacy_response.status_code, 301)
+        self.assertEqual(legacy_response.headers["Location"], "/")
         self.assertEqual(logs_response.status_code, 200)
         self.assertEqual(fake_db.state["public_access_logs"][0]["ip"], "203.0.113.10")
+        self.assertEqual(fake_db.state["public_access_logs"][0]["route"], "/")
         self.assertIn("203.0.113.10", logs_response.get_data(as_text=True))
         self.assertIn("CodexTest/1.0", logs_response.get_data(as_text=True))
         public_html = response.get_data(as_text=True)
         self.assertIn("data:image/svg+xml;base64,", public_html)
         self.assertNotIn("api.qrserver.com", public_html)
+        self.assertIn('<link rel="canonical" href="http://localhost/">', public_html)
 
     def test_admin_ip_is_blocked_after_three_failed_logins(self):
         app, fake_db = build_test_app()
@@ -731,7 +739,7 @@ class AdminRoutesTests(unittest.TestCase):
         with app.test_client() as client:
             login_page = client.get("/admin/login").get_data(as_text=True)
             login(client)
-            dashboard = client.get("/admin").get_data(as_text=True)
+            dashboard = client.get("/dashboard").get_data(as_text=True)
             simulator = client.get("/admin/simulator?scenario=tie").get_data(as_text=True)
         self.assert_matches_snapshot("admin_dashboard", dashboard)
         self.assert_matches_snapshot("admin_simulator_tie", simulator)

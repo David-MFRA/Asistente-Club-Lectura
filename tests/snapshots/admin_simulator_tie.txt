@@ -4,34 +4,61 @@ CL
 Saltar al contenido
 Club de Lectura
 Panel operativo
-Dashboard
-Ciclos
-Reuniones
-Temas
-Asistencia
-Ranking
-Mensajes
-Automatizacion
-Enviados
-Historico
-Galeria
-Base de datos
-Exportar CSV
-Demo
-Pagina publica
-SEO y pagina
-Accesos publicos
-Seguridad
-Logs
-Bugs
-Ayuda
+🏠
+Inicio
+📚
+Club
+▾
+Ciclo
+⚡ Ciclo rapido
+🔁 Ciclos
+Seguimiento
+🗓️ Reuniones
+💡 Temas
+✅ Asistencia
+🏆 Ranking
+📣
+Operativa
+Comunicacion
+💬 Mensajes
+⏱️ Automatizacion
+📤 Enviados
+🕘 Historico
+Contenido
+🖼️ Galeria
+📥 Lista de espera
+🎨 Cartel
+📄 Exportar CSV
+🧰
+Herramientas
+Analisis y soporte
+🔎 Buscador
+🤖 Simular bot
+🧠 Contexto bot
+🕵️ Auditoria
+🌐
+Publico
+Sitio publico
+🔗 Pagina publica
+🪄 SEO y pagina
+🔐 Accesos publicos
+🛡️
+Sistema
+Control
+🗄️ Base de datos
+🛡️ Seguridad
+📜 Logs
+🐞 Bugs
+🧪 Demo
+❓ Ayuda
+🧭
 Tour
+🚪
 Salir
 Menu
 🧪
 Simulador del bot
 Previsualiza ciclo, mensajes, encuestas y ayudas contextuales sin tocar Telegram ni datos reales.
-Ciclo
 2026-04
 2026-03
 Audiencia
@@ -41,30 +68,3 @@ Modo
 Usuario
 Admin
 Escenario
-Actual
-Empate
-Sin reunion
-Encuesta multipart
-Ciclo bloqueado
-Actualizar
-Paso
-Empate pendiente
-Hay que resolver un empate antes de anunciar ganador.
-Libro
-Dune
-Reunion
-Debate Dune
-Comandos
-18
-private
-Escenario activo
-Simula empate final de votos para validar mensajes y decisiones.
-Menu contextual
-🗓️ /reunion
-🙋 /asistir
-❌ /noasistir
-👥 /asistencia
-📈 /progreso
-🐛 /bug
-📚 /proponer
-🗳️ /propuestas

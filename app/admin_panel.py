@@ -111,7 +111,7 @@ def install_admin_panel(
                 response.status_code,
                 int((_time.monotonic() - started_at) * 1000),
             )
-        if request.path.startswith("/admin"):
+        if request.path.startswith("/admin") or request.path.startswith("/dashboard"):
             # Las pantallas del panel no deben indexarse aunque alguien enlace
             # una URL privada desde fuera del sitio.
             response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"

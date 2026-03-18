@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Response, abort, redirect, url_for
+from flask import Response, abort
 
 from app.services.public_site import (
     build_google_site_verification_response,
@@ -12,10 +12,6 @@ from app.services.public_site import (
 
 def install_public_site_routes(flask_app, *, webhook_url: str):
     """Registra las rutas publicas y de SEO compartidas por toda la aplicacion."""
-
-    @flask_app.get("/")
-    def home():
-        return redirect(url_for("public_page"), 301)
 
     @flask_app.get("/robots.txt")
     def robots_txt():

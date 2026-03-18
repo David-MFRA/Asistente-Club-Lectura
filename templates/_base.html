@@ -22,7 +22,7 @@
 
 {# Cabecera comun del panel. Aqui concentramos accesos a operaciones, sitio publico y seguridad. #}
 <header class="header">
-  <a class="header-brand" href="/admin">
+  <a class="header-brand" href="{{ url_for('admin_dashboard') }}">
     <div class="header-logo">CL</div>
     <div>
       <div class="header-title">Club de Lectura</div>
@@ -31,7 +31,7 @@
   </a>
 
   <nav class="header-nav" aria-label="Navegacion principal">
-    <a class="nav-link {% if path == '/admin' %}active{% endif %}" href="/admin">
+    <a class="nav-link {% if path == '/dashboard' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
       <span class="nav-emoji">🏠</span> Inicio
     </a>
 
@@ -165,7 +165,7 @@
 <div class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-handle"></div>
   <nav class="drawer-links" aria-label="Navegacion movil">
-    <a class="drawer-link {% if path == '/admin' %}active{% endif %}" href="/admin">🏠 Inicio</a>
+    <a class="drawer-link {% if path == '/dashboard' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">🏠 Inicio</a>
 
     <div class="drawer-group">
       <div class="drawer-group-title">📚 Club</div>

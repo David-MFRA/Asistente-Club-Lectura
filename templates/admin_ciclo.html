@@ -339,7 +339,7 @@
             {% if c.meeting %}
               <a href="/meeting/{{ c.meeting.id }}" class="btn btn-primary" style="text-align:center">📅 Gestionar fechas y encuesta →</a>
             {% else %}
-              <a href="/admin#meetings" class="btn btn-primary" style="text-align:center">➕ Crear reunión para fijar fecha</a>
+              <a href="{{ url_for('admin_dashboard') }}#meetings" class="btn btn-primary" style="text-align:center">➕ Crear reunión para fijar fecha</a>
             {% endif %}
           {% endif %}
 
@@ -348,7 +348,7 @@
             <div style="color:#6ee7b7;font-size:.88rem;padding:4px 0">✅ Ciclo en marcha · Leyendo «{{ c.winner.title if c.winner else '—' }}»</div>
           {% endif %}
 
-          <a href="/admin" class="btn btn-soft" style="font-size:.82rem;text-align:center">← Dashboard</a>
+          <a href="{{ url_for('admin_dashboard') }}" class="btn btn-soft" style="font-size:.82rem;text-align:center">← Dashboard</a>
         </div>
 
         <!-- Close cycle danger zone -->

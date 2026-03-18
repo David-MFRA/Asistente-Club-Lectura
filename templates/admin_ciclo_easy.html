@@ -306,7 +306,7 @@
     <a href="/meeting/{{ cycle.meeting.id }}" class="action-btn">📅 Gestionar fechas</a>
     {% else %}
     <div class="action-desc">Crea primero una reunión para poder fijar la fecha.</div>
-    <a href="/admin" class="action-btn secondary">← Ir al dashboard a crear reunión</a>
+    <a href="{{ url_for('admin_dashboard') }}" class="action-btn secondary">← Ir al dashboard a crear reunión</a>
     {% endif %}
 
   {# READING #}

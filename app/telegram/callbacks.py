@@ -31,7 +31,7 @@ class CallbackHandler:
         names = ", ".join(attendees) if attendees else "nadie"
         date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha cerrada"
         lines = [
-            f"Reunion: {meeting['name']}",
+            f"Reunión: {meeting['name']}",
             f"Fecha: {date_text}",
             f"Apuntados ({len(attendees)}): {names}",
         ]
@@ -59,7 +59,7 @@ class CallbackHandler:
     async def _send_meeting_info(self, query, context, meeting_id):
         meeting = db.get_meeting(meeting_id)
         if not meeting:
-            await query.answer("No encuentro esa reunion ahora mismo.", show_alert=True)
+            await query.answer("No encuentro esa reunión ahora mismo.", show_alert=True)
             return
         attendees = db.get_attendance(meeting_id)
         date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
@@ -102,7 +102,7 @@ class CallbackHandler:
                     actor=user,
                 )
                 await query.answer(
-                    "La votacion ahora se hace en la encuesta oficial fijada del grupo.",
+                    "La votación ahora se hace en la encuesta oficial fijada del grupo.",
                     show_alert=True,
                 )
                 return
@@ -111,12 +111,12 @@ class CallbackHandler:
                 theme_id = int(data.split(":")[1])
                 db.log_event(
                     "bot",
-                    f"Intento de voto inline antiguo de tematica #{theme_id}",
+                    f"Intento de voto inline antiguo de temática #{theme_id}",
                     category="callback",
                     actor=user,
                 )
                 await query.answer(
-                    "La votacion de tematicas ahora se hace en la encuesta oficial fijada del grupo.",
+                    "La votación de temáticas ahora se hace en la encuesta oficial fijada del grupo.",
                     show_alert=True,
                 )
                 return
@@ -124,12 +124,12 @@ class CallbackHandler:
             if data.startswith("attend:"):
                 meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
                 if not meeting_id:
-                    db.log_event("bot", "Callback de asistencia sin reunion activa", category="callback", actor=user)
-                    await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
+                    db.log_event("bot", "Callback de asistencia sin reunión activa", category="callback", actor=user)
+                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
                     return
                 ok = db.add_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
-                meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
+                meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
                 if ok:
                     db.log_event("bot", f"Asistencia inline registrada para {meeting_name}", category="callback", actor=user)
                     await self._edit_message_content(
@@ -140,18 +140,18 @@ class CallbackHandler:
                     await query.answer(f"Apuntado a '{meeting_name}'")
                 else:
                     db.log_event("bot", f"Asistencia inline duplicada para {meeting_name}", category="callback", actor=user)
-                    await query.answer(f"Ya estas apuntado a '{meeting_name}'", show_alert=True)
+                    await query.answer(f"Ya estás apuntado a '{meeting_name}'", show_alert=True)
                 return
 
             if data.startswith("noattend:"):
                 meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
                 if not meeting_id:
-                    db.log_event("bot", "Callback de no asistencia sin reunion activa", category="callback", actor=user)
-                    await query.answer("No hay una reunion activa ahora mismo", show_alert=True)
+                    db.log_event("bot", "Callback de no asistencia sin reunión activa", category="callback", actor=user)
+                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
                     return
                 db.remove_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
-                meeting_name = meeting["name"] if meeting else f"reunion #{meeting_id}"
+                meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
                 db.log_event("bot", f"Asistencia inline cancelada para {meeting_name}", category="callback", actor=user)
                 await self._edit_message_content(
                     query,
@@ -175,7 +175,7 @@ class CallbackHandler:
                         if book.get("author"):
                             lines.append(book["author"])
                         if book.get("pages"):
-                            lines.append(f"{book['pages']} paginas")
+                            lines.append(f"{book['pages']} páginas")
                         if book.get("description"):
                             description = book["description"]
                             if len(description) > 400:
@@ -188,13 +188,13 @@ class CallbackHandler:
                         )
                         await query.answer("Te mando la ficha del libro en este chat.")
                     else:
-                        await query.answer("No se encontro el libro", show_alert=True)
+                        await query.answer("No se encontró el libro", show_alert=True)
                 else:
-                    await query.answer("No hay libro asignado a esta reunion", show_alert=True)
+                    await query.answer("No hay libro asignado a esta reunión", show_alert=True)
                 return
 
-            await query.answer("Accion no reconocida", show_alert=True)
+            await query.answer("Acción no reconocida", show_alert=True)
         except Exception:
             self.logger.exception("Error en button_handler")
             db.log_event("error", "Error procesando callback", category="callback", actor=user, extra={"data": data})
-            await query.answer("Error procesando la accion", show_alert=True)
+            await query.answer("Error procesando la acción", show_alert=True)

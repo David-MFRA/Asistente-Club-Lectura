@@ -2,9 +2,9 @@ from telegram.ext import CallbackQueryHandler, ChatMemberHandler, CommandHandler
 
 
 def register_handlers(telegram_app, handlers):
-    """Registra todos los handlers del bot desde un unico punto.
+    """Registra todos los handlers del bot desde un único punto.
 
-    Las votaciones se hacen con encuestas nativas de Telegram, asi que aqui
+    Las votaciones se hacen con encuestas nativas de Telegram, así que aquí
     exponemos solo acciones de consulta, propuestas y asistencia.
     """
     telegram_app.add_handler(CommandHandler("start", handlers["start"]))

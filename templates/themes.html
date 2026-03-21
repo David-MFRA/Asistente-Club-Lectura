@@ -101,3 +101,20 @@
   </section>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+function startEdit(id) {
+  document.getElementById('tname-' + id).style.display = 'none';
+  document.getElementById('tbtns-' + id).style.display = 'none';
+  const editRow = document.getElementById('tedit-' + id);
+  editRow.style.display = 'flex';
+  editRow.querySelector('input[name="name"]').focus();
+}
+function cancelEdit(id) {
+  document.getElementById('tedit-' + id).style.display = 'none';
+  document.getElementById('tname-' + id).style.display = '';
+  document.getElementById('tbtns-' + id).style.display = '';
+}
+</script>
+{% endblock %}

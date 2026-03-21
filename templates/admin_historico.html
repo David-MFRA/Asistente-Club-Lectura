@@ -27,7 +27,7 @@
 <div class="card" style="margin-bottom:16px">
   <form method="get" action="/admin/historico" class="row" style="align-items:end">
     <div class="field" style="max-width:220px">
-      <label>Filas por seccion</label>
+      <label>Filas por sección</label>
       <select name="limit">
         {% for option in [50, 100, 150, 250, 500] %}
         <option value="{{ option }}" {% if option == history_limit %}selected{% endif %}>{{ option }}</option>

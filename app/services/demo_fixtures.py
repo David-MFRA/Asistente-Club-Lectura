@@ -31,11 +31,11 @@ DEMO_BOOKS = [
         "title": "El Hobbit",
         "author": "J.R.R. Tolkien",
         "pages": 310,
-        "description": "La aventura de Bilbo Bolson camino de Erebor.",
+        "description": "La aventura de Bilbo Bolsón camino de Erebor.",
         "language_code": "es",
     },
 ]
-DEMO_THEMES = ["Fantasia epica", "Ciencia ficcion"]
+DEMO_THEMES = ["Fantasía épica", "Ciencia ficción"]
 DEMO_VOTE_DIST = [5, 3, 2, 1]
 
 SIMULATOR_SCENARIOS = {
@@ -48,8 +48,8 @@ SIMULATOR_SCENARIOS = {
         "description": "Simula empate final de votos para validar mensajes y decisiones.",
     },
     "no_meeting": {
-        "label": "Sin reunion",
-        "description": "Libro elegido pero sin fecha cerrada todavia.",
+        "label": "Sin reunión",
+        "description": "Libro elegido pero sin fecha cerrada todavía.",
     },
     "multipart_poll": {
         "label": "Encuesta multipart",
@@ -57,7 +57,7 @@ SIMULATOR_SCENARIOS = {
     },
     "locked_cycle": {
         "label": "Ciclo bloqueado",
-        "description": "Propuestas cerradas y panel listo para lanzar o cerrar votacion.",
+        "description": "Propuestas cerradas y panel listo para lanzar o cerrar votación.",
     },
 }
 
@@ -72,51 +72,100 @@ def get_seed_bundle(utcnow):
         "books": get_demo_books()[:3],
         "themes": list(DEMO_THEMES),
         "meeting": {
-            "name": "Reunion de demostracion",
+            "name": "Reunión de demostración",
             "final_date": str(demo_date),
         },
     }
 
 
-def apply_demo_step(db_module, utcnow, step_number: int) -> str:
+def _tg(run_async, coro):
+    """Lanza un mensaje Telegram desde contexto síncrono. Silencioso si no hay loop."""
+    if run_async is not None and coro is not None:
+        try:
+            run_async(coro)
+        except Exception:
+            pass
+
+
+def apply_demo_step(db_module, utcnow, step_number: int,
+                    run_async=None, send_to_group=None, send_and_pin=None) -> str:
     if step_number == 0:
         _demo_cleanup(db_module)
-        return "Entorno limpio; ciclo __DEMO__ preparado"
+        _tg(run_async, send_to_group and send_to_group(
+            "🎬 <b>Demo del club iniciada</b>\n\n"
+            "Vamos a simular un ciclo completo: propuestas → votación → reunión → ganador.\n"
+            "<i>(Esto es una demostración automática — los datos se borrarán al terminar)</i>",
+            parse_mode="HTML",
+        ))
+        return "Entorno limpio — demo iniciada y anunciada en el grupo"
+
     if step_number in (1, 2, 3, 4):
         book = get_demo_books()[step_number - 1]
         db_module.insert_book(book, proposed_by="__demo__", cycle_key=DEMO_CYCLE)
-        return f"Propuesta: {book['title']} ({book['author']})"
+        return f"📖 Propuesta añadida: {book['title']} ({book['author']})"
+
     if step_number == 5:
         books = db_module.get_books(DEMO_CYCLE)
-        lines = []
+        bar_lines = []
         for index, book in enumerate(books[:4]):
             votes = DEMO_VOTE_DIST[index] if index < len(DEMO_VOTE_DIST) else 0
             for user_index in range(votes):
                 db_module.vote_book(book["proposal_id"], f"__demo_user_{index}_{user_index}__")
-            lines.append(f"{book['title'][:22]}: {'*' * votes} ({votes})")
-        return "Votaciones simuladas: " + " | ".join(lines)
+            filled = "█" * votes
+            empty  = "░" * (5 - votes)
+            bar_lines.append(f"{index + 1}. <b>{book['title'][:26]}</b>\n   {filled}{empty} {votes} voto{'s' if votes != 1 else ''}")
+        poll_text = "🗳 <b>Resultados de la votación (demo)</b>\n\n" + "\n\n".join(bar_lines)
+        _tg(run_async, send_to_group and send_to_group(poll_text, parse_mode="HTML"))
+        return "Votaciones simuladas y resultados enviados al grupo"
+
     if step_number == 6:
         for theme_name in DEMO_THEMES:
             db_module.create_theme(theme_name, created_by="__demo__", cycle_key=DEMO_CYCLE)
-        return "Tematicas creadas: " + ", ".join(DEMO_THEMES)
+        themes_text = (
+            "💡 <b>Temáticas propuestas (demo)</b>\n\n"
+            + "\n".join(f"🏷 {t}" for t in DEMO_THEMES)
+            + "\n\n<i>Vota tu favorita en la encuesta del grupo</i>"
+        )
+        _tg(run_async, send_to_group and send_to_group(themes_text, parse_mode="HTML"))
+        return "Temáticas creadas: " + ", ".join(DEMO_THEMES)
+
     if step_number == 7:
         demo_date = (utcnow() + timedelta(days=12)).replace(hour=19, minute=0, second=0, microsecond=0)
         db_module.create_meeting(
-            name="Reunion demo - Club de Lectura",
+            name="Reunión demo - Club de Lectura",
             final_date=str(demo_date),
             cycle_key=DEMO_CYCLE,
             created_by="__demo__",
         )
-        return f"Reunion demo creada para {str(demo_date)[:16]}"
+        date_str = demo_date.strftime("%d/%m/%Y a las %H:%M")
+        _tg(run_async, send_to_group and send_to_group(
+            f"📅 <b>Reunión demo confirmada</b>\n\n🗓 {date_str}\n<i>Confirma asistencia con /asistir</i>",
+            parse_mode="HTML",
+        ))
+        return f"Reunión demo creada para {str(demo_date)[:16]} y anunciada en el grupo"
+
     if step_number == 8:
         books = db_module.get_books(DEMO_CYCLE)
         winner = books[0] if books else None
         if winner:
-            return f"Ganador del ciclo demo: {winner['title']} con {winner['votes']} votos."
-        return "Ciclo demo completado"
+            winner_text = (
+                f"🏆 <b>¡Libro del mes elegido! (demo)</b>\n\n"
+                f"📗 <b>{winner['title']}</b>\n"
+                f"✍️ {winner.get('author', '')}\n\n"
+                f"🗳 {winner.get('votes', 0)} votos — ¡nos vemos en la reunión!"
+            )
+            _tg(run_async, send_and_pin and send_and_pin(winner_text, parse_mode="HTML"))
+            return f"🏆 Ganador: «{winner['title']}» con {winner.get('votes', 0)} votos — mensaje fijado en el grupo"
+        return "Sin libros en el demo para proclamar ganador"
+
     if step_number == 9:
         _demo_cleanup(db_module)
-        return "Datos de demo eliminados; entorno limpio"
+        _tg(run_async, send_to_group and send_to_group(
+            "🧹 <b>Demo finalizada</b>\n\nTodos los datos de prueba han sido eliminados. El grupo vuelve a su estado normal.",
+            parse_mode="HTML",
+        ))
+        return "Datos de demo eliminados y grupo notificado"
+
     return "Demo completada"
 
 

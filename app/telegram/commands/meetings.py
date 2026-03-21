@@ -34,7 +34,7 @@ class MeetingHandlers:
 
             if not meeting:
                 guidance = get_soft_guidance("asistir", cycle_key=current_cycle)
-                await update.message.reply_text(guidance or "No hay reunion programada todavia.", parse_mode=None)
+                await update.message.reply_text(guidance or "No hay reunión programada todavía.", parse_mode=None)
                 return
 
             attendees = db.get_attendance(meeting["id"])
@@ -180,7 +180,7 @@ class MeetingHandlers:
                 await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             attendees = db.get_attendance(meeting["id"])
-            names = "\n".join(f"  - {self.esc(name)}" for name in attendees) if attendees else "_Nadie apuntado todavia_"
+            names = "\n".join(f"  - {self.esc(name)}" for name in attendees) if attendees else "_Nadie apuntado todavía_"
             await update.message.reply_text(
                 (
                     f"{self.bold('Asistencia')} - {self.italic(meeting['name'])}\n\n"

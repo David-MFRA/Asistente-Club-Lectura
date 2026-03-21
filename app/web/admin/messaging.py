@@ -55,7 +55,7 @@ def update_admin_message(require_admin, default_messages, key):
     if auth:
         return auth
     if key not in default_messages:
-        return "Clave no valida", 400
+        return "Clave no válida", 400
     value = request.form.get("value", "").strip()
     before = next((row for row in db.get_all_message_templates() if row["key"] == key), None)
     if value:
@@ -105,13 +105,13 @@ def save_scoped_admin_message(require_admin, default_messages):
     value = request.form.get("value", "").strip()
 
     if base_key not in default_messages:
-        flash("Base del mensaje no valida", "danger")
+        flash("Base del mensaje no válida", "danger")
         return redirect(url_for("admin_messages"))
     if not (audience or phase or cycle_key):
         flash("Debes definir al menos un alcance: audiencia, fase o ciclo.", "danger")
         return redirect(url_for("admin_messages"))
     if not value:
-        flash("El texto no puede estar vacio", "danger")
+        flash("El texto no puede estar vacío", "danger")
         return redirect(url_for("admin_messages"))
 
     scoped_key = db.build_scoped_message_key(
@@ -301,7 +301,7 @@ async def send_custom_message(require_admin, logger, send_to_group):
     text = request.form.get("message", "").strip()
     logger.info("Admin: enviando mensaje custom al grupo (%d chars)", len(text))
     if not text:
-        flash("El mensaje no puede estar vacio", "danger")
+        flash("El mensaje no puede estar vacío", "danger")
         return redirect(url_for("admin_dashboard"))
     try:
         ok = await send_to_group(text, parse_mode=None)

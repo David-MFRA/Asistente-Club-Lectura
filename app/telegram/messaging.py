@@ -62,17 +62,17 @@ class TelegramMessagingService:
                 db.log_sent_message(message_type, self.chat_id, text, msg.message_id)
                 db.log_event(
                     "bot",
-                    f"Mensaje reenviado tras migracion ({message_type})",
+                    f"Mensaje reenviado tras migración ({message_type})",
                     category="telegram",
                     actor="bot",
                     extra={"chat_id": self.chat_id, "message_id": msg.message_id, "message_type": message_type},
                 )
                 return True
             except Exception as exc2:
-                self.logger.exception("Error enviando al nuevo chat_id tras migracion")
+                self.logger.exception("Error enviando al nuevo chat_id tras migración")
                 db.log_event(
                     "error",
-                    "Fallo enviando mensaje tras migracion de chat",
+                    "Fallo enviando mensaje tras migración de chat",
                     category="telegram",
                     actor="bot",
                     extra={"chat_id": self.chat_id, "error": type(exc2).__name__, "message_type": message_type},

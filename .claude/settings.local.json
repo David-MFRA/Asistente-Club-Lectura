@@ -46,7 +46,10 @@
       "Bash(cd \"C:\\\\Users\\\\david\\\\OneDrive\\\\Escritorio\\\\bot\" && python3 -m py_compile main.py 2>&1 | head -20)",
       "Bash(cd:*)",
       "Bash(python:*)",
-      "Bash(for file:*)"
+      "Bash(for file:*)",
+      "Bash(grep -n [A-Z][a-zá].*[?] /c/Users/david/OneDrive/Escritorio/bot/app/telegram/messaging.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/polling.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/registry.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/access.py)",
+      "Bash(python3:*)",
+      "Bash(grep -i \"token\\\\|secret\\\\|password\\\\|api_key\\\\|api.key\" /c/Users/david/OneDrive/Escritorio/bot/app/web/admin/*.py)"
     ]
   }
 }

@@ -64,12 +64,16 @@ def clear_demo_data(require_admin, db, logger):
     return redirect(url_for("admin_dashboard"))
 
 
-def run_demo_step(require_admin, db, utcnow, logger, step_number: int):
+def run_demo_step(require_admin, db, utcnow, logger, step_number: int,
+                  run_async=None, send_to_group=None, send_and_pin=None):
     auth = require_admin()
     if auth:
         return jsonify({"ok": False, "message": "No autorizado"}), 401
     try:
-        message = _run_demo_step(db, utcnow, step_number)
+        message = _run_demo_step(db, utcnow, step_number,
+                                 run_async=run_async,
+                                 send_to_group=send_to_group,
+                                 send_and_pin=send_and_pin)
         total = 10
         return jsonify(
             {
@@ -104,5 +108,9 @@ def _demo_cleanup(db):
         cur.execute("DELETE FROM meetings WHERE cycle_key = %s", (DEMO_CYCLE,))
 
 
-def _run_demo_step(db, utcnow, step_number: int) -> str:
-    return apply_demo_step(db, utcnow, step_number)
+def _run_demo_step(db, utcnow, step_number: int,
+                   run_async=None, send_to_group=None, send_and_pin=None) -> str:
+    return apply_demo_step(db, utcnow, step_number,
+                           run_async=run_async,
+                           send_to_group=send_to_group,
+                           send_and_pin=send_and_pin)

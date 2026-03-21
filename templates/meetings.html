@@ -170,6 +170,11 @@
 {% block extra_js %}
 <script>
 const WINNER_BY_CYCLE = {{ winner_by_cycle | tojson }};
+function esc(s) {
+  const d = document.createElement('div');
+  d.appendChild(document.createTextNode(s));
+  return d.innerHTML;
+}
 function updateWinnerHint() {
   const sel = document.getElementById('cycle-select');
   const hint = document.getElementById('winner-hint');
@@ -179,8 +184,8 @@ function updateWinnerHint() {
   if (w) {
     hint.innerHTML = `<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:10px;padding:10px 12px;font-size:.84rem">
       <div style="color:#6ee7b7;font-weight:700;margin-bottom:2px">📗 Libro ganador del ciclo</div>
-      <div style="font-weight:800">${w.title}</div>
-      ${w.author ? `<div style="color:var(--muted)">${w.author}</div>` : ''}
+      <div style="font-weight:800">${esc(w.title)}</div>
+      ${w.author ? `<div style="color:var(--muted)">${esc(w.author)}</div>` : ''}
       <div style="color:var(--muted);margin-top:4px;font-size:.78rem">Se asignará automáticamente al crear la reunión</div>
     </div>`;
   } else {

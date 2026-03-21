@@ -6,35 +6,35 @@ import db
 DEFAULT_MESSAGES = {
     "welcome_message": (
         "📚 <b>Bienvenido al Club de Lectura</b>\n\n"
-        "Desde aqui puedes proponer libros, seguir reuniones y registrar tu progreso.\n"
+        "Desde aquí puedes proponer libros, seguir reuniones y registrar tu progreso.\n"
         "Las votaciones se hacen en las encuestas fijadas del grupo.\n\n"
-        "Si me escribes por privado veras un menu contextual con botones.\n"
+        "Si me escribes por privado verás un menú contextual con botones.\n"
         "Usa /ayuda para ver los comandos disponibles."
     ),
     "help_message": (
-        "📚 <b>Club de Lectura</b> - Ayuda rapida\n\n"
-        "En privado, /ayuda muestra un menu contextual que cambia segun la fase del ciclo.\n\n"
+        "📚 <b>Club de Lectura</b> - Ayuda rápida\n\n"
+        "En privado, /ayuda muestra un menú contextual que cambia según la fase del ciclo.\n\n"
         "📖 <b>Libros</b>\n"
         "  /proponer titulo - Proponer un libro\n"
         "  /propuestas - Ver propuestas y el ranking actual\n"
         "  /resultados - Ver el ranking actual\n"
         "  /libro - Ver el libro del ciclo\n\n"
-        "🏷️ <b>Tematicas</b>\n"
-        "  /tema nombre - Proponer una tematica\n"
-        "  /temas - Ver tematicas y seguir la encuesta fijada\n\n"
-        "🗓️ <b>Reunion</b>\n"
-        "  /reunion [texto] - Ver la proxima reunion o buscar una\n"
-        "  /asistir - Apuntarte a la reunion\n"
-        "  /noasistir - Quitarte de la reunion\n"
+        "🏷️ <b>Temáticas</b>\n"
+        "  /tema nombre - Proponer una temática\n"
+        "  /temas - Ver temáticas y seguir la encuesta fijada\n\n"
+        "🗓️ <b>Reunión</b>\n"
+        "  /reunion [texto] - Ver la próxima reunión o buscar una\n"
+        "  /asistir - Apuntarte a la reunión\n"
+        "  /noasistir - Quitarte de la reunión\n"
         "  /asistencia - Ver asistentes\n"
-        "  /acta - Ver el acta de la ultima reunion\n"
+        "  /acta - Ver el acta de la última reunión\n"
         "  /proponer_fecha DD/MM HH:MM - Proponer fecha\n\n"
         "📊 <b>Tu actividad</b>\n"
         "  /progreso paginas - Registrar tu avance\n"
         "  /estadisticas - Ver tus datos del club\n\n"
         "✨ <b>Extras</b>\n"
         "  /trivia - Pregunta para debatir\n"
-        "  /recomendar - Recomendaciones por tematica\n"
+        "  /recomendar - Recomendaciones por temática\n"
         "  /lista_espera - Libros en espera\n"
         "  /bug descripcion - Reportar un problema\n\n"
         "🔐 Si eres admin, usa /admin_ayuda. Los comandos /preguntas y /cita son solo para administradores."
@@ -51,31 +51,31 @@ DEFAULT_MESSAGES = {
         "{author_line}"
         "_Usa /propuestas para seguir el ranking y vota en la encuesta fijada._"
     ),
-    "attendance_join_message": "🎉 *{user_name}* se apunto a *{meeting_name}*\n\n👥 Apuntados ({count}): {names}",
+    "attendance_join_message": "🎉 *{user_name}* se apuntó a *{meeting_name}*\n\n👥 Apuntados ({count}): {names}",
     "attendance_leave_message": "👋 *{user_name}* se ha quitado de *{meeting_name}*\n\n👥 Quedan ({count}): {names}",
-    "attendance_prompt_message": "🗓️ A que reunion te apuntas? Elige una:",
+    "attendance_prompt_message": "🗓️ ¿A qué reunión te apuntas? Elige una:",
     "theme_chosen_message": (
-        "🏷️ <b>Tematica elegida: {theme_name}</b>\n\n"
+        "🏷️ <b>Temática elegida: {theme_name}</b>\n\n"
         "Es hora de proponer libros para este ciclo.\n\n"
-        "📝 Propon con el comando /proponer\n"
-        "💡 Cuantas mas propuestas tengamos, mejor saldra la encuesta."
+        "📝 Propón con el comando /proponer\n"
+        "💡 Cuantas más propuestas tengamos, mejor saldrá la encuesta."
     ),
     "new_cycle_message": (
         "🔄 <b>Nuevo ciclo: {cycle_name}</b>\n\n"
         "Comienza un nuevo ciclo de lectura. "
-        "Primero vamos a <b>elegir la tematica</b> que guiara las propuestas."
+        "Primero vamos a <b>elegir la temática</b> que guiará las propuestas."
     ),
     "winner_announcement_message": (
         "🏆 <b>Ya tenemos libro del mes</b>\n\n"
         "📗 <b>{book_title}</b>\n"
         "{author_line}"
-        "🗳️ Gano con <b>{votes} votos</b>\n\n"
-        "Usa /asistir para apuntarte a la reunion."
+        "🗳️ Ganó con <b>{votes} votos</b>\n\n"
+        "Usa /asistir para apuntarte a la reunión."
     ),
     "books_open_message": (
         "📚 <b>Hora de proponer libros</b>\n\n"
         "{theme_line}"
-        "Propon tus lecturas favoritas para este ciclo:\n"
+        "Propón tus lecturas favoritas para este ciclo:\n"
         "/proponer titulo del libro\n\n"
         "💡 Tienes hasta que el admin cierre las propuestas."
     ),
@@ -83,12 +83,12 @@ DEFAULT_MESSAGES = {
         "📖 <b>Recordatorio de lectura</b>\n\n"
         "📗 Libro actual: <b>{book_title}</b>\n"
         "{author_line}"
-        "🗓️ Proxima reunion: <b>{meeting_name}</b> ({meeting_date})\n"
-        "📊 Te quedan <b>{days_left} dias</b> para leer <b>{pages} paginas</b>.\n"
-        "Con <b>{daily_pages} paginas al dia</b> llegas a tiempo."
+        "🗓️ Próxima reunión: <b>{meeting_name}</b> ({meeting_date})\n"
+        "📊 Te quedan <b>{days_left} días</b> para leer <b>{pages} páginas</b>.\n"
+        "Con <b>{daily_pages} páginas al día</b> llegas a tiempo."
     ),
     "meeting_reminder_message": (
-        "🗓️ <b>Recordatorio de reunion</b>\n\n"
+        "🗓️ <b>Recordatorio de reunión</b>\n\n"
         "📗 <b>{meeting_name}</b>\n"
         "📍 Fecha: <b>{meeting_date}</b>\n"
         "{location_line}"
@@ -102,20 +102,20 @@ DEFAULT_MESSAGES = {
         "<i>Responde en el grupo para debatir juntos.</i>"
     ),
     "theme_tie_message": (
-        "⚖️ <b>Empate en la votacion de tematica</b>\n\n"
-        "Estas tematicas han quedado empatadas:\n"
+        "⚖️ <b>Empate en la votación de temática</b>\n\n"
+        "Estas temáticas han quedado empatadas:\n"
         "{themes_list}\n\n"
-        "🔁 El admin decidira el siguiente paso."
+        "🔁 El admin decidirá el siguiente paso."
     ),
     "book_tie_message": (
-        "⚖️ <b>Empate en la votacion de libros</b>\n\n"
+        "⚖️ <b>Empate en la votación de libros</b>\n\n"
         "Estos libros han quedado empatados con <b>{votes} votos</b>:\n"
         "{books_list}\n\n"
-        "🔁 El admin decidira el siguiente paso."
+        "🔁 El admin decidirá el siguiente paso."
     ),
-    "poll_books_question": "📚 Que libro leemos este ciclo?",
-    "poll_themes_question": "🏷️ Que tematica elegimos para este ciclo?",
-    "poll_dates_question": "🗓️ Cuando nos reunimos? · {meeting_name}",
+    "poll_books_question": "📚 ¿Qué libro leemos este ciclo?",
+    "poll_themes_question": "🏷️ ¿Qué temática elegimos para este ciclo?",
+    "poll_dates_question": "🗓️ ¿Cuándo nos reunimos? · {meeting_name}",
 }
 
 

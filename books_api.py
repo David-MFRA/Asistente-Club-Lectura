@@ -1,4 +1,5 @@
 import logging
+import time
 import requests
 import html
 import re
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 GOOGLE_BOOKS_URL = "https://www.googleapis.com/books/v1/volumes"
 
 REQUEST_TIMEOUT = 8
+_RETRY_DELAY = 1.5
 
 
 # --------------------------------------------------
@@ -51,27 +53,38 @@ def google_books(title):
     """
     logger.info("Google Books: buscando «%s»", title)
 
-    try:
-        params = {
-            "q": f"intitle:{title}",
-            "maxResults": 5,
-            "printType": "books"
-        }
+    params = {
+        "q": f"intitle:{title}",
+        "maxResults": 5,
+        "printType": "books"
+    }
 
-        r = requests.get(
-            GOOGLE_BOOKS_URL,
-            params=params,
-            timeout=REQUEST_TIMEOUT
-        )
-
-        if r.status_code != 200:
+    data = None
+    for attempt in range(2):
+        try:
+            r = requests.get(
+                GOOGLE_BOOKS_URL,
+                params=params,
+                timeout=REQUEST_TIMEOUT
+            )
+            if r.status_code == 200:
+                data = r.json()
+                break
+            if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
+                logger.warning("Google Books: HTTP %d para «%s», reintentando…", r.status_code, title)
+                time.sleep(_RETRY_DELAY)
+                continue
             logger.warning("Google Books: HTTP %d para «%s»", r.status_code, title)
             return None
+        except Exception:
+            if attempt == 0:
+                logger.warning("Google Books: error de red buscando «%s», reintentando…", title)
+                time.sleep(_RETRY_DELAY)
+            else:
+                logger.exception("Google Books: error de red buscando «%s»", title)
+                return None
 
-        data = r.json()
-
-    except Exception:
-        logger.exception("Google Books: error de red buscando «%s»", title)
+    if data is None:
         return None
 
     items = data.get("items")

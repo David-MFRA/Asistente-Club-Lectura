@@ -33,7 +33,7 @@ class ThemeHandlers:
             }
             db.log_event("bot", "Flujo /tema pendiente iniciado", category="command", actor=user_obj.first_name or user_obj.username or str(user_obj.id))
             await update.message.reply_text(
-                "Como se llama la tematica que quieres proponer?\n\nEscribela y te dejare confirmarla antes de enviarla.",
+                "¿Cómo se llama la temática que quieres proponer?\n\nEscríbela y te dejaré confirmarla antes de enviarla.",
                 parse_mode=None,
                 reply_markup=InlineKeyboardMarkup(
                     [[InlineKeyboardButton("Cancelar", callback_data=f"flow:{flow_token}:cancel")]]
@@ -52,19 +52,19 @@ class ThemeHandlers:
                     warning = f"\n\nEsta tematica ya se uso en: {cycles}"
                 db.log_event("bot", f"Tematica propuesta: {name}", category="theme", actor=user)
                 await update.message.reply_text(
-                    f"Tematica propuesta: {name}\nPropuesta por {user}.{warning}\nSigue /temas y vota en la encuesta fijada del grupo.",
+                    f"Temática propuesta: {name}\nPropuesta por {user}.{warning}\nSigue /temas y vota en la encuesta fijada del grupo.",
                     parse_mode=None,
                 )
             else:
                 await update.message.reply_text(
-                    f"La tematica {name} ya existe en este ciclo.",
+                    f"La temática {name} ya existe en este ciclo.",
                     parse_mode=None,
                 )
         except InputValidationError as exc:
             await update.message.reply_text(str(exc), parse_mode=None)
         except Exception:
             self.logger.exception("Error en /tema")
-            await update.message.reply_text("Error creando tematica.", parse_mode=None)
+            await update.message.reply_text("Error creando temática.", parse_mode=None)
 
     async def temas(self, update, context):
         if not await self.allowed(update):
@@ -74,29 +74,29 @@ class ThemeHandlers:
             if not rows:
                 guidance = get_soft_guidance("temas")
                 await update.message.reply_text(
-                    guidance or "No hay tematicas. Usa /tema para anadir la primera.",
+                    guidance or "No hay temáticas. Usa /tema para añadir la primera.",
                     parse_mode=None,
                 )
                 return
-            lines = [f"{self.bold('Tematicas del ciclo')}\n"]
+            lines = [f"{self.bold('Temáticas del ciclo')}\n"]
             for theme in rows:
                 bar = "■" * min(theme["votes"], 8) if theme["votes"] > 0 else "·"
                 lines.append(
                     f"{self.bold(str(theme['id']))}\\. {self.esc(theme['name'])}\n"
                     f"   {bar} {self.bold(str(theme['votes']))} voto{'s' if theme['votes'] != 1 else ''}"
                 )
-            lines.append("\n_La votacion se hace en la encuesta fijada del grupo._")
+            lines.append("\n_La votación se hace en la encuesta fijada del grupo._")
             if db.get_open_poll("themes", cycle_key=db.get_current_cycle_key()):
-                lines.append("_Abre el mensaje fijado para votar y vuelve aqui cuando quieras revisar como va._")
+                lines.append("_Abre el mensaje fijado para votar y vuelve aquí cuando quieras revisar cómo va._")
             else:
-                lines.append("_Ahora mismo no hay encuesta activa; cuando se abra aparecera fijada en el grupo._")
+                lines.append("_Ahora mismo no hay encuesta activa; cuando se abra aparecerá fijada en el grupo._")
             await update.message.reply_text(
                 "\n".join(lines),
                 parse_mode="MarkdownV2",
             )
         except Exception:
             self.logger.exception("Error en /temas")
-            await update.message.reply_text("Error obteniendo tematicas.", parse_mode=None)
+            await update.message.reply_text("Error obteniendo temáticas.", parse_mode=None)
 
     async def votar_tema(self, update, context):
         if not await self.allowed(update):

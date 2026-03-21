@@ -81,7 +81,9 @@ async def close_poll(require_admin, poll_db_id, telegram_app, telegram_chat_id, 
             return redirect(url_for("admin_dashboard"))
 
         await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
-        db.close_poll(poll_db_id)
+        if not db.close_poll(poll_db_id):
+            flash("Esta encuesta ya fue cerrada por otra sesión.", "warning")
+            return redirect(url_for("admin_dashboard"))
 
         if poll.get("poll_type") == "books" and telegram_chat_id:
             cycle_key = poll.get("cycle_key") or db.get_current_cycle_key()
@@ -232,7 +234,9 @@ async def close_theme_poll(require_admin, poll_db_id, telegram_app, telegram_cha
 
         cycle_key = poll.get("cycle_key") or db.get_current_cycle_key()
         tg_poll = await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
-        db.close_poll(poll_db_id)
+        if not db.close_poll(poll_db_id):
+            flash("Esta encuesta ya fue cerrada por otra sesión.", "warning")
+            return redirect(url_for("admin_ciclo"))
 
         # Determine winner directly from Telegram poll data (authoritative vote counts)
         theme_ids = db.get_poll_option_mapping(poll["poll_id"])
@@ -382,7 +386,9 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
             return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
         tg_poll = await telegram_app.bot.stop_poll(chat_id=poll["chat_id"], message_id=poll["message_id"])
-        db.close_poll(poll_db_id)
+        if not db.close_poll(poll_db_id):
+            flash("Esta encuesta ya fue cerrada por otra sesión.", "warning")
+            return redirect(url_for("meeting_detail_admin", meeting_id=meeting_id))
 
         if tg_poll.options:
             # Check tie on dates

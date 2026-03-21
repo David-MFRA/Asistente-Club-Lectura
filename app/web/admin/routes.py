@@ -1,6 +1,19 @@
 import uuid
 
 from flask import flash, redirect, render_template, request, session, url_for
+from urllib.parse import urlparse
+
+
+def _safe_next(default_endpoint: str) -> str:
+    """Devuelve el valor de _next solo si apunta a una ruta interna (mismo host).
+    Previene open-redirect: un atacante no puede redirigir al admin a un dominio externo."""
+    raw = request.form.get("_next", "")
+    if raw:
+        parsed = urlparse(raw)
+        # Permitido: rutas relativas (sin scheme/netloc) o mismo host explícito
+        if not parsed.scheme and not parsed.netloc:
+            return raw
+    return url_for(default_endpoint)
 
 import books_api
 import db
@@ -193,7 +206,7 @@ def register_admin_routes(
         auth = require_admin()
         if auth:
             return auth
-        next_url = request.form.get("_next", url_for("admin_dashboard"))
+        next_url = _safe_next("admin_dashboard")
         cycle_key = request.form.get("cycle", "").strip() or None
         try:
             title = normalize_book_query(request.form.get("title", ""))
@@ -220,7 +233,7 @@ def register_admin_routes(
         auth = require_admin()
         if auth:
             return auth
-        next_url = request.form.get("_next", url_for("admin_dashboard"))
+        next_url = _safe_next("admin_dashboard")
         try:
             db.remove_book_proposal(proposal_id)
             flash("Propuesta eliminada", "success")
@@ -303,7 +316,7 @@ def register_admin_routes(
         auth = require_admin()
         if auth:
             return auth
-        next_url = request.form.get("_next", url_for("themes_admin"))
+        next_url = _safe_next("themes_admin")
         try:
             name = normalize_theme_name(request.form.get("name", ""))
         except InputValidationError as exc:
@@ -321,7 +334,7 @@ def register_admin_routes(
         auth = require_admin()
         if auth:
             return auth
-        next_url = request.form.get("_next", url_for("themes_admin"))
+        next_url = _safe_next("themes_admin")
         try:
             name = normalize_theme_name(request.form.get("name", ""))
         except InputValidationError as exc:
@@ -339,7 +352,7 @@ def register_admin_routes(
         auth = require_admin()
         if auth:
             return auth
-        next_url = request.form.get("_next", url_for("themes_admin"))
+        next_url = _safe_next("themes_admin")
         try:
             db.delete_theme(theme_id)
             flash("Temática eliminada", "success")
@@ -690,7 +703,12 @@ def register_admin_routes(
 
     @flask_app.post("/admin/demo/step/<int:step>")
     def admin_demo_step(step):
-        return run_admin_demo_step(require_admin, db, utcnow, logger, step)
+        return run_admin_demo_step(
+            require_admin, db, utcnow, logger, step,
+            run_async=run_async,
+            send_to_group=send_to_group,
+            send_and_pin=send_and_pin,
+        )
 
     @flask_app.get("/admin/search")
     def admin_search():

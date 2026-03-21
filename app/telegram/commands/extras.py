@@ -73,7 +73,7 @@ class ExtraHandlers:
             "recomendar",
             limit=6,
             window_seconds=3600,
-            message="Has alcanzado el limite temporal de /recomendar. Vuelve a intentarlo en {retry_after}s.",
+            message="Has alcanzado el límite temporal de /recomendar. Vuelve a intentarlo en {retry_after}s.",
         ):
             return
         try:
@@ -90,7 +90,7 @@ class ExtraHandlers:
                 await wait.delete()
                 self._set_cached(cache_key, rec, ttl_seconds=1800)
             if not rec:
-                await update.message.reply_text("No encontre recomendaciones\\.", parse_mode="MarkdownV2")
+                await update.message.reply_text("No encontré recomendaciones\\.", parse_mode="MarkdownV2")
                 return
             lines = [f"{self.bold('Recomendaciones')} - tema {self.italic(theme_name)}\n"]
             for index, item in enumerate(rec, 1):
@@ -110,14 +110,14 @@ class ExtraHandlers:
             await update.message.reply_text("Este comando es solo para administradores del club.", parse_mode=None)
             return
         if not self.check_cooldown(update.effective_user.id, "preguntas", 60):
-            await update.message.reply_text("Espera un momento antes de generar mas preguntas.", parse_mode=None)
+            await update.message.reply_text("Espera un momento antes de generar más preguntas.", parse_mode=None)
             return
         if not await self._check_quota(
             update,
             "preguntas",
             limit=5,
             window_seconds=3600,
-            message="Has alcanzado el limite temporal de /preguntas. Prueba de nuevo en {retry_after}s.",
+            message="Has alcanzado el límite temporal de /preguntas. Prueba de nuevo en {retry_after}s.",
         ):
             return
         try:
@@ -160,7 +160,7 @@ class ExtraHandlers:
             "cita",
             limit=8,
             window_seconds=3600,
-            message="Has alcanzado el limite temporal de /cita. Vuelve a intentarlo en {retry_after}s.",
+            message="Has alcanzado el límite temporal de /cita. Vuelve a intentarlo en {retry_after}s.",
         ):
             return
         try:

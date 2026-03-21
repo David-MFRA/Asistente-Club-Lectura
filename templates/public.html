@@ -67,7 +67,7 @@
     "@type": "Place",
     "name": {{ (meeting.location or city) | tojson }}
   },
-  "description": {{ ("Reunion del club para comentar " ~ (winner.title if winner else "la lectura actual")) | tojson }}
+  "description": {{ ("Reunión del club para comentar " ~ (winner.title if winner else "la lectura actual")) | tojson }}
 }
 </script>
 {% endif %}
@@ -228,9 +228,9 @@ nav{
 .btn-amber:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(232,184,109,.5)}
 .btn-amber--lg{padding:16px 30px;font-size:1rem;border-radius:13px;animation:pulse 2.5s ease-in-out infinite}
 .hero-qr{
-  display:inline-flex;align-items:center;gap:14px;
+  display:inline-flex;align-items:center;gap:17px;
   margin-top:20px;
-  padding:10px 18px 10px 10px;
+  padding:12px 22px 12px 12px;
   border-radius:14px;
   background:rgba(255,255,255,.04);
   border:1px solid var(--border);
@@ -244,7 +244,7 @@ nav{
   transform:translateY(-1px);
 }
 .hero-qr img{
-  width:80px;height:80px;
+  width:96px;height:96px;
   border-radius:9px;
   border:4px solid #fff;background:#fff;
   flex-shrink:0;
@@ -253,14 +253,14 @@ nav{
 }
 .hero-qr-body{display:flex;flex-direction:column;gap:3px}
 .hero-qr-eyebrow{
-  font-family:var(--font-mono);font-size:.6rem;letter-spacing:.12em;
+  font-family:var(--font-mono);font-size:.72rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--amber);opacity:.8;
 }
 .hero-qr-title{
-  font-size:.88rem;font-weight:700;color:var(--cream);line-height:1.3;
+  font-size:1.06rem;font-weight:700;color:var(--cream);line-height:1.3;
 }
 .hero-qr-sub{
-  font-size:.73rem;color:var(--muted);line-height:1.4;max-width:160px;
+  font-size:.88rem;color:var(--muted);line-height:1.4;max-width:192px;
 }
 @media(max-width:768px){
   .hero-qr{margin:18px auto 0}
@@ -276,11 +276,22 @@ nav{
 .hero-book{
   animation:fadeUp .9s .3s both;
   display:flex;justify-content:center;
+  perspective:900px;
+  cursor:none;
 }
 .book-3d{
   position:relative;display:inline-block;
   animation:floatBook 4s ease-in-out infinite;
+  transform-style:preserve-3d;
+  will-change:transform;
 }
+.book-glow{
+  position:absolute;inset:-30px;
+  border-radius:50%;
+  background:radial-gradient(ellipse at var(--gx,50%) var(--gy,50%), rgba(232,184,109,.35) 0%, transparent 70%);
+  pointer-events:none;opacity:0;transition:opacity .3s ease;z-index:-1;
+}
+.hero-book:hover .book-glow{opacity:1}
 .book-cover{
   width:200px;height:290px;border-radius:4px 12px 12px 4px;
   object-fit:cover;
@@ -611,6 +622,70 @@ footer a:hover{color:var(--amber)}
   .meeting-card{grid-template-columns:1fr}
   .book-cover{width:160px;height:232px}
 }
+
+/* ── SCROLL PROGRESS ─────────────────────────── */
+.scroll-progress{
+  position:fixed;top:0;left:0;z-index:999;
+  height:3px;width:0%;
+  background:linear-gradient(90deg,var(--amber) 0%,var(--teal) 50%,var(--amber) 100%);
+  background-size:200% 100%;
+  animation:shprogress 2.5s linear infinite;
+  transition:width .07s linear;
+  pointer-events:none;
+}
+@keyframes shprogress{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── STATS STRIP ─────────────────────────────── */
+.stats-strip{
+  border-top:1px solid var(--border2);border-bottom:1px solid var(--border2);
+  background:rgba(255,255,255,.012);backdrop-filter:blur(12px);
+}
+.stats-inner{
+  max-width:1100px;margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;
+}
+.stat-item{
+  text-align:center;padding:22px 40px;
+}
+.stat-num{
+  font-family:var(--font-serif);
+  font-size:2.2rem;font-weight:900;
+  color:var(--amber);line-height:1;
+  margin-bottom:5px;
+  text-shadow:0 0 30px rgba(232,184,109,.35);
+}
+.stat-label{
+  font-family:var(--font-mono);
+  font-size:.63rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);
+}
+.stat-sep{
+  width:1px;height:44px;
+  background:rgba(255,255,255,.07);
+  flex-shrink:0;
+}
+@media(max-width:560px){
+  .stat-item{padding:16px 20px}
+  .stat-num{font-size:1.7rem}
+  .stat-sep{display:none}
+}
+
+/* ── BACK TO TOP ─────────────────────────────── */
+.back-top{
+  position:fixed;bottom:28px;right:28px;z-index:90;
+  width:44px;height:44px;border-radius:12px;
+  background:rgba(232,184,109,.12);
+  border:1px solid rgba(232,184,109,.25);
+  color:var(--amber);font-size:1.15rem;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;text-decoration:none;
+  backdrop-filter:blur(12px);
+  opacity:0;transform:translateY(10px);
+  transition:.25s ease;
+  box-shadow:0 4px 20px rgba(0,0,0,.3);
+}
+.back-top.visible{opacity:1;transform:translateY(0)}
+.back-top:hover{background:rgba(232,184,109,.22);transform:translateY(-3px);box-shadow:0 8px 28px rgba(232,184,109,.25)}
 </style>
 <style>
 :root{
@@ -622,6 +697,8 @@ footer a:hover{color:var(--amber)}
 </style>
 </head>
 <body>
+<div class="scroll-progress" id="scroll-progress"></div>
+<a class="back-top" id="back-top" href="#" aria-label="Volver arriba">↑</a>
 
 <!-- NAV -->
 <nav>
@@ -632,9 +709,8 @@ footer a:hover{color:var(--amber)}
   <div class="nav-links">
     <a class="nav-link" href="#libro">Libro</a>
     <a class="nav-link" href="#reunion">Reunión</a>
-    <a class="nav-link" href="#bot">El bot</a>
+    <a class="nav-link" href="#bot">Participa</a>
     <a class="nav-link" href="#faq">FAQ</a>
-    <a class="nav-link" href="#historia">Historia</a>
     {% if group_invite_link %}
     <a class="nav-cta" href="{{ group_invite_link }}" target="_blank" rel="noopener">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
@@ -664,19 +740,18 @@ footer a:hover{color:var(--amber)}
         {% if group_invite_link %}
         <a class="btn-amber btn-amber--lg" href="{{ group_invite_link }}" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
-          Unirte a {{ club_name }}
+          Únete a {{ club_name }}
         </a>
         {% else %}
         <a class="btn-amber" href="#bot">
           📖 Ver cómo funciona
         </a>
         {% endif %}
-        <a class="btn-ghost" href="{% if meeting %}#reunion{% else %}#libro{% endif %}">{% if meeting %}Ver proxima reunion{% else %}Ver lectura actual{% endif %}</a>
-        <a class="btn-ghost" href="#bot">Como participar</a>
+        <a class="btn-ghost" href="{% if meeting %}#reunion{% else %}#libro{% endif %}">{% if meeting %}Ver próxima reunión{% else %}Ver lectura actual{% endif %}</a>
       </div>
       {% if group_invite_link %}
       <a class="hero-qr" href="{{ group_invite_link }}" target="_blank" rel="noopener">
-        <img src="{{ qr_image_data_uri }}" alt="QR Unirse" width="80" height="80" loading="lazy">
+        <img src="{{ qr_image_data_uri }}" alt="QR Unirse" width="96" height="96" loading="lazy">
         <div class="hero-qr-body">
           <span class="hero-qr-eyebrow">Escanea con el móvil</span>
           <div class="hero-qr-title">Únete al grupo</div>
@@ -685,8 +760,9 @@ footer a:hover{color:var(--amber)}
       </a>
       {% endif %}
     </div>
-    <div class="hero-book">
-      <div class="book-3d">
+    <div class="hero-book" id="hero-book">
+      <div class="book-3d" id="book-3d">
+        <div class="book-glow" id="book-glow"></div>
         {% if winner and winner.cover %}
           <img class="book-cover" src="{{ winner.cover }}" alt="{{ winner.title }}">
         {% elif winner %}
@@ -703,12 +779,43 @@ footer a:hover{color:var(--amber)}
   </div>
 </section>
 
+<!-- STATS STRIP -->
+<div class="stats-strip">
+  <div class="stats-inner">
+    {% if galeria %}
+    <div class="stat-item">
+      <div class="stat-num" data-target="{{ galeria|length }}">0</div>
+      <div class="stat-label">Libros leídos</div>
+    </div>
+    <div class="stat-sep"></div>
+    {% endif %}
+    <div class="stat-item">
+      <div class="stat-num">1×</div>
+      <div class="stat-label">Al mes nos reunimos</div>
+    </div>
+    {% if proposals %}
+    <div class="stat-sep"></div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="{{ proposals|length }}">0</div>
+      <div class="stat-label">Propuestas activas</div>
+    </div>
+    {% endif %}
+    {% if attendees %}
+    <div class="stat-sep"></div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="{{ attendees|length }}">0</div>
+      <div class="stat-label">Confirmados</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
 <!-- LIBRO ACTUAL -->
-<div class="divider" style="margin-top:0">§ Lectura del ciclo</div>
+<div class="divider" style="margin-top:0">§ Lectura del mes</div>
 <section class="section" id="libro">
-  <span class="section-label reveal">Ciclo actual</span>
+  <span class="section-label reveal">Selección actual</span>
   <h2 class="section-title reveal">{{ section_libro | default("El libro que estamos leyendo", true) }}</h2>
-  <p class="section-sub reveal">Elegido por la encuesta del grupo. Cada ciclo proponemos titulos y cerramos la lectura favorita con una votacion fijada en Telegram.</p>
+  <p class="section-sub reveal">Elegido por la encuesta del grupo. Proponemos títulos, votamos juntos y cerramos la lectura favorita con una votación fijada en Telegram.</p>
 
   {% if winner %}
   <div class="book-card reveal">
@@ -718,7 +825,7 @@ footer a:hover{color:var(--amber)}
       <div class="curr-cover-fb">📖</div>
     {% endif %}
     <div class="curr-info">
-      <span class="curr-tag">📗 Lectura del ciclo</span>
+      <span class="curr-tag">📗 Lectura del mes</span>
       <div class="curr-title">{{ winner.title }}</div>
       {% if winner.author %}<div class="curr-author">✍️ {{ winner.author }}</div>{% endif %}
       {% if winner.description %}
@@ -735,7 +842,7 @@ footer a:hover{color:var(--amber)}
   <div class="book-card reveal" style="grid-template-columns:1fr;text-align:center;padding:48px">
     <div style="font-size:3rem;margin-bottom:14px">🗳️</div>
     <div style="font-family:var(--font-serif);font-size:1.3rem;color:var(--cream);margin-bottom:8px">Las votaciones están abiertas</div>
-    <div style="color:var(--muted);font-size:.9rem">Aun no hay libro elegido. Unete al grupo para proponer y seguir la encuesta fijada.</div>
+    <div style="color:var(--muted);font-size:.9rem">Aún no hay libro elegido. Únete al grupo para proponer y seguir la encuesta fijada.</div>
   </div>
   {% endif %}
 </section>
@@ -782,9 +889,9 @@ footer a:hover{color:var(--amber)}
 {% if proposals %}
 <div class="divider">§ Vota el próximo</div>
 <section class="section" id="propuestas">
-  <span class="section-label reveal">Ciclo actual</span>
+  <span class="section-label reveal">En votación</span>
   <h2 class="section-title reveal">{{ section_propuestas | default("Propuestas en votación", true) }}</h2>
-  <p class="section-sub reveal">Unete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para ver el ranking y localizar la encuesta fijada del siguiente libro.</p>
+  <p class="section-sub reveal">Únete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para ver el ranking y localizar la encuesta fijada del siguiente libro.</p>
 
   {% set max_votes = proposals[0].votes if proposals[0].votes > 0 else 1 %}
   <div class="proposals-list reveal">
@@ -807,11 +914,11 @@ footer a:hover{color:var(--amber)}
 {% endif %}
 
 <!-- BOT COMMANDS -->
-<div class="divider">§ El bot</div>
+<div class="divider">§ Cómo participar</div>
 <section class="section" id="bot">
-  <span class="section-label reveal">Telegram Bot</span>
-  <h2 class="section-title reveal">{{ section_bot | default("¿Cómo funciona el bot?", true) }}</h2>
-  <p class="section-sub reveal">El bot vive en el grupo de Telegram y tambien en privado. Te guia para proponer libros, seguir las encuestas fijadas, confirmar asistencia y resolver dudas sin llenar el chat.</p>
+  <span class="section-label reveal">Participa en el club</span>
+  <h2 class="section-title reveal">{{ section_bot | default("¿Cómo participar en el club?", true) }}</h2>
+  <p class="section-sub reveal">Todo ocurre en el grupo de Telegram. Votamos los libros, confirmamos asistencia y compartimos el avance de lectura sin saturar el chat, gracias a un bot que guía cada paso.</p>
 
   <div class="commands-grid">
     {% for command in public_commands %}
@@ -821,23 +928,29 @@ footer a:hover{color:var(--amber)}
       <div class="cmd-title">{{ command.desc }}</div>
       <div class="cmd-desc">
         {% if command.id == 'proponer' %}
-          Escribe el titulo y el bot busca portada, autor, sinopsis y paginas para anadirlo a las propuestas del ciclo.
+          ¿Has leído algo que le encantaría al club? Escribe el título y el bot busca portada, autor, sinopsis y páginas para añadirlo a las propuestas.
         {% elif command.id == 'propuestas' %}
-          Revisa el ranking del ciclo y usa la encuesta fijada del grupo para votar sin perderte en el chat.
+          ¿Qué se está leyendo en el club? Revisa el ranking y usa la encuesta fijada para votar sin perderte en el chat.
         {% elif command.id == 'reunion' %}
-          Consulta fecha, lugar, libro y estado de asistencia de la proxima quedada.
-        {% elif command.id in ('asistir', 'noasistir', 'asistencia') %}
-          Gestiona tu plaza en la reunion y comprueba quien se ha apuntado.
+          ¿Cuándo es la próxima quedada? Consulta fecha, lugar, libro y quién ha confirmado asistencia.
+        {% elif command.id == 'asistir' %}
+          ¿Vas a venir? Confirma tu asistencia y añádete a la lista de la próxima reunión.
+        {% elif command.id == 'noasistir' %}
+          ¿Finalmente no puedes? Cancela tu asistencia fácilmente. Te esperamos el mes que viene.
+        {% elif command.id == 'asistencia' %}
+          Consulta quién ha confirmado para la próxima reunión y cuántos somos.
         {% elif command.id == 'tema' %}
-          Propone una tematica para el siguiente ciclo y confirmala antes de enviarla.
+          ¿Se te ocurre una temática interesante? Propón la tuya y el grupo votará si encaja con el siguiente libro.
         {% elif command.id == 'temas' %}
-          Revisa las tematicas del ciclo y sigue la encuesta fijada para votar la favorita.
+          ¿Qué leeremos después? Revisa las temáticas en liza y vota tu favorita en la encuesta del grupo.
         {% elif command.id == 'recomendar' %}
-          Pide ideas de lectura relacionadas con la tematica activa del club.
+          ¿Necesitas ideas? Pide recomendaciones de lectura relacionadas con la temática activa del club.
         {% elif command.id == 'progreso' %}
-          Guarda tus paginas leidas y sigue tu avance hasta la reunion.
+          ¿Cuántas páginas llevas? Registra tu avance y mantén el ritmo hasta la reunión del mes.
+        {% elif command.id == 'bud' %}
+          ¿Tienes alguna duda? Escribe al bot directamente y te orienta paso a paso con lo que necesitas.
         {% else %}
-          El menu del bot cambia segun el momento del ciclo para mostrar justo lo que mas sentido tiene ahora.
+          ¿Quieres saber más? El menú del bot se adapta a cada momento para mostrarte justo lo que necesitas ahora.
         {% endif %}
       </div>
       <code class="cmd-example">
@@ -845,10 +958,13 @@ footer a:hover{color:var(--amber)}
         {% elif command.id == 'propuestas' %}/propuestas
         {% elif command.id == 'reunion' %}/reunion
         {% elif command.id == 'asistir' %}/asistir
-        {% elif command.id == 'tema' %}/tema Novela historica
+        {% elif command.id == 'noasistir' %}/noasistir
+        {% elif command.id == 'asistencia' %}/asistencia
+        {% elif command.id == 'tema' %}/tema Novela histórica
         {% elif command.id == 'temas' %}/temas
         {% elif command.id == 'recomendar' %}/recomendar
         {% elif command.id == 'progreso' %}/progreso 120
+        {% elif command.id == 'bud' %}/bud
         {% else %}{{ command.label }}
         {% endif %}
       </code>
@@ -858,73 +974,34 @@ footer a:hover{color:var(--amber)}
 
   <div style="margin-top:24px;padding:20px 22px;background:rgba(78,205,196,.05);border:1px solid rgba(78,205,196,.15);border-radius:14px" class="reveal">
     <div style="font-family:var(--font-mono);font-size:.72rem;color:var(--teal);margin-bottom:6px;letter-spacing:.06em">CONSEJO</div>
-    <div style="font-size:.88rem;color:var(--cream2);line-height:1.6">El bot tambien funciona en <strong style="color:var(--cream)">privado</strong>. Escribelo directamente para usar atajos, flujos guiados y ayuda en lenguaje natural. Si le preguntas <span style="font-family:var(--font-mono);color:var(--teal)">como funciona</span> o <span style="font-family:var(--font-mono);color:var(--teal)">que hago ahora</span>, te orienta paso a paso.</div>
+    <div style="font-size:.88rem;color:var(--cream2);line-height:1.6">¿Prefieres no escribir en el grupo? El bot también funciona en <strong style="color:var(--cream)">privado</strong>. Ábrelo directamente, cuéntale dónde estás y él te guía: proponer, votar, confirmar asistencia... todo sin molestar al chat.</div>
   </div>
 </section>
 
 <section class="section" id="faq">
   <span class="section-label reveal">Preguntas frecuentes</span>
-  <h2 class="section-title reveal">FAQ rapida para nuevos miembros</h2>
-  <p class="section-sub reveal">Lo justo para entender como funciona el club antes de entrar al grupo o escribir al bot.</p>
+  <h2 class="section-title reveal">FAQ rápida para nuevos miembros</h2>
+  <p class="section-sub reveal">Lo justo para entender cómo funciona el club antes de entrar al grupo o escribir al bot.</p>
 
   <div class="faq-grid">
     <div class="faq-card reveal">
-      <div class="faq-q">¿Como funciona?</div>
-      <div class="faq-a">Cada ciclo elegimos una tematica, luego proponemos libros, votamos en la encuesta fijada de Telegram y cerramos una reunion para comentarlo juntos.</div>
+      <div class="faq-q">¿Cómo funciona?</div>
+      <div class="faq-a">Cada mes elegimos una temática, proponemos libros, votamos en la encuesta fijada de Telegram y quedamos para comentarlo juntos. Todo conectado, mes a mes.</div>
     </div>
     <div class="faq-card reveal">
-      <div class="faq-q">¿Cada cuanto nos reunimos?</div>
-      <div class="faq-a">Normalmente una vez por ciclo. El bot y la pagina publica muestran la proxima reunion en cuanto la fecha esta cerrada o cuando la encuesta de fechas ya esta en marcha.</div>
+      <div class="faq-q">¿Cada cuánto nos reunimos?</div>
+      <div class="faq-a">Nos reunimos una vez al mes. La fecha se confirma en el grupo de Telegram en cuanto cerramos la votación. La página siempre muestra la próxima cita en cuanto está fijada.</div>
     </div>
     <div class="faq-card reveal">
-      <div class="faq-q">¿Donde se vota?</div>
-      <div class="faq-a">Las votaciones se hacen siempre con encuestas nativas de Telegram fijadas en el grupo. El bot te ayuda a ver el ranking y a localizar la encuesta correcta.</div>
+      <div class="faq-q">¿Dónde se vota?</div>
+      <div class="faq-a">Las votaciones se hacen con encuestas nativas de Telegram, fijadas en el grupo para que no se pierdan. El bot te ayuda a ver el ranking y a localizar la encuesta correcta.</div>
     </div>
     <div class="faq-card reveal">
-      <div class="faq-q">¿Como me uno?</div>
-      <div class="faq-a">Si tienes enlace, entra al grupo y despues abre el bot en privado con <span style="font-family:var(--font-mono);color:var(--teal)">/start</span>. Si aun no lo tienes, pidelo a un miembro o al equipo del club.</div>
+      <div class="faq-q">¿Cómo me uno?</div>
+      <div class="faq-a">Si tienes enlace de invitación, entra al grupo y ya formas parte del club. Si aún no lo tienes, pídelo a algún miembro o al equipo del club.</div>
     </div>
   </div>
 </section>
-
-<!-- GALERÍA / HISTORIA -->
-{% if galeria %}
-<div class="divider">§ Historia del club</div>
-<section class="section" id="historia">
-  <span class="section-label reveal">Encuentros pasados</span>
-  <h2 class="section-title reveal">{{ section_historia | default("Lo que hemos leído juntos", true) }}</h2>
-  <p class="section-sub reveal">Cada reunión es un capítulo de la historia del club. Aquí quedan registrados todos nuestros encuentros.</p>
-
-  <div class="past-scroll reveal">
-    {% for g in galeria %}
-    <div class="past-card">
-      <div class="past-cover">
-        {% if g.book_cover %}
-          <img src="{{ g.book_cover }}" alt="{{ g.book_title }}" loading="lazy">
-        {% else %}
-          <div class="past-cover-fb">📖</div>
-        {% endif %}
-        <div class="past-overlay"></div>
-        <span class="past-cycle">{{ g.cycle_key }}</span>
-      </div>
-      <div class="past-body">
-        <div class="past-title">{{ g.book_title or "Sin título" }}</div>
-        {% if g.book_author %}<div class="past-author">{{ g.book_author }}</div>{% endif %}
-        <div class="past-meta">
-          <span class="past-date">{{ g.final_date | string | truncate(10, True, '') if g.final_date else g.cycle_key }}</span>
-          <span class="past-attendees">👥 {{ g.attendee_count }}</span>
-        </div>
-        {% if g.summary %}
-        <div class="past-summary">{{ g.summary }}</div>
-        {% elif g.notes %}
-        <div class="past-summary">{{ g.notes }}</div>
-        {% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
 
 <!-- JOIN CTA -->
 <section class="section" id="unirse" style="padding-bottom:80px">
@@ -935,7 +1012,7 @@ footer a:hover{color:var(--amber)}
       {% if group_invite_link %}
         {{ join_body | default("Somos un grupo de lectores apasionados. Únete, propón libros y queda con nosotros.", true) }}
       {% else %}
-        Habla con el bot en Telegram para empezar a participar. Propon libros, sigue las encuestas del grupo y queda con el club.
+        Habla con el bot en Telegram para empezar a participar. Propón libros, sigue las encuestas del grupo y queda con el club.
       {% endif %}
     </p>
     {% if group_invite_link %}
@@ -953,7 +1030,7 @@ footer a:hover{color:var(--amber)}
 
 <footer>
   <div class="footer-inner">
-    <div>📚 &nbsp; {{ club_name }}{% if city %} &nbsp;·&nbsp; {{ city }}{% endif %} &nbsp;·&nbsp; Gestionado con Telegram Bot</div>
+    <div>📚 &nbsp; {{ club_name }}{% if city %} &nbsp;·&nbsp; {{ city }}{% endif %}</div>
     <div>
       {% if group_invite_link %}
       <a href="{{ group_invite_link }}" target="_blank" rel="noopener">Únete al grupo</a>
@@ -991,6 +1068,80 @@ const propObs = new IntersectionObserver(entries => {
 }, { threshold: 0.2 });
 const propList = document.querySelector('.proposals-list');
 if(propList) propObs.observe(propList);
+
+// Scroll progress bar
+const scrollProgress = document.getElementById('scroll-progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+  if(scrollProgress) scrollProgress.style.width = pct + '%';
+}, {passive:true});
+
+// Back to top button
+const backTop = document.getElementById('back-top');
+window.addEventListener('scroll', () => {
+  if(backTop) backTop.classList.toggle('visible', window.scrollY > 400);
+}, {passive:true});
+if(backTop) backTop.addEventListener('click', e => { e.preventDefault(); window.scrollTo({top:0,behavior:'smooth'}); });
+
+// 3D tilt on hero book
+(function(){
+  const wrap = document.getElementById('hero-book');
+  const el   = document.getElementById('book-3d');
+  const glow = document.getElementById('book-glow');
+  if (!wrap || !el) return;
+  let rafId, leaveTimer;
+
+  wrap.addEventListener('mouseenter', () => {
+    clearTimeout(leaveTimer);
+    el.style.animationPlayState = 'paused';
+  });
+
+  wrap.addEventListener('mousemove', e => {
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const r  = wrap.getBoundingClientRect();
+      const x  = (e.clientX - r.left)  / r.width  - 0.5; // -0.5 → 0.5
+      const y  = (e.clientY - r.top)   / r.height - 0.5;
+      el.style.transition = 'transform .08s ease';
+      el.style.transform  = `rotateY(${x * 26}deg) rotateX(${-y * 20}deg) scale(1.05)`;
+      if (glow) {
+        glow.style.setProperty('--gx', `${(x + 0.5) * 100}%`);
+        glow.style.setProperty('--gy', `${(y + 0.5) * 100}%`);
+      }
+    });
+  });
+
+  wrap.addEventListener('mouseleave', () => {
+    cancelAnimationFrame(rafId);
+    el.style.transition = 'transform .65s cubic-bezier(.22,1,.36,1)';
+    el.style.transform  = 'rotateY(-1deg) rotateX(0deg) scale(1)';
+    leaveTimer = setTimeout(() => {
+      el.style.transform = '';
+      el.style.transition = '';
+      el.style.animationPlayState = 'running';
+    }, 680);
+  });
+})();
+
+// Animated counters (stats strip)
+const counterObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(!e.isIntersecting) return;
+    const el = e.target;
+    const target = parseInt(el.dataset.target);
+    if(isNaN(target)) return;
+    let current = 0;
+    const step = Math.max(1, Math.floor(target / 30));
+    const timer = setInterval(() => {
+      current = Math.min(current + step, target);
+      el.textContent = current;
+      if(current >= target) clearInterval(timer);
+    }, 40);
+    counterObs.unobserve(el);
+  });
+}, {threshold:0.5});
+document.querySelectorAll('.stat-num[data-target]').forEach(el => counterObs.observe(el));
 </script>
 </body>
 </html>

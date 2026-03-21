@@ -285,13 +285,6 @@ nav{
   transform-style:preserve-3d;
   will-change:transform;
 }
-.book-glow{
-  position:absolute;inset:-30px;
-  border-radius:50%;
-  background:radial-gradient(ellipse at var(--gx,50%) var(--gy,50%), rgba(232,184,109,.35) 0%, transparent 70%);
-  pointer-events:none;opacity:0;transition:opacity .3s ease;z-index:-1;
-}
-.hero-book:hover .book-glow{opacity:1}
 .book-cover{
   width:200px;height:290px;border-radius:4px 12px 12px 4px;
   object-fit:cover;
@@ -762,7 +755,6 @@ footer a:hover{color:var(--amber)}
     </div>
     <div class="hero-book" id="hero-book">
       <div class="book-3d" id="book-3d">
-        <div class="book-glow" id="book-glow"></div>
         {% if winner and winner.cover %}
           <img class="book-cover" src="{{ winner.cover }}" alt="{{ winner.title }}">
         {% elif winner %}
@@ -786,25 +778,6 @@ footer a:hover{color:var(--amber)}
     <div class="stat-item">
       <div class="stat-num" data-target="{{ galeria|length }}">0</div>
       <div class="stat-label">Libros leídos</div>
-    </div>
-    <div class="stat-sep"></div>
-    {% endif %}
-    <div class="stat-item">
-      <div class="stat-num">1×</div>
-      <div class="stat-label">Al mes nos reunimos</div>
-    </div>
-    {% if proposals %}
-    <div class="stat-sep"></div>
-    <div class="stat-item">
-      <div class="stat-num" data-target="{{ proposals|length }}">0</div>
-      <div class="stat-label">Propuestas activas</div>
-    </div>
-    {% endif %}
-    {% if attendees %}
-    <div class="stat-sep"></div>
-    <div class="stat-item">
-      <div class="stat-num" data-target="{{ attendees|length }}">0</div>
-      <div class="stat-label">Confirmados</div>
     </div>
     {% endif %}
   </div>
@@ -885,33 +858,6 @@ footer a:hover{color:var(--amber)}
 </section>
 {% endif %}
 
-<!-- PROPUESTAS -->
-{% if proposals %}
-<div class="divider">§ Vota el próximo</div>
-<section class="section" id="propuestas">
-  <span class="section-label reveal">En votación</span>
-  <h2 class="section-title reveal">{{ section_propuestas | default("Propuestas en votación", true) }}</h2>
-  <p class="section-sub reveal">Únete al grupo y usa <span style="font-family:var(--font-mono);color:var(--teal)">/propuestas</span> para ver el ranking y localizar la encuesta fijada del siguiente libro.</p>
-
-  {% set max_votes = proposals[0].votes if proposals[0].votes > 0 else 1 %}
-  <div class="proposals-list reveal">
-    {% for p in proposals %}
-    <div class="prop-row" style="--w:{{ [((p.votes / max_votes) * 100)|int, 8]|max }}%">
-      <div class="prop-bar"></div>
-      <div class="prop-num">{{ loop.index }}</div>
-      <div class="prop-info">
-        <div class="prop-title">{{ p.title }}</div>
-        {% if p.author %}<div class="prop-author">{{ p.author }}</div>{% endif %}
-      </div>
-      <div class="prop-votes">{{ p.votes }} 🗳️</div>
-    </div>
-    {% endfor %}
-  </div>
-  <p style="margin-top:16px;font-size:.8rem;color:var(--muted);font-family:var(--font-mono)">
-    → Para votar: abre la encuesta fijada del grupo. /propuestas te ayuda a seguir el ranking.
-  </p>
-</section>
-{% endif %}
 
 <!-- BOT COMMANDS -->
 <div class="divider">§ Cómo participar</div>
@@ -935,8 +881,6 @@ footer a:hover{color:var(--amber)}
           ¿Cuándo es la próxima quedada? Consulta fecha, lugar, libro y quién ha confirmado asistencia.
         {% elif command.id == 'asistir' %}
           ¿Vas a venir? Confirma tu asistencia y añádete a la lista de la próxima reunión.
-        {% elif command.id == 'noasistir' %}
-          ¿Finalmente no puedes? Cancela tu asistencia fácilmente. Te esperamos el mes que viene.
         {% elif command.id == 'asistencia' %}
           Consulta quién ha confirmado para la próxima reunión y cuántos somos.
         {% elif command.id == 'tema' %}
@@ -945,10 +889,6 @@ footer a:hover{color:var(--amber)}
           ¿Qué leeremos después? Revisa las temáticas en liza y vota tu favorita en la encuesta del grupo.
         {% elif command.id == 'recomendar' %}
           ¿Necesitas ideas? Pide recomendaciones de lectura relacionadas con la temática activa del club.
-        {% elif command.id == 'progreso' %}
-          ¿Cuántas páginas llevas? Registra tu avance y mantén el ritmo hasta la reunión del mes.
-        {% elif command.id == 'bud' %}
-          ¿Tienes alguna duda? Escribe al bot directamente y te orienta paso a paso con lo que necesitas.
         {% else %}
           ¿Quieres saber más? El menú del bot se adapta a cada momento para mostrarte justo lo que necesitas ahora.
         {% endif %}
@@ -958,13 +898,10 @@ footer a:hover{color:var(--amber)}
         {% elif command.id == 'propuestas' %}/propuestas
         {% elif command.id == 'reunion' %}/reunion
         {% elif command.id == 'asistir' %}/asistir
-        {% elif command.id == 'noasistir' %}/noasistir
         {% elif command.id == 'asistencia' %}/asistencia
         {% elif command.id == 'tema' %}/tema Novela histórica
         {% elif command.id == 'temas' %}/temas
         {% elif command.id == 'recomendar' %}/recomendar
-        {% elif command.id == 'progreso' %}/progreso 120
-        {% elif command.id == 'bud' %}/bud
         {% else %}{{ command.label }}
         {% endif %}
       </code>
@@ -1088,7 +1025,6 @@ if(backTop) backTop.addEventListener('click', e => { e.preventDefault(); window.
 (function(){
   const wrap = document.getElementById('hero-book');
   const el   = document.getElementById('book-3d');
-  const glow = document.getElementById('book-glow');
   if (!wrap || !el) return;
   let rafId, leaveTimer;
 
@@ -1105,10 +1041,6 @@ if(backTop) backTop.addEventListener('click', e => { e.preventDefault(); window.
       const y  = (e.clientY - r.top)   / r.height - 0.5;
       el.style.transition = 'transform .08s ease';
       el.style.transform  = `rotateY(${x * 26}deg) rotateX(${-y * 20}deg) scale(1.05)`;
-      if (glow) {
-        glow.style.setProperty('--gx', `${(x + 0.5) * 100}%`);
-        glow.style.setProperty('--gy', `${(y + 0.5) * 100}%`);
-      }
     });
   });
 

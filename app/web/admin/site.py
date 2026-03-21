@@ -74,7 +74,8 @@ def render_public_page(group_invite_link):
         default_base_url=request.url_root.rstrip("/"),
     )
     seo = build_public_seo_view(settings, winner=winner, meeting=meeting)
-    public_commands = get_contextual_commands("private", cycle_key=current_cycle, is_admin=False)[:6]
+    _public_hidden = {"noasistir", "bug", "progreso"}
+    public_commands = [c for c in get_contextual_commands("private", cycle_key=current_cycle, is_admin=False) if c["id"] not in _public_hidden][:6]
     return render_template(
         "public.html",
         winner=winner,

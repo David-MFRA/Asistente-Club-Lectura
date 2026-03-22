@@ -54,11 +54,12 @@ class ExtraHandlers:
             await update.message.reply_text("Espera unos segundos antes de volver a usar este comando.", parse_mode=None)
             return
         try:
+            from html import escape as h
             question = trivia.generate()
-            await update.message.reply_text(self.esc(question), parse_mode="MarkdownV2")
+            await update.message.reply_text(h(question), parse_mode="HTML")
         except Exception:
             self.logger.exception("Error en /trivia")
-            await update.message.reply_text("Error generando trivia\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error generando trivia.", parse_mode=None)
 
     async def recomendar(self, update, context):
         if not await self.allowed(update):
@@ -82,24 +83,26 @@ class ExtraHandlers:
             cache_key = f"recomendar:{theme_name.casefold()}"
             rec = self._get_cached(cache_key)
             if rec is None:
+                from html import escape as h
                 wait = await update.message.reply_text(
-                    f"Buscando libros de _{self.esc(theme_name)}_\\.\\.\\.",
-                    parse_mode="MarkdownV2",
+                    f"Buscando libros de <i>{h(theme_name)}</i>...",
+                    parse_mode="HTML",
                 )
                 rec = recommendations.recommend(theme_name)
                 await wait.delete()
                 self._set_cached(cache_key, rec, ttl_seconds=1800)
             if not rec:
-                await update.message.reply_text("No encontré recomendaciones\\.", parse_mode="MarkdownV2")
+                await update.message.reply_text("No encontré recomendaciones.", parse_mode=None)
                 return
-            lines = [f"{self.bold('Recomendaciones')} - tema {self.italic(theme_name)}\n"]
+            from html import escape as h
+            lines = [f"<b>Recomendaciones</b> — tema <i>{h(theme_name)}</i>\n"]
             for index, item in enumerate(rec, 1):
-                author_str = f"\n   _{self.esc(item['author'])}_" if item.get("author") else ""
-                lines.append(f"{self.bold(str(index))}\\. {self.esc(item['title'])}{author_str}")
-            await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+                author_str = f"\n   <i>{h(item['author'])}</i>" if item.get("author") else ""
+                lines.append(f"<b>{index}.</b> {h(item['title'])}{author_str}")
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
         except Exception:
             self.logger.exception("Error en /recomendar")
-            await update.message.reply_text("Error obteniendo recomendaciones\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("Error obteniendo recomendaciones.", parse_mode=None)
 
     async def preguntas_cmd(self, update, context):
         if not await self.allowed(update):

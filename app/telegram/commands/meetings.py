@@ -1,3 +1,5 @@
+from html import escape as h
+
 import db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -25,36 +27,35 @@ class MeetingHandlers:
                 await update.message.reply_text(guidance or "No hay reuniones programadas todavía.", parse_mode=None)
                 return
 
-            lines = ["Reuniones programadas\n"]
+            lines = ["📆 <b>Reuniones programadas</b>\n"]
             for meeting in meetings:
                 date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-                lines.append(f"• {meeting['name']}")
-                lines.append(f"  {date_text}")
-                if meeting.get("location"):
-                    lines.append(f"  {meeting['location']}")
-                if meeting.get("extras"):
-                    lines.append(f"  {meeting['extras']}")
                 attendees = db.get_attendance(meeting["id"])
-                lines.append(f"  Apuntados: {len(attendees)}")
+                lines.append(f"🔹 <b>{h(meeting['name'])}</b>")
+                lines.append(f"🗓 {h(date_text)}")
+                if meeting.get("location"):
+                    lines.append(f"📍 {h(meeting['location'])}")
+                if meeting.get("extras"):
+                    lines.append(f"✨ <i>{h(meeting['extras'])}</i>")
+                lines.append(f"👥 Apuntados: <b>{len(attendees)}</b>")
                 lines.append("")
 
             await update.message.reply_text(
                 "\n".join(lines).rstrip(),
-                parse_mode=None,
+                parse_mode="HTML",
             )
 
-            # Send attend/leave buttons for each upcoming meeting
+            # Send attend/leave button for each non-closed meeting
             for meeting in meetings:
                 if meeting.get("status") == "closed":
                     continue
                 date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-                label = f"{meeting['name']} · {date_text}"
                 keyboard = [
                     [InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]
                 ]
                 await update.message.reply_text(
-                    label,
-                    parse_mode=None,
+                    f"<b>{h(meeting['name'])}</b> · {h(date_text)}",
+                    parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(keyboard),
                 )
         except Exception:
@@ -163,14 +164,17 @@ class MeetingHandlers:
                 await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             attendees = db.get_attendance(meeting["id"])
-            names = "\n".join(f"  • {name}" for name in attendees) if attendees else "Nadie apuntado todavía"
+            if attendees:
+                names = "\n".join(f"  {i}. {h(name)}" for i, name in enumerate(attendees, 1))
+            else:
+                names = "Nadie apuntado todavía"
             await update.message.reply_text(
                 (
-                    f"Asistencia — {meeting['name']}\n\n"
-                    f"{names}\n\n"
+                    f"📅 <b>{h(meeting['name'])}</b>\n\n"
+                    f"👥 <b>Apuntados ({len(attendees)}):</b>\n{names}\n\n"
                     "Usa /asistir o /noasistir para apuntarte o quitarte."
                 ),
-                parse_mode=None,
+                parse_mode="HTML",
             )
         except Exception:
             self.logger.exception("Error en /asistencia")

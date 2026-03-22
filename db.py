@@ -1445,7 +1445,8 @@ def close_cycle(cycle_key=None):
 
 
 def auto_close_past_meetings():
-    """Marca como 'closed' las reuniones cuya fecha pasó hace más de 4 horas."""
+    """Marca como 'closed' las reuniones cuya fecha pasó hace más de 4 horas.
+    También desactiva ciclos que ya no tienen reuniones futuras pendientes."""
     with get_cursor(commit=True) as cur:
         cur.execute("""
             UPDATE meetings
@@ -1457,6 +1458,24 @@ def auto_close_past_meetings():
         count = cur.rowcount
     if count:
         logger.info("Auto-cierre: %d reunión(es) marcadas como cerradas", count)
+
+    # Desactiva ciclos activos sin reuniones futuras pendientes
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE cycles
+            SET is_active = FALSE, updated_at = NOW()
+            WHERE is_active = TRUE
+              AND NOT EXISTS (
+                SELECT 1 FROM meetings
+                WHERE meetings.cycle_key = cycles.cycle_key
+                  AND meetings.status NOT IN ('closed', 'cancelled')
+                  AND (meetings.final_date IS NULL OR meetings.final_date > NOW() - INTERVAL '4 hours')
+              )
+        """)
+        cycles_closed = cur.rowcount
+    if cycles_closed:
+        logger.info("Auto-cierre: %d ciclo(s) desactivado(s) por no tener reuniones futuras", cycles_closed)
+
     return count
 
 

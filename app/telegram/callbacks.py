@@ -24,16 +24,19 @@ class CallbackHandler:
         return InlineKeyboardMarkup(keyboard)
 
     def _attendance_text(self, meeting):
+        from html import escape as h
         attendees = db.get_attendance(meeting["id"])
-        names = ", ".join(attendees) if attendees else "nadie"
-        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha cerrada"
+        date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
         lines = [
-            f"Reunión: {meeting['name']}",
-            f"Fecha: {date_text}",
-            f"Apuntados ({len(attendees)}): {names}",
+            f"📅 <b>{h(meeting['name'])}</b>",
+            f"🗓 <b>{h(date_text)}</b>",
         ]
         if meeting.get("location"):
-            lines.append(f"Lugar: {meeting['location']}")
+            lines.append(f"📍 {h(meeting['location'])}")
+        if meeting.get("extras"):
+            lines.append(f"✨ <i>{h(meeting['extras'])}</i>")
+        numbered = "\n".join(f"  {i}. {h(a)}" for i, a in enumerate(attendees, 1)) if attendees else "ninguno de momento"
+        lines.append(f"👥 <b>Apuntados ({len(attendees)}):</b>\n{numbered}")
         lines.append("")
         lines.append("Pulsa el botón para apuntarte o quitarte.")
         return "\n".join(lines)
@@ -43,40 +46,36 @@ class CallbackHandler:
         if getattr(message, "photo", None) or getattr(message, "caption", None):
             await query.edit_message_caption(
                 caption=text,
-                parse_mode=None,
+                parse_mode="HTML",
                 reply_markup=reply_markup,
             )
             return
         await query.edit_message_text(
             text=text,
-            parse_mode=None,
+            parse_mode="HTML",
             reply_markup=reply_markup,
         )
 
     async def _send_meeting_info(self, query, context, meeting_id):
+        from html import escape as h
         meeting = db.get_meeting(meeting_id)
         if not meeting:
             await query.answer("No encuentro esa reunión ahora mismo.", show_alert=True)
             return
         attendees = db.get_attendance(meeting_id)
         date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-        status_map = {"draft": "Borrador", "scheduled": "Confirmada", "closed": "Cerrada"}
-        lines = [
-            meeting["name"],
-            "",
-            f"Fecha: {date_text}",
-            f"Estado: {status_map.get(meeting.get('status'), meeting.get('status', ''))}",
-            f"Asistentes: {len(attendees)}",
-        ]
+        lines = [f"📅 <b>{h(meeting['name'])}</b>", f"🗓 <b>{h(date_text)}</b>"]
         if meeting.get("location"):
-            lines.append(f"Lugar: {meeting['location']}")
+            lines.append(f"📍 {h(meeting['location'])}")
+        if meeting.get("extras"):
+            lines.append(f"✨ <i>{h(meeting['extras'])}</i>")
+        lines.append(f"👥 <b>Apuntados:</b> {len(attendees)}")
         if meeting.get("notes"):
-            lines.append("")
-            lines.append(str(meeting["notes"])[:500])
+            lines.append(f"\n📝 <i>{h(str(meeting['notes'])[:500])}</i>")
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text="\n".join(lines),
-            parse_mode=None,
+            parse_mode="HTML",
         )
         await query.answer("Te mando los detalles en este chat.")
 
@@ -157,20 +156,21 @@ class CallbackHandler:
                 if book_id_str and book_id_str != "0":
                     book = db.get_book_by_id(int(book_id_str))
                     if book:
-                        lines = [book["title"]]
+                        from html import escape as h
+                        lines = [f"📗 <b>{h(book['title'])}</b>"]
                         if book.get("author"):
-                            lines.append(book["author"])
+                            lines.append(f"✍️ <i>{h(book['author'])}</i>")
                         if book.get("pages"):
-                            lines.append(f"{book['pages']} páginas")
+                            lines.append(f"📄 {book['pages']} páginas")
                         if book.get("description"):
                             description = book["description"]
-                            if len(description) > 400:
-                                description = description[:397] + "..."
-                            lines.append(f"\n{description}")
+                            if len(description) > 900:
+                                description = description[:897] + "…"
+                            lines.append(f"\n{h(description)}")
                         await context.bot.send_message(
                             chat_id=query.message.chat_id,
                             text="\n".join(lines),
-                            parse_mode=None,
+                            parse_mode="HTML",
                         )
                         await query.answer("Te mando la ficha del libro en este chat.")
                     else:

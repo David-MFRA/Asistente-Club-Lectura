@@ -58,8 +58,8 @@ class BookHandlers:
             return
 
         wait_msg = await update.message.reply_text(
-            f"Buscando _{self.esc(title)}_\\.\\.\\.",
-            parse_mode="MarkdownV2",
+            f"Buscando <i>{__import__('html').escape(title)}</i>...",
+            parse_mode="HTML",
         )
         try:
             book = books_api.google_books(title)
@@ -90,25 +90,25 @@ class BookHandlers:
 
             db.log_event("bot", f"Libro propuesto: {book['title']}", category="book", actor=user_name)
             self.logger.info("/proponer: exito '%s' por %s (meeting_id=%s)", book["title"], user_name, open_meeting["id"])
-            lines = [f"{self.bold('Libro propuesto')} por {self.italic(user_name)}\n"]
-            lines.append(f"{self.bold(book['title'])}")
+            from html import escape as h
+            lines = [f"📗 <b>Libro propuesto</b> por <i>{h(user_name)}</i>\n"]
+            lines.append(f"<b>{h(book['title'])}</b>")
             if book.get("author"):
-                lines.append(self.italic(book["author"]))
+                lines.append(f"✍️ <i>{h(book['author'])}</i>")
             if book.get("pages"):
-                lines.append(f"{self.esc(str(book['pages']))} páginas")
+                lines.append(f"📄 {book['pages']} páginas")
             if book.get("description"):
                 description = book["description"]
-                if len(description) > 300:
-                    description = description[:297] + "..."
-                lines.append(f"\n_{self.esc(description)}_")
-            lines.append("\n_Usa /propuestas para seguir el ranking y vota en la encuesta fijada del grupo._")
-            lines.append("_Siguiente paso util: revisa /reunion o propone otro libro._")
+                if len(description) > 900:
+                    description = description[:897] + "…"
+                lines.append(f"\n<i>{h(description)}</i>")
+            lines.append("\nUsa /propuestas para ver las propuestas.")
             caption = "\n".join(lines)
 
             if book.get("cover"):
-                await update.message.reply_photo(photo=book["cover"], caption=caption, parse_mode="MarkdownV2")
+                await update.message.reply_photo(photo=book["cover"], caption=caption, parse_mode="HTML")
             else:
-                await update.message.reply_text(caption, parse_mode="MarkdownV2")
+                await update.message.reply_text(caption, parse_mode="HTML")
         except Exception:
             self.logger.exception("Error en /proponer")
             await update.message.reply_text("Error añadiendo el libro.", parse_mode=None)
@@ -136,31 +136,37 @@ class BookHandlers:
                 )
                 return
 
+            from html import escape as h
             cycle_key = db.get_current_cycle_key()
             has_active_poll = bool(db.get_open_polls("books", cycle_key))
+
+            if open_meeting:
+                header = f"<b>Propuestas para</b> {h(open_meeting['name'])}"
+            else:
+                header = "<b>Propuestas del ciclo</b>"
 
             lines = [f"{header}\n"]
             for idx, book in enumerate(books, 1):
                 pos = book.get("cycle_position", idx)
-                author_str = f" - _{self.esc(book['author'])}_" if book.get("author") else ""
+                author_str = f" — <i>{h(book['author'])}</i>" if book.get("author") else ""
                 if has_active_poll:
                     votes = book.get("votes", 0)
                     stars = "★" * min(votes, 5) if votes > 0 else "·"
                     lines.append(
-                        f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
-                        f"   {self.esc(stars)} {self.bold(str(votes))} voto{'s' if votes != 1 else ''}"
+                        f"<b>{pos}.</b> {h(book['title'])}{author_str}\n"
+                        f"   {stars} <b>{votes}</b> voto{'s' if votes != 1 else ''}"
                     )
                 else:
-                    lines.append(f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}")
+                    lines.append(f"<b>{pos}.</b> {h(book['title'])}{author_str}")
 
             lines.append("")
             if has_active_poll:
-                lines.append("_Abre el mensaje fijado para votar y usa /resultados para seguir cómo va\\._")
+                lines.append("<i>Abre el mensaje fijado para votar y usa /resultados para seguir cómo va.</i>")
             else:
-                lines.append("_Todavía no hay encuesta activa\\. Cuando se abra aparecerá fijada en el grupo\\._")
+                lines.append("<i>Todavía no hay encuesta activa. Cuando se abra aparecerá fijada en el grupo.</i>")
             await update.message.reply_text(
                 "\n".join(lines),
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
             )
         except Exception:
             self.logger.exception("Error en /propuestas")
@@ -182,16 +188,17 @@ class BookHandlers:
             if not books:
                 await update.message.reply_text("No hay resultados todavía.", parse_mode=None)
                 return
-            medals = ["1.", "2.", "3."]
-            lines = [f"{self.bold('Resultados del ciclo')}\n"]
+            from html import escape as h
+            medals = ["🥇", "🥈", "🥉"]
+            lines = ["<b>Resultados del ciclo</b>\n"]
             for index, book in enumerate(books):
-                medal = medals[index] if index < 3 else f"{index + 1}\\."
-                author_str = f"\n   _{self.esc(book['author'])}_" if book.get("author") else ""
+                medal = medals[index] if index < 3 else f"{index + 1}."
+                author_str = f"\n   <i>{h(book['author'])}</i>" if book.get("author") else ""
                 lines.append(
-                    f"{medal} {self.bold(book['title'])}{author_str}\n"
-                    f"   {self.bold(str(book['votes']))} voto{'s' if book['votes'] != 1 else ''}"
+                    f"{medal} <b>{h(book['title'])}</b>{author_str}\n"
+                    f"   <b>{book['votes']}</b> voto{'s' if book['votes'] != 1 else ''}"
                 )
-            await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
         except Exception:
             self.logger.exception("Error en /resultados")
             await update.message.reply_text("Error obteniendo resultados.", parse_mode=None)

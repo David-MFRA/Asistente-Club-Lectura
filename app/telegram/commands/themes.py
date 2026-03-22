@@ -78,21 +78,22 @@ class ThemeHandlers:
                     parse_mode=None,
                 )
                 return
-            lines = [f"{self.bold('Temáticas del ciclo')}\n"]
+            from html import escape as h
+            lines = ["<b>Temáticas del ciclo</b>\n"]
             for theme in rows:
                 bar = "■" * min(theme["votes"], 8) if theme["votes"] > 0 else "·"
                 lines.append(
-                    f"{self.bold(str(theme['id']))}\\. {self.esc(theme['name'])}\n"
-                    f"   {bar} {self.bold(str(theme['votes']))} voto{'s' if theme['votes'] != 1 else ''}"
+                    f"<b>{theme['id']}.</b> {h(theme['name'])}\n"
+                    f"   {bar} <b>{theme['votes']}</b> voto{'s' if theme['votes'] != 1 else ''}"
                 )
-            lines.append("\n_La votación se hace en la encuesta fijada del grupo._")
+            lines.append("\n<i>La votación se hace en la encuesta fijada del grupo.</i>")
             if db.get_open_poll("themes", cycle_key=db.get_current_cycle_key()):
-                lines.append("_Abre el mensaje fijado para votar y vuelve aquí cuando quieras revisar cómo va._")
+                lines.append("<i>Abre el mensaje fijado para votar.</i>")
             else:
-                lines.append("_Ahora mismo no hay encuesta activa; cuando se abra aparecerá fijada en el grupo._")
+                lines.append("<i>Ahora mismo no hay encuesta activa; cuando se abra aparecerá fijada en el grupo.</i>")
             await update.message.reply_text(
                 "\n".join(lines),
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
             )
         except Exception:
             self.logger.exception("Error en /temas")

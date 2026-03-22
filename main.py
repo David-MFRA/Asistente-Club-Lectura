@@ -229,8 +229,8 @@ async def announce_winner(book, cycle_key=None):
     lines.append(f"\n🗳️ Ganó con <b>{votes} voto{'s' if votes != 1 else ''}</b>")
     if book.get("description"):
         desc = hesc(book["description"])
-        if len(desc) > 600:
-            desc = desc[:597] + "…"
+        if len(desc) > 900:
+            desc = desc[:897] + "…"
         lines.append(f"\n📖 <i>Sinopsis</i>\n{desc}")
     lines.append("\n¡A leer se ha dicho! 🚀 Usa /asistir para apuntarte a la reunión.")
     text = "\n".join(lines)
@@ -431,8 +431,8 @@ def _book_flow_preview(book):
         lines.append(f"{book['pages']} paginas")
     if book.get("description"):
         description = str(book["description"])
-        if len(description) > 320:
-            description = description[:317] + "..."
+        if len(description) > 900:
+            description = description[:897] + "…"
         lines.append("")
         lines.append(description)
     lines.append("")
@@ -789,31 +789,31 @@ async def libro_cmd(update, context):
     try:
         winner = db.get_current_book()
         if not winner:
-            await update.message.reply_text("📭 No hay libro del ciclo todavía\\.", parse_mode="MarkdownV2")
+            await update.message.reply_text("📭 No hay libro del ciclo todavía\\.", parse_mode=None)
             return
-        lines = [f"📗 {bold('Libro del ciclo')}\n"]
-        lines.append(f"{bold(winner['title'])}")
+        from html import escape as _h
+        lines = [f"📗 <b>Libro del mes</b>\n"]
+        lines.append(f"<b>{_h(winner['title'])}</b>")
         if winner.get("author"):
-            lines.append(f"✍️ {italic(winner['author'])}")
+            lines.append(f"✍️ <i>{_h(winner['author'])}</i>")
         if winner.get("pages"):
-            lines.append(f"📄 {esc(str(winner['pages']))} páginas")
+            lines.append(f"📄 {winner['pages']} páginas")
         if winner.get("description"):
             desc = winner["description"]
-            if len(desc) > 400:
-                desc = desc[:397] + "…"
-            lines.append(f"\n📖 _{esc(desc)}_")
-        lines.append(f"\n🗳️ {bold(str(winner.get('votes',0)))} voto{'s' if winner.get('votes',0)!=1 else ''}")
+            if len(desc) > 900:
+                desc = desc[:897] + "…"
+            lines.append(f"\n<i>{_h(desc)}</i>")
         caption = "\n".join(lines)
         if winner.get("cover"):
             try:
-                await update.message.reply_photo(photo=winner["cover"], caption=caption, parse_mode="MarkdownV2")
+                await update.message.reply_photo(photo=winner["cover"], caption=caption, parse_mode="HTML")
                 return
             except Exception:
                 pass
-        await update.message.reply_text(caption, parse_mode="MarkdownV2")
+        await update.message.reply_text(caption, parse_mode="HTML")
     except Exception:
         logger.exception("Error en /libro")
-        await update.message.reply_text("⚠️ Error obteniendo el libro\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("⚠️ Error obteniendo el libro.", parse_mode=None)
 
 
 # --------------------------------------------------
@@ -854,14 +854,15 @@ async def ciclo_cmd(update, context):
     books = db.get_book_proposals()
     themes = db.get_themes()
     winner = db.get_winner_book()
+    from html import escape as _h
     lines = [
-        f"🔄 {bold('Ciclo activo')}: {code(cycle)}\n",
-        f"📚 Propuestas de libros: {bold(str(len(books)))}",
-        f"🏷️ Temáticas: {bold(str(len(themes)))}",
+        f"🔄 <b>Ciclo activo:</b> <code>{_h(cycle)}</code>\n",
+        f"📚 Propuestas de libros: <b>{len(books)}</b>",
+        f"🏷️ Temáticas: <b>{len(themes)}</b>",
     ]
     if winner:
-        lines.append(f"🏆 Libro líder: _{esc(winner['title'])}_")
-    await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+        lines.append(f"🏆 Libro líder: <i>{_h(winner['title'])}</i>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def nuevo_ciclo_cmd(update, context):
@@ -877,11 +878,12 @@ async def nuevo_ciclo_cmd(update, context):
     from app.web.admin.polls import _set_phase
     _set_phase("setup")
     db.log_event("admin", f"Ciclo «{name}» activado vía bot", category="cycle", actor="admin")
+    from html import escape as _h
     await update.message.reply_text(
-        f"✅ {bold('Nuevo ciclo creado')}: {code(name)}\n"
-        f"_A partir de ahora las propuestas y temáticas se guardan en este ciclo\\._\n\n"
-        f"_Añade temáticas con /tema y lanza /encuesta\\_temas cuando estés listo\\._",
-        parse_mode="MarkdownV2"
+        f"✅ <b>Nuevo ciclo creado:</b> <code>{_h(name)}</code>\n"
+        f"<i>A partir de ahora las propuestas y temáticas se guardan en este ciclo.</i>\n\n"
+        f"<i>Añade temáticas con /tema y lanza /encuesta_temas cuando estés listo.</i>",
+        parse_mode="HTML"
     )
     # Announce in group
     try:
@@ -902,11 +904,12 @@ async def cerrar_ciclo_cmd(update, context):
     cycle = db.get_current_cycle_key()
     logger.info("/cerrar_ciclo: admin user_id=%d ciclo=%s", update.effective_user.id, cycle)
     db.close_cycle(cycle)
+    from html import escape as _h
     await update.message.reply_text(
-        f"🔒 {bold('Ciclo cerrado')}: {code(cycle)}\n"
-        f"_Todas las propuestas y temáticas han sido desactivadas\\._\n"
-        f"_Usa /nuevo\\_ciclo para empezar uno nuevo\\._",
-        parse_mode="MarkdownV2"
+        f"🔒 <b>Ciclo cerrado:</b> <code>{_h(cycle)}</code>\n"
+        f"<i>Todas las propuestas y temáticas han sido desactivadas.</i>\n"
+        f"<i>Usa /nuevo_ciclo para empezar uno nuevo.</i>",
+        parse_mode="HTML"
     )
 
 
@@ -919,9 +922,9 @@ async def anuncio_cmd(update, context):
         return
     ok = await send_to_group(text, parse_mode=None)
     if ok:
-        await update.message.reply_text("✅ Mensaje enviado al grupo\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("✅ Mensaje enviado al grupo\\.", parse_mode=None)
     else:
-        await update.message.reply_text("❌ Error enviando el mensaje\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("❌ Error enviando el mensaje\\.", parse_mode=None)
 
 
 async def anunciar_ganador_cmd(update, context):
@@ -959,24 +962,24 @@ async def anunciar_ganador_cmd(update, context):
         return
     winner = db.get_winner_book()
     if not winner:
-        await update.message.reply_text("📭 No hay libro ganador todavía\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text("📭 No hay libro ganador todavía\\.", parse_mode=None)
         return
     await announce_winner(winner, cycle_key=db.get_current_cycle_key())
-    await update.message.reply_text("✅ Anuncio enviado al grupo\\.", parse_mode="MarkdownV2")
+    await update.message.reply_text("✅ Anuncio enviado al grupo\\.", parse_mode=None)
 
 
 async def enviar_recordatorio_cmd(update, context):
     if not is_admin_user(update): return
     logger.info("/enviar_recordatorio: admin user_id=%d", update.effective_user.id)
     await send_meeting_reminder()
-    await update.message.reply_text("✅ Recordatorio de reunión enviado\\.", parse_mode="MarkdownV2")
+    await update.message.reply_text("✅ Recordatorio de reunión enviado\\.", parse_mode=None)
 
 
 async def enviar_lectura_cmd(update, context):
     if not is_admin_user(update): return
     logger.info("/enviar_lectura: admin user_id=%d", update.effective_user.id)
     await send_reading_reminder()
-    await update.message.reply_text("✅ Recordatorio de lectura enviado\\.", parse_mode="MarkdownV2")
+    await update.message.reply_text("✅ Recordatorio de lectura enviado\\.", parse_mode=None)
 
 
 async def encuesta_libros_cmd(update, context):
@@ -1431,13 +1434,13 @@ async def handle_my_chat_member(update, context):
             await context.bot.send_message(
                 chat_id=chat.id,
                 text=(
-                    "👋 Hola! Soy el bot del *Club de Lectura*\\.\n\n"
-                    "⚠️ Estoy configurado para operar en un grupo específico\\. "
-                    "Mis comandos de gestión solo funcionarán allí\\.\n\n"
-                    "_Para activarme aquí, configura la variable `ALLOWED_CHAT_ID` "
-                    f"con el ID de este chat: `{chat.id}`_"
+                    "👋 Hola! Soy el bot del <b>Club de Lectura</b>.\n\n"
+                    "⚠️ Estoy configurado para operar en un grupo específico. "
+                    "Mis comandos de gestión solo funcionarán allí.\n\n"
+                    f"<i>Para activarme aquí, configura la variable <code>ALLOWED_CHAT_ID</code> "
+                    f"con el ID de este chat: <code>{chat.id}</code></i>"
                 ),
-                parse_mode="MarkdownV2"
+                parse_mode="HTML"
             )
         except Exception:
             logger.exception("Error enviando aviso a chat no autorizado")
@@ -1446,11 +1449,8 @@ async def handle_my_chat_member(update, context):
         try:
             await context.bot.send_message(
                 chat_id=chat.id,
-                text=(
-                    f"📚 {bold('¡Hola!')} Soy el bot del Club de Lectura\\.\n\n"
-                    f"Usa /start para ver todos los comandos disponibles\\. 🚀"
-                ),
-                parse_mode="MarkdownV2"
+                text="📚 <b>¡Hola!</b> Soy el bot del Club de Lectura.\n\nUsa /start para ver todos los comandos disponibles. 🚀",
+                parse_mode="HTML"
             )
         except Exception:
             logger.exception("Error enviando bienvenida al grupo")

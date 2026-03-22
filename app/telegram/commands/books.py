@@ -136,22 +136,28 @@ class BookHandlers:
                 )
                 return
 
+            cycle_key = db.get_current_cycle_key()
+            has_active_poll = bool(db.get_open_polls("books", cycle_key))
+
             lines = [f"{header}\n"]
             for idx, book in enumerate(books, 1):
                 pos = book.get("cycle_position", idx)
                 author_str = f" - _{self.esc(book['author'])}_" if book.get("author") else ""
-                votes = book.get("votes", 0)
-                stars = "*" * min(votes, 5) if votes > 0 else "."
-                lines.append(
-                    f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
-                    f"   {stars} {self.bold(str(votes))} voto{'s' if votes != 1 else ''}"
-                )
-            lines.append("\n_La votación se hace en la encuesta fijada del grupo._")
-            cycle_key = db.get_current_cycle_key()
-            if db.get_open_polls("books", cycle_key):
-                lines.append("_Abre el mensaje fijado para votar y usa /resultados para seguir cómo va._")
+                if has_active_poll:
+                    votes = book.get("votes", 0)
+                    stars = "★" * min(votes, 5) if votes > 0 else "·"
+                    lines.append(
+                        f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
+                        f"   {self.esc(stars)} {self.bold(str(votes))} voto{'s' if votes != 1 else ''}"
+                    )
+                else:
+                    lines.append(f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}")
+
+            lines.append("")
+            if has_active_poll:
+                lines.append("_Abre el mensaje fijado para votar y usa /resultados para seguir cómo va\\._")
             else:
-                lines.append("_Ahora mismo no hay encuesta activa; cuando se abra aparecerá fijada en el grupo._")
+                lines.append("_Todavía no hay encuesta activa\\. Cuando se abra aparecerá fijada en el grupo\\._")
             await update.message.reply_text(
                 "\n".join(lines),
                 parse_mode="MarkdownV2",

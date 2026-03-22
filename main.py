@@ -243,10 +243,7 @@ async def announce_winner(book, cycle_key=None):
         next_meeting["id"] if next_meeting else None,
     )
     if next_meeting:
-        keyboard = [[
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{next_meeting['id']}"),
-            InlineKeyboardButton("❌ No asistir", callback_data=f"noattend:{next_meeting['id']}"),
-        ]]
+        keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{next_meeting['id']}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
     else:
         reply_markup = None
@@ -819,81 +816,6 @@ async def libro_cmd(update, context):
         await update.message.reply_text("⚠️ Error obteniendo el libro\\.", parse_mode="MarkdownV2")
 
 
-async def acta_cmd(update, context):
-    if not await _allowed(update): return
-    try:
-        meetings = db.get_meetings(limit=20)
-        meeting = next((m for m in meetings if m.get("status") == "closed" and m.get("summary")), None)
-        if not meeting:
-            await update.message.reply_text("📭 No hay acta disponible todavía\\.", parse_mode="MarkdownV2")
-            return
-        lines = [f"📋 {bold('Acta de la reunión')}\n"]
-        lines.append(f"📅 {bold(meeting['name'])}")
-        if meeting.get("final_date"):
-            lines.append(f"🗓️ {esc(str(meeting['final_date'])[:10])}")
-        lines.append(f"\n{esc(meeting['summary'])}")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /acta")
-        await update.message.reply_text("⚠️ Error obteniendo el acta\\.", parse_mode="MarkdownV2")
-
-
-
-async def progreso_cmd(update, context):
-    if not await _allowed(update): return
-    if not context.args:
-        await update.message.reply_text(
-            f"📖 Usa {code('/progreso páginas')}\n_Ej: /progreso 120_",
-            parse_mode="MarkdownV2"
-        )
-        return
-    try:
-        pages = int(context.args[0])
-        winner = db.get_winner_book()
-        if not winner:
-            await update.message.reply_text("📭 No hay libro del ciclo activo\\.", parse_mode="MarkdownV2")
-            return
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        db.log_reading_progress(user, winner["id"], pages, update.effective_user.id)
-        total = winner.get("pages")
-        pct = int(pages / total * 100) if total and total > 0 else None
-        bar = ""
-        if pct is not None:
-            filled = int(pct / 10)
-            bar = "█" * filled + "░" * (10 - filled) + f" {pct}%"
-        lines = [f"📖 {bold('Progreso registrado')}"]
-        lines.append(f"_{esc(winner['title'])}_")
-        lines.append(f"Página {bold(str(pages))}" + (f" de {bold(str(total))}" if total else ""))
-        if bar:
-            lines.append(f"\n{esc(bar)}")
-        lines.append(f"\n_¡Sigue así\\! 💪_")
-        await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
-    except ValueError:
-        await update.message.reply_text("❌ El número de páginas debe ser un entero\\.", parse_mode="MarkdownV2")
-    except Exception:
-        logger.exception("Error en /progreso")
-        await update.message.reply_text("⚠️ Error registrando progreso\\.", parse_mode="MarkdownV2")
-
-
-async def estadisticas_cmd(update, context):
-    if not await _allowed(update): return
-    try:
-        user = update.effective_user.first_name or update.effective_user.username or "alguien"
-        s = db.get_user_stats(user, update.effective_user.id)
-        lines = [f"📊 Tus estadísticas — {user}\n"]
-        lines.append(f"📚 Propuestas: {s['proposals_total']} en total, {s['proposals_cycle']} este ciclo")
-        lines.append(f"🗳️ Votos emitidos: {s['book_votes']} libros, {s['theme_votes']} temáticas")
-        lines.append(f"📅 Reuniones asistidas: {s['meetings']}")
-        if s.get("last_progress"):
-            p = s["last_progress"]
-            total_str = f" de {p['total']}" if p.get("total") else ""
-            lines.append(f"📖 Último progreso: {p['pages_read']} págs{total_str} — {p['title']}")
-        await update.message.reply_text("\n".join(lines), parse_mode=None)
-    except Exception:
-        logger.exception("Error en /estadisticas")
-        await update.message.reply_text("⚠️ Error obteniendo estadísticas.", parse_mode=None)
-
-
 # --------------------------------------------------
 # ADMIN BOT COMMANDS (solo ADMIN_TELEGRAM_ID)
 # --------------------------------------------------
@@ -1288,12 +1210,7 @@ async def send_meeting_reminder():
         parts.append(f"\n👥 <b>Apuntados ({len(asistentes)})</b>:\n{names}")
         parts.append("¿Aún no te has apuntado? Usa /asistir 📖")
 
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-            ]
-        ]
+        keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
         if meeting.get("book_id"):
             keyboard.append([InlineKeyboardButton("📗 Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
 
@@ -1312,10 +1229,8 @@ async def send_meeting_reminder():
                 f"{location_line}\n"
                 f"👥 {len(asistentes)} confirmado{'s' if len(asistentes) != 1 else ''}"
             )
-            short_name = meeting['name'][:20]
             keyboard.append([
-                InlineKeyboardButton(f"✅ {short_name}", callback_data=f"attend:{meeting['id']}"),
-                InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
+                InlineKeyboardButton(f"✅ {meeting['name'][:25]}", callback_data=f"attend:{meeting['id']}"),
             ])
 
         parts.append("\nUsa /asistir para apuntarte a una reunión concreta 📖")
@@ -1357,10 +1272,7 @@ async def send_reading_reminder():
     text = "\n".join(parts)
     keyboard = []
     if meeting:
-        keyboard.append([
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-        ])
+        keyboard.append([InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")])
     await send_to_group(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None)
 
 
@@ -1401,12 +1313,7 @@ async def send_day_before_reminder():
     names = "\n".join(f"  ✅ {hesc(a)}" for a in asistentes) if asistentes else "Nadie apuntado aún"
     parts.append(f"\n👥 <b>Apuntados ({len(asistentes)})</b>:\n{names}")
     parts.append("¿Aún no te has apuntado? Usa /asistir 📚")
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-        ]
-    ]
+    keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
     await send_to_group("\n".join(parts), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -1420,6 +1327,16 @@ async def send_scheduled_messages():
             logger.info("Mensaje programado #%s enviado", msg["id"])
     except Exception:
         logger.exception("Error en send_scheduled_messages")
+
+
+async def _auto_close_meetings():
+    """Marca como 'closed' las reuniones cuya fecha pasó hace más de 4 horas."""
+    try:
+        count = db.auto_close_past_meetings()
+        if count:
+            logger.info("_auto_close_meetings: %d reunión(es) cerradas", count)
+    except Exception:
+        logger.exception("Error en _auto_close_meetings")
 
 
 async def _auto_close_cycle():
@@ -1559,10 +1476,7 @@ async def fijar_cmd(update, context):
         lines.append(f"📗 {winner['title']}")
     lines.append(f"👥 Apuntados: {len(asistentes)}")
     lines.append("\nUsa /asistir para apuntarte · /noasistir para quitarte")
-    keyboard = [[
-        InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-        InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-    ]]
+    keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
     sent, pinned = await send_and_pin("\n".join(lines), reply_markup=InlineKeyboardMarkup(keyboard))
     if not sent:
         await update.message.reply_text("❌ Error enviando el mensaje.", parse_mode=None)
@@ -1817,9 +1731,6 @@ async def _invoke_private_action(update, context, action_name):
         "asistencia": asistencia,
         "proponer_fecha": proponer_fecha_cmd,
         "libro": libro_cmd,
-        "acta": acta_cmd,
-        "progreso": progreso_cmd,
-        "estadisticas": estadisticas_cmd,
         "recomendar": recomendar,
         "lista_espera": lista_espera_cmd,
         "trivia": trivia_cmd,
@@ -1977,9 +1888,6 @@ register_handlers(telegram_app, {
     "trivia_cmd": _trace_bot_handler("trivia", trivia_cmd),
     "recomendar": _trace_bot_handler("recomendar", recomendar),
     "libro_cmd": _trace_bot_handler("libro", libro_cmd),
-    "acta_cmd": _trace_bot_handler("acta", acta_cmd),
-    "progreso_cmd": _trace_bot_handler("progreso", progreso_cmd),
-    "estadisticas_cmd": _trace_bot_handler("estadisticas", estadisticas_cmd),
     "admin_ayuda_cmd": _trace_bot_handler("admin_ayuda", admin_ayuda_cmd),
     "ciclo_cmd": _trace_bot_handler("ciclo", ciclo_cmd),
     "nuevo_ciclo_cmd": _trace_bot_handler("nuevo_ciclo", nuevo_ciclo_cmd),
@@ -2050,6 +1958,12 @@ async def main():
                     "func": runtime_jobs.instrument("refresh_bot_command_menu", refresh_bot_command_menu),
                     "trigger": "interval",
                     "kwargs": {"minutes": 15},
+                },
+                {
+                    "id": "auto_close_meetings",
+                    "func": runtime_jobs.instrument("auto_close_meetings", _auto_close_meetings),
+                    "trigger": "cron",
+                    "kwargs": {"hour": 2, "minute": 0},
                 },
                 {
                     "id": "auto_close_cycle",

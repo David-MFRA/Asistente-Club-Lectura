@@ -42,14 +42,6 @@ COMMANDS = {
         "group": "Participar",
     },
     "libro": {"label": "/libro", "emoji": "📖", "desc": "Ver el libro del ciclo", "group": "Consultar"},
-    "acta": {"label": "/acta", "emoji": "📝", "desc": "Ver el acta de la última reunión", "group": "Consultar"},
-    "progreso": {"label": "/progreso", "emoji": "📈", "desc": "Registrar páginas leídas", "group": "Tu actividad"},
-    "estadisticas": {
-        "label": "/estadisticas",
-        "emoji": "📊",
-        "desc": "Ver tu actividad en el club",
-        "group": "Tu actividad",
-    },
     "recomendar": {
         "label": "/recomendar",
         "emoji": "💡",
@@ -74,9 +66,6 @@ PRIVATE_SHORTCUT_LABELS = {
     "asistencia": "Ver asistentes",
     "proponer_fecha": "Proponer fecha",
     "libro": "Ver libro",
-    "acta": "Última acta",
-    "progreso": "Registrar progreso",
-    "estadisticas": "Mis estadísticas",
     "recomendar": "Recomendarme un libro",
     "lista_espera": "Lista de espera",
     "trivia": "Pregunta para debatir",
@@ -96,9 +85,6 @@ HELP_EXAMPLES = {
     "asistencia": "/asistencia",
     "proponer_fecha": "/proponer_fecha 18/04 19:30",
     "libro": "/libro",
-    "acta": "/acta",
-    "progreso": "/progreso 120",
-    "estadisticas": "/estadisticas",
     "recomendar": "/recomendar",
     "lista_espera": "/lista_espera",
     "trivia": "/trivia",
@@ -151,9 +137,9 @@ def _base_priority(context):
     if context["open_dates_poll"]:
         return ["reunion", "proponer_fecha", "asistir", "asistencia", "bug"]
     if context["winner"] and context["meeting"] and context["meeting"].get("final_date"):
-        return ["reunion", "asistir", "noasistir", "asistencia", "progreso", "bug"]
+        return ["reunion", "asistir", "noasistir", "asistencia", "bug"]
     if context["winner"]:
-        return ["reunion", "proponer_fecha", "progreso", "libro", "bug"]
+        return ["reunion", "proponer_fecha", "libro", "bug"]
     themes = db.get_themes(context["cycle"])
     books = db.get_books(context["cycle"])
     if themes and not books:
@@ -168,9 +154,7 @@ def _context_hidden(context):
     if not context["meeting"] and not context["winner"]:
         hidden.add("proponer_fecha")
     if not context["winner"]:
-        hidden.update({"libro", "progreso"})
-    if not context["latest_meeting"] or context["latest_meeting"].get("status") != "closed":
-        hidden.add("acta")
+        hidden.add("libro")
     return hidden
 
 

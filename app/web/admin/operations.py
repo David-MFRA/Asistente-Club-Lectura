@@ -65,10 +65,7 @@ async def send_manual_meeting_info(require_admin, send_to_group, logger):
             "✅ Apuntate con los botones o con /asistir\n"
             "❌ Si no puedes venir, usa los botones o /noasistir"
         )
-        keyboard = [[
-            InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
-        ]]
+        keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
         keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
         await send_to_group(
             text,
@@ -120,10 +117,7 @@ async def send_dm_reminders(require_admin, meeting_id, telegram_app, logger):
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(
                     [
-                        [
-                            InlineKeyboardButton("Voy", callback_data=f"attend:{meeting_id}"),
-                            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting_id}"),
-                        ],
+                        [InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting_id}")],
                         [InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting_id}")],
                     ]
                 ),
@@ -169,13 +163,10 @@ async def send_pin_all(require_admin, send_and_pin, logger):
 
             short_name = meeting["name"][:20]
             keyboard.append(
-                [
-                    InlineKeyboardButton(f"Asistir {short_name}", callback_data=f"attend:{meeting['id']}"),
-                    InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
-                ]
+                [InlineKeyboardButton(f"✅ {meeting['name'][:25]}", callback_data=f"attend:{meeting['id']}")]
             )
 
-        parts.append("\nPulsa un boton para apuntarte o avisar si no vienes.")
+        parts.append("\nPulsa un boton para apuntarte o quitarte.")
 
         sent, pinned = await send_and_pin(
             "\n\n".join(parts),

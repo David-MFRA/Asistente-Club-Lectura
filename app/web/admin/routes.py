@@ -612,6 +612,20 @@ def register_admin_routes(
     def admin_ciclo_cerrar():
         return close_cycle_page(require_admin, logger)
 
+    @flask_app.post("/admin/ciclo/cerrar-antiguos")
+    def admin_ciclo_cerrar_antiguos():
+        auth = require_admin()
+        if auth:
+            return auth
+        try:
+            db.close_all_old_cycles(keep_current=True)
+            db.log_event("admin", "Ciclos antiguos cerrados manualmente", category="cycle", actor="admin")
+            flash("Ciclos anteriores al actual cerrados: propuestas, temas y encuestas desactivados.", "success")
+        except Exception:
+            logger.exception("Error cerrando ciclos antiguos")
+            flash("Error cerrando ciclos antiguos", "danger")
+        return redirect(url_for("admin_ciclo"))
+
     @flask_app.post("/admin/ciclo/tema")
     def admin_ciclo_tema():
         return set_cycle_theme_page(require_admin)

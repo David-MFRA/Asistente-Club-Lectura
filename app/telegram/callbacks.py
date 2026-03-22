@@ -17,10 +17,7 @@ class CallbackHandler:
         return int(value), None
 
     def _attendance_markup(self, meeting):
-        keyboard = [[
-            InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
-        ]]
+        keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
         keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
         if meeting.get("book_id"):
             keyboard.append([InlineKeyboardButton("Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
@@ -38,7 +35,7 @@ class CallbackHandler:
         if meeting.get("location"):
             lines.append(f"Lugar: {meeting['location']}")
         lines.append("")
-        lines.append("Pulsa Asistir o No voy. Los botones siguen visibles para todo el grupo.")
+        lines.append("Pulsa el botón para apuntarte o quitarte.")
         return "\n".join(lines)
 
     async def _edit_message_content(self, query, *, text, reply_markup):
@@ -127,10 +124,20 @@ class CallbackHandler:
                     db.log_event("bot", "Callback de asistencia sin reunión activa", category="callback", actor=user)
                     await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
                     return
-                ok = db.add_attendance(meeting_id, user, user_id)
                 meeting = meeting or db.get_meeting(meeting_id)
                 meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
-                if ok:
+                already_in = user_id and any(m["user_id"] == user_id for m in db.get_attendance_members(meeting_id))
+                if already_in:
+                    db.remove_attendance(meeting_id, user, user_id)
+                    db.log_event("bot", f"Asistencia inline cancelada para {meeting_name}", category="callback", actor=user)
+                    await self._edit_message_content(
+                        query,
+                        text=self._attendance_text(meeting),
+                        reply_markup=self._attendance_markup(meeting),
+                    )
+                    await query.answer(f"Te has quitado de '{meeting_name}'")
+                else:
+                    db.add_attendance(meeting_id, user, user_id)
                     db.log_event("bot", f"Asistencia inline registrada para {meeting_name}", category="callback", actor=user)
                     await self._edit_message_content(
                         query,
@@ -138,27 +145,6 @@ class CallbackHandler:
                         reply_markup=self._attendance_markup(meeting),
                     )
                     await query.answer(f"Apuntado a '{meeting_name}'")
-                else:
-                    db.log_event("bot", f"Asistencia inline duplicada para {meeting_name}", category="callback", actor=user)
-                    await query.answer(f"Ya estás apuntado a '{meeting_name}'", show_alert=True)
-                return
-
-            if data.startswith("noattend:"):
-                meeting_id, meeting = self._resolve_meeting(data.split(":")[1])
-                if not meeting_id:
-                    db.log_event("bot", "Callback de no asistencia sin reunión activa", category="callback", actor=user)
-                    await query.answer("No hay una reunión activa ahora mismo", show_alert=True)
-                    return
-                db.remove_attendance(meeting_id, user, user_id)
-                meeting = meeting or db.get_meeting(meeting_id)
-                meeting_name = meeting["name"] if meeting else f"reunión #{meeting_id}"
-                db.log_event("bot", f"Asistencia inline cancelada para {meeting_name}", category="callback", actor=user)
-                await self._edit_message_content(
-                    query,
-                    text=self._attendance_text(meeting),
-                    reply_markup=self._attendance_markup(meeting),
-                )
-                await query.answer(f"Te has quitado de '{meeting_name}'")
                 return
 
             if data.startswith("meetinginfo:"):

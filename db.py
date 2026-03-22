@@ -594,6 +594,7 @@ def get_current_book():
                 GROUP BY book_id
             ) bp ON bp.book_id = b.id
             WHERE m.book_id IS NOT NULL AND m.status != 'closed'
+              AND (m.final_date IS NULL OR m.final_date > NOW() - INTERVAL '6 hours')
             ORDER BY
                 CASE WHEN m.final_date IS NOT NULL THEN 0 ELSE 1 END,
                 m.final_date ASC,
@@ -616,6 +617,7 @@ def get_upcoming_meetings_list(limit=10):
             FROM meetings m
             LEFT JOIN books b ON b.id = m.book_id
             WHERE m.status != 'closed'
+              AND (m.final_date IS NULL OR m.final_date > NOW() - INTERVAL '6 hours')
             ORDER BY
                 CASE WHEN m.final_date IS NOT NULL THEN 0 ELSE 1 END,
                 m.final_date ASC,
@@ -1442,6 +1444,51 @@ def close_cycle(cycle_key=None):
     logger.info("Ciclo cerrado: %s", cycle_key)
 
 
+def auto_close_past_meetings():
+    """Marca como 'closed' las reuniones cuya fecha pasó hace más de 4 horas."""
+    with get_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE meetings
+            SET status = 'closed', updated_at = NOW()
+            WHERE status NOT IN ('closed', 'cancelled')
+              AND final_date IS NOT NULL
+              AND final_date < NOW() - INTERVAL '4 hours'
+        """)
+        count = cur.rowcount
+    if count:
+        logger.info("Auto-cierre: %d reunión(es) marcadas como cerradas", count)
+    return count
+
+
+def close_all_old_cycles(keep_current=True):
+    """Cierra todos los ciclos anteriores al actual: desactiva propuestas, temas y polls."""
+    current = get_current_cycle_key()
+    with get_cursor(commit=True) as cur:
+        if keep_current:
+            cur.execute("""
+                UPDATE book_proposals SET is_active = FALSE
+                WHERE cycle_key != %s AND is_active = TRUE
+            """, (current,))
+            cur.execute("""
+                UPDATE themes SET is_active = FALSE
+                WHERE cycle_key != %s AND is_active = TRUE
+            """, (current,))
+            cur.execute("""
+                UPDATE telegram_polls SET is_closed = TRUE
+                WHERE cycle_key != %s AND is_closed = FALSE
+            """, (current,))
+            cur.execute("""
+                UPDATE cycles SET is_active = FALSE, updated_at = NOW()
+                WHERE cycle_key != %s AND is_active = TRUE
+            """, (current,))
+        else:
+            cur.execute("UPDATE book_proposals SET is_active = FALSE WHERE is_active = TRUE")
+            cur.execute("UPDATE themes SET is_active = FALSE WHERE is_active = TRUE")
+            cur.execute("UPDATE telegram_polls SET is_closed = TRUE WHERE is_closed = FALSE")
+            cur.execute("UPDATE cycles SET is_active = FALSE, updated_at = NOW() WHERE is_active = TRUE")
+    logger.info("close_all_old_cycles: ciclos anteriores a '%s' cerrados", current)
+
+
 def get_all_cycle_keys():
     with get_cursor() as cur:
         cur.execute("""
@@ -2065,6 +2112,7 @@ ALLOWED_TABLES = [
     "meeting_attendance", "book_ratings", "telegram_polls",
     "app_config", "reading_progress", "message_templates", "sent_messages", "scheduled_messages",
     "book_waitlist", "club_members", "app_events", "admin_audit_log", "bug_reports",
+    "public_page_access_log",
 ]
 
 

@@ -107,10 +107,7 @@ async def wizard_announce_date(require_admin, send_to_group, logger):
             f"✅ Apúntate con /asistir\n"
             f"❌ Si no puedes venir, usa /noasistir"
         )
-        keyboard = [[
-            InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting['id']}"),
-            InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting['id']}"),
-        ]]
+        keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]]
         await send_to_group(
             text,
             parse_mode="HTML",

@@ -781,17 +781,6 @@ footer a:hover{color:var(--amber)}
 </section>
 
 <!-- STATS STRIP -->
-<div class="stats-strip">
-  <div class="stats-inner">
-    {% if galeria %}
-    <div class="stat-item">
-      <div class="stat-num" data-target="{{ galeria|length }}">0</div>
-      <div class="stat-label">Libros leídos</div>
-    </div>
-    {% endif %}
-  </div>
-</div>
-
 <!-- LIBRO ACTUAL -->
 <div class="divider" style="margin-top:0">§ Lectura del mes</div>
 <section class="section" id="libro">
@@ -815,7 +804,6 @@ footer a:hover{color:var(--amber)}
       {% endif %}
       <div class="curr-chips">
         {% if winner.pages %}<span class="curr-chip">📄 {{ winner.pages }} páginas</span>{% endif %}
-        {% if winner.votes %}<span class="curr-chip gold">🗳️ {{ winner.votes }} votos</span>{% endif %}
         {% if top_theme %}<span class="curr-chip">🏷️ {{ top_theme.name }}</span>{% endif %}
       </div>
     </div>

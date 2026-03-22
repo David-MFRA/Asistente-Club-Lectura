@@ -461,10 +461,7 @@ async def close_dates_poll(require_admin, meeting_id, poll_db_id, telegram_app, 
                         + f"\n\n✅ Confirma asistencia con /asistir\n❌ Si no puedes: /noasistir"
                     )
                     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                    keyboard = [[
-                        InlineKeyboardButton("✅ Asistir", callback_data=f"attend:{meeting_id}"),
-                        InlineKeyboardButton("❌ No voy", callback_data=f"noattend:{meeting_id}"),
-                    ]]
+                    keyboard = [[InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting_id}")]]
                     await send_to_group(
                         msg_text, parse_mode="HTML",
                         reply_markup=InlineKeyboardMarkup(keyboard),

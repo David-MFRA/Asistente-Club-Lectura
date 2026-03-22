@@ -19,64 +19,47 @@ class MeetingHandlers:
             return
         self.logger.info("/reunion: user_id=%d args=%r", update.effective_user.id, context.args)
         try:
-            current_cycle = db.get_current_cycle_key()
-            if context.args:
-                query = " ".join(context.args)
-                meeting = find_meeting_by_text(query)
-                if not meeting:
-                    await update.message.reply_text(
-                        f"No encontre ninguna reunion con '{query}'.\nUsa /reunion sin argumentos para ver la proxima.",
-                        parse_mode=None,
-                    )
-                    return
-            else:
-                meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
-
-            if not meeting:
-                guidance = get_soft_guidance("asistir", cycle_key=current_cycle)
-                await update.message.reply_text(guidance or "No hay reunión programada todavía.", parse_mode=None)
+            meetings = db.get_upcoming_meetings_list(limit=10)
+            if not meetings:
+                guidance = get_soft_guidance("asistir")
+                await update.message.reply_text(guidance or "No hay reuniones programadas todavía.", parse_mode=None)
                 return
 
-            attendees = db.get_attendance(meeting["id"])
-            date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
-            status_map = {"draft": "Borrador", "scheduled": "Confirmada", "closed": "Cerrada"}
-            status = status_map.get(meeting.get("status"), meeting.get("status", ""))
-            lines = [
-                f"{meeting['name']}",
-                "",
-                f"Fecha: {date_text}",
-                f"Estado: {status}",
-                f"Asistentes: {len(attendees)}",
-            ]
-            if meeting.get("location"):
-                lines.append(f"Lugar: {meeting['location']}")
-            if meeting.get("notes"):
+            lines = ["Reuniones programadas\n"]
+            for meeting in meetings:
+                date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+                lines.append(f"• {meeting['name']}")
+                lines.append(f"  {date_text}")
+                if meeting.get("location"):
+                    lines.append(f"  {meeting['location']}")
+                if meeting.get("extras"):
+                    lines.append(f"  {meeting['extras']}")
+                attendees = db.get_attendance(meeting["id"])
+                lines.append(f"  Apuntados: {len(attendees)}")
                 lines.append("")
-                lines.append(str(meeting["notes"])[:500])
-            if meeting.get("status") != "closed":
-                lines.append("")
-                lines.append("Siguiente paso util: usa los botones de abajo o /asistir, /noasistir y /libro.")
-
-            keyboard = []
-            keyboard.append([InlineKeyboardButton("Ver detalles", callback_data=f"meetinginfo:{meeting['id']}")])
-            if meeting.get("status") != "closed":
-                keyboard.append(
-                    [
-                        InlineKeyboardButton("Asistir", callback_data=f"attend:{meeting['id']}"),
-                        InlineKeyboardButton("No voy", callback_data=f"noattend:{meeting['id']}"),
-                    ]
-                )
-            if meeting.get("book_id"):
-                keyboard.append([InlineKeyboardButton("Ver libro", callback_data=f"bookinfo:{meeting['book_id']}")])
 
             await update.message.reply_text(
-                "\n".join(lines),
+                "\n".join(lines).rstrip(),
                 parse_mode=None,
-                reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
             )
+
+            # Send attend/leave buttons for each upcoming meeting
+            for meeting in meetings:
+                if meeting.get("status") == "closed":
+                    continue
+                date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
+                label = f"{meeting['name']} · {date_text}"
+                keyboard = [
+                    [InlineKeyboardButton("✅ Apuntarme / Quitar", callback_data=f"attend:{meeting['id']}")]
+                ]
+                await update.message.reply_text(
+                    label,
+                    parse_mode=None,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
         except Exception:
             self.logger.exception("Error en /reunion")
-            await update.message.reply_text("Error obteniendo la reunion.", parse_mode=None)
+            await update.message.reply_text("Error obteniendo las reuniones.", parse_mode=None)
 
     async def asistir(self, update, context):
         if not await self.allowed(update):
@@ -160,7 +143,7 @@ class MeetingHandlers:
                 for meeting in meetings[:5]:
                     date_text = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
                     label = f"{meeting['name']} - {date_text}"
-                    keyboard.append([InlineKeyboardButton(label, callback_data=f"noattend:{meeting['id']}")])
+                    keyboard.append([InlineKeyboardButton(label, callback_data=f"attend:{meeting['id']}")])
                 await update.message.reply_text(
                     "De que reunion te quitas? Elige una:",
                     parse_mode=None,
@@ -180,14 +163,14 @@ class MeetingHandlers:
                 await update.message.reply_text(guidance or "No hay reunion activa.", parse_mode=None)
                 return
             attendees = db.get_attendance(meeting["id"])
-            names = "\n".join(f"  - {self.esc(name)}" for name in attendees) if attendees else "_Nadie apuntado todavía_"
+            names = "\n".join(f"  • {name}" for name in attendees) if attendees else "Nadie apuntado todavía"
             await update.message.reply_text(
                 (
-                    f"{self.bold('Asistencia')} - {self.italic(meeting['name'])}\n\n"
+                    f"Asistencia — {meeting['name']}\n\n"
                     f"{names}\n\n"
-                    "Siguiente paso util: usa /asistir, /noasistir o /reunion."
+                    "Usa /asistir o /noasistir para apuntarte o quitarte."
                 ),
-                parse_mode="MarkdownV2",
+                parse_mode=None,
             )
         except Exception:
             self.logger.exception("Error en /asistencia")

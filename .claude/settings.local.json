@@ -56,7 +56,9 @@
       "Bash(sort -k2)",
       "Bash(find templates:*)",
       "Bash(wc -l app/telegram/commands/*.py app/web/admin/*.py)",
-      "Bash(wc -l app/services/*.py app/telegram/*.py)"
+      "Bash(wc -l app/services/*.py app/telegram/*.py)",
+      "Bash(curl -s \"https://www.googleapis.com/books/v1/volumes?q=intitle:Cuando+el+mundo+sea+mas+grande+Carmen+Arteaga&maxResults=3&printType=books\")",
+      "Bash(curl -s \"https://www.googleapis.com/books/v1/volumes/Oar4EAAAQBAJ\")"
     ]
   }
 }

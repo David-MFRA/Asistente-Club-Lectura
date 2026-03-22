@@ -364,6 +364,18 @@
           </form>
         </div>
 
+        <!-- Close old cycles -->
+        <div class="danger-zone" style="margin-top:10px">
+          <div class="danger-text">
+            <div class="danger-title-sm">🧹 Limpiar ciclos anteriores</div>
+            <div class="danger-desc-sm">Desactiva propuestas, temas y encuestas de todos los ciclos anteriores al mes actual. No afecta a reuniones ni historial.</div>
+          </div>
+          <form action="/admin/ciclo/cerrar-antiguos" method="post"
+                onsubmit="return confirm('¿Cerrar todos los ciclos anteriores al actual? Se desactivarán sus propuestas, temas y encuestas abiertas.')">
+            <button class="btn btn-warning" type="submit" style="white-space:nowrap">🧹 Limpiar antiguos</button>
+          </form>
+        </div>
+
       </div>
       {% endfor %}
     </div>

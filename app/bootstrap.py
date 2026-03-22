@@ -23,7 +23,6 @@ USER_COMMANDS = [
     BotCommand("asistir", "Apuntarse a la reunion"),
     BotCommand("noasistir", "Quitarse de la reunion"),
     BotCommand("asistencia", "Ver lista de asistentes"),
-    BotCommand("acta", "Acta de la ultima reunion"),
     BotCommand("recomendar", "Recomendaciones segun tematica"),
     BotCommand("lista_espera", "Libros en lista de espera"),
     BotCommand("bug", "Reportar un problema o bug"),

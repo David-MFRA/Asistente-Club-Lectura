@@ -37,6 +37,13 @@ class MeetingHandlers:
                     lines.append(f"📍 {h(meeting['location'])}")
                 if meeting.get("extras"):
                     lines.append(f"✨ <i>{h(meeting['extras'])}</i>")
+                if meeting.get("book_id"):
+                    book = db.get_book_by_id(meeting["book_id"])
+                    if book:
+                        book_line = f"📗 <b>{h(book['title'])}</b>"
+                        if book.get("author"):
+                            book_line += f" — <i>{h(book['author'])}</i>"
+                        lines.append(book_line)
                 lines.append(f"👥 Apuntados: <b>{len(attendees)}</b>")
                 lines.append("")
 

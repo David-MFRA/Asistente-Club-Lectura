@@ -790,7 +790,7 @@ async def button_handler(update, context):
 async def libro_cmd(update, context):
     if not await _allowed(update): return
     try:
-        winner = db.get_winner_book()
+        winner = db.get_current_book()
         if not winner:
             await update.message.reply_text("📭 No hay libro del ciclo todavía\\.", parse_mode="MarkdownV2")
             return
@@ -903,18 +903,18 @@ async def admin_ayuda_cmd(update, context):
     text = (
         "🔐 Guia de administracion\n\n"
         "Usa el panel web para la operativa completa: /admin, /admin/ciclo, /admin/ciclo/easy y /admin/help.\n\n"
+        "📚 Reuniones y libros\n"
+        "  /crear_reunion <nombre> - Crear reunión y abrir propuestas\n"
+        "  /cerrar_propuestas - Cerrar propuestas y lanzar encuesta\n\n"
         "🔄 Ciclos\n"
-        "  /ciclo - Ver el estado del ciclo activo\n"
-        "  /nuevo_ciclo [nombre] - Crear un nuevo ciclo\n"
-        "  /cerrar_ciclo - Cerrar el ciclo actual\n\n"
+        "  /ciclo - Ver el estado del ciclo activo\n\n"
         "📣 Mensajes y contenidos\n"
         "  /anuncio <texto> - Enviar un anuncio libre al grupo\n"
         "  /anunciar_ganador - Publicar el libro ganador\n"
         "  /preguntas - Generar preguntas de debate con IA\n"
         "  /cita - Generar una cita del libro activo\n\n"
         "🗳️ Encuestas y recordatorios\n"
-        "  /encuesta_libros - Lanzar la encuesta de libros\n"
-        "  /encuesta_temas - Lanzar la encuesta de tematicas\n"
+        "  /encuesta_libros - Lanzar la encuesta de libros (ciclo)\n"
         "  /enviar_recordatorio - Enviar recordatorio de reunion ahora\n"
         "  /enviar_lectura - Enviar recordatorio de lectura ahora\n\n"
         "📌 Grupo\n"
@@ -1127,48 +1127,139 @@ async def encuesta_temas_cmd(update, context):
         await update.message.reply_text("⚠️ Error lanzando la encuesta.", parse_mode=None)
 
 
+async def crear_reunion_cmd(update, context):
+    """Admin: /crear_reunion <nombre> — crea reunión y abre propuestas de libros."""
+    if not is_admin_user(update): return
+    name = " ".join(context.args).strip() if context.args else ""
+    if not name:
+        await update.message.reply_text(
+            "Uso: /crear_reunion <nombre>\n"
+            "Ejemplo: /crear_reunion Lectura de Julio\n\n"
+            "Esto creará la reunión y abrirá el período de propuestas de libros.",
+            parse_mode=None,
+        )
+        return
+    logger.info("/crear_reunion: admin user_id=%d nombre=%r", update.effective_user.id, name)
+    try:
+        meeting_id = db.create_meeting(name, voting_state="open", created_by="admin")
+        db.log_event("admin", f"Reunión creada: {name}", category="meeting", actor="admin")
+        await update.message.reply_text(
+            f"✅ Reunión creada: {name}\n"
+            f"Las propuestas de libros están abiertas.\n"
+            f"Los miembros pueden usar /proponer para sugerir libros.",
+            parse_mode=None,
+        )
+        # Announce to group
+        from html import escape as hesc
+        msg = (
+            f"📚 <b>¡Propuestas de libros abiertas!</b>\n\n"
+            f"Estamos preparando la reunión <b>{hesc(name)}</b>.\n\n"
+            f"Propón tu libro favorito con el comando:\n"
+            f"/proponer título del libro\n\n"
+            f"💡 Las propuestas estarán abiertas hasta que el admin las cierre."
+        )
+        await send_to_group(msg, parse_mode="HTML", message_type="books_open")
+    except Exception:
+        logger.exception("Error en /crear_reunion")
+        await update.message.reply_text("⚠️ Error creando la reunión.", parse_mode=None)
+
+
+async def cerrar_propuestas_cmd(update, context):
+    """Admin: cierra propuestas del meeting abierto y lanza encuesta(s)."""
+    if not is_admin_user(update): return
+    logger.info("/cerrar_propuestas: admin user_id=%d", update.effective_user.id)
+    try:
+        meeting = db.get_open_voting_meeting()
+        if not meeting:
+            await update.message.reply_text("No hay ninguna votación de libros abierta.", parse_mode=None)
+            return
+        proposals = db.get_book_proposals_for_meeting(meeting["id"])
+        if len(proposals) < 2:
+            await update.message.reply_text(
+                f"Solo hay {len(proposals)} propuesta(s) para '{meeting['name']}'. "
+                f"Necesitas al menos 2 para lanzar la encuesta.",
+                parse_mode=None,
+            )
+            return
+        if not TELEGRAM_CHAT_ID:
+            await update.message.reply_text("❌ TELEGRAM_CHAT_ID no configurado.", parse_mode=None)
+            return
+
+        db.close_meeting_voting(meeting["id"])
+
+        # Split into chunks of 10 (Telegram poll limit)
+        chunks = []
+        for i in range(0, min(len(proposals), 20), 10):
+            chunks.append(proposals[i:i+10])
+
+        poll_ids_launched = []
+        for i, chunk in enumerate(chunks):
+            options = []
+            for p in chunk:
+                label = p["title"]
+                if p.get("author"):
+                    label = f"{p['title']} - {p['author']}"
+                options.append(label[:100])
+            question = f"📚 ¿Qué libro leemos? — {meeting['name']}"
+            if len(chunks) > 1:
+                question = f"📚 Libros — {meeting['name']} (parte {i+1}/{len(chunks)})"
+            msg = await telegram_app.bot.send_poll(
+                chat_id=TELEGRAM_CHAT_ID,
+                question=question[:300],
+                options=options,
+                is_anonymous=False,
+                allows_multiple_answers=False,
+            )
+            current_cycle = db.get_current_cycle_key()
+            db.save_poll(
+                chat_id=msg.chat_id,
+                message_id=msg.message_id,
+                poll_id=msg.poll.id,
+                poll_type="books",
+                cycle_key=current_cycle,
+                meeting_id=meeting["id"],
+            )
+            db.set_poll_option_mapping(msg.poll.id, "books", [p["proposal_id"] for p in chunk])
+            poll_ids_launched.append(msg.poll.id)
+
+        db.log_event("admin", f"Encuesta(s) lanzadas para '{meeting['name']}'", category="poll", actor="admin")
+        suffix = f" (en {len(chunks)} partes)" if len(chunks) > 1 else ""
+        await update.message.reply_text(
+            f"✅ Propuestas cerradas{suffix}. Encuesta(s) lanzadas para '{meeting['name']}'.",
+            parse_mode=None,
+        )
+    except Exception:
+        logger.exception("Error en /cerrar_propuestas")
+        await update.message.reply_text("⚠️ Error cerrando propuestas.", parse_mode=None)
+
+
 # --------------------------------------------------
 # SCHEDULED REMINDERS
 # --------------------------------------------------
 
 async def send_meeting_reminder():
-    """Recordatorio semanal con días restantes y ritmo de páginas. Incluye todas las reuniones activas."""
+    """Recordatorio semanal de reuniones activas."""
     if db.get_config("reminder_weekly_enabled", "1") == "0":
         logger.debug("Recordatorio semanal deshabilitado, saltando")
         return
     all_meetings = db.get_meetings(limit=10)
-    now = datetime.utcnow()
-    upcoming = []
-    for m in all_meetings:
-        if m.get("status") == "closed":
-            continue
-        upcoming.append(m)
+    upcoming = [m for m in all_meetings if m.get("status") != "closed"]
     if not upcoming:
         logger.debug("Recordatorio semanal: no hay reuniones activas")
         return
     logger.info("Recordatorio semanal: enviando para %d reunión(es)", len(upcoming))
 
+    from html import escape as hesc
+
     if len(upcoming) == 1:
-        # Modo reunión única (comportamiento original)
         meeting = upcoming[0]
         asistentes = db.get_attendance(meeting["id"])
         book = None
         if meeting.get("book_id"):
             book = db.get_book_by_id(meeting["book_id"])
         if not book:
-            book = db.get_winner_book()
+            book = db.get_current_book()
 
-        days_left = None
-        if meeting.get("final_date"):
-            try:
-                final_dt = meeting["final_date"]
-                if isinstance(final_dt, str):
-                    final_dt = datetime.fromisoformat(final_dt)
-                days_left = (final_dt - now).days
-            except Exception:
-                pass
-
-        from html import escape as hesc
         fecha_str = str(meeting["final_date"])[:16] if meeting.get("final_date") else "Sin fecha"
         names = "\n".join(f"  ✅ {hesc(a)}" for a in asistentes) if asistentes else "Nadie apuntado todavía"
         parts = [
@@ -1188,36 +1279,10 @@ async def send_meeting_reminder():
         if meeting.get("notes"):
             parts.append(f"📝 <i>{hesc(meeting['notes'])}</i>")
 
-        if days_left is not None:
-            if days_left > 0:
-                parts.append(f"⏳ Faltan <b>{days_left} día{'s' if days_left != 1 else ''}</b> para la reunión")
-            elif days_left == 0:
-                parts.append("🔔 <b>¡La reunión es HOY!</b>")
-            else:
-                parts.append(f"🔒 La reunión ya pasó hace {abs(days_left)} días")
-
         if book and book.get("title"):
             book_section = f"\n📗 <b>{hesc(book['title'])}</b>"
             if book.get("author"):
                 book_section += f"\n✍️ <i>{hesc(book['author'])}</i>"
-
-            pages = book.get("pages")
-            if pages and days_left and days_left > 0:
-                total_days = 30
-                elapsed    = max(0, total_days - days_left)
-                pages_now  = int(pages * elapsed / total_days)
-                daily_pace = max(1, int(pages / total_days))
-                book_section += (
-                    f"\n\n📊 <b>Ritmo de lectura</b>\n"
-                    f"Para estar al día: <b>{pages_now} de {pages} págs</b>\n"
-                    f"<i>Unas {daily_pace} páginas al día — ¡tú puedes!</i>"
-                )
-            progress_list = db.get_reading_progress(book["id"])
-            if progress_list and pages:
-                book_section += "\n\n📖 <b>Progreso del grupo</b>"
-                for p in progress_list[:5]:
-                    pct = int(p["pages_read"] / pages * 100) if pages > 0 else 0
-                    book_section += f"\n  • {hesc(p['user_name'])}: {p['pages_read']} págs ({pct}%)"
             parts.append(book_section)
 
         parts.append(f"\n👥 <b>Apuntados ({len(asistentes)})</b>:\n{names}")
@@ -1234,8 +1299,7 @@ async def send_meeting_reminder():
 
         await send_to_group("\n".join(parts), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        # Modo multi-reunión: mensaje combinado con todas las reuniones activas
-        from html import escape as hesc
+        # Multi-meeting: combined message
         parts = ["📌 <b>Reuniones activas del club</b>"]
         keyboard = []
         for idx, meeting in enumerate(upcoming[:5], 1):
@@ -1264,25 +1328,15 @@ async def send_reading_reminder():
         logger.debug("Recordatorio de lectura deshabilitado, saltando")
         return
     meeting = db.get_latest_scheduled_meeting()
-    # Usar el libro de la reunión, no el ganador del ciclo
     book = None
     if meeting and meeting.get("book_id"):
         book = db.get_book_by_id(meeting["book_id"])
     if not book:
-        book = db.get_winner_book()
+        book = db.get_current_book()
     if not book:
         logger.debug("Recordatorio de lectura: sin libro activo, saltando")
         return
     logger.info("Recordatorio de lectura: enviando para «%s»", book["title"])
-    days_left = None
-    if meeting and meeting.get("final_date"):
-        try:
-            final_dt = meeting["final_date"]
-            if isinstance(final_dt, str):
-                final_dt = datetime.fromisoformat(final_dt)
-            days_left = max(0, (final_dt - datetime.utcnow()).days)
-        except Exception:
-            days_left = None
     from html import escape as hesc
     fecha = str(meeting["final_date"])[:16] if meeting and meeting.get("final_date") else "Sin fecha"
     reunion_name = meeting["name"] if meeting else "Sin reunión"
@@ -1297,19 +1351,8 @@ async def send_reading_reminder():
             author_line=author_line,
             meeting_name=reunion_name,
             meeting_date=fecha,
-            days_left=days_left if days_left is not None else "?",
-            pages=book.get("pages") or 0,
-            daily_pages=max(1, int((book.get("pages") or 1) / 30)),
         )
     ]
-    pages = book.get("pages")
-    if pages and days_left is not None and days_left > 0:
-        total_days = 30
-        elapsed = max(0, total_days - days_left)
-        pages_now = min(pages, int(pages * elapsed / total_days))
-        daily_pace = max(1, int(pages / total_days))
-        parts.append(f"\n📊 <b>Para ir al día:</b> {pages_now} de {pages} páginas.")
-        parts.append(f"⏱️ <i>Unas {daily_pace} páginas al día.</i>")
     parts.append("\n✨ ¡A leer se ha dicho!")
     text = "\n".join(parts)
     keyboard = []
@@ -1948,6 +1991,8 @@ register_handlers(telegram_app, {
     "ayuda_cmd": _trace_bot_handler("ayuda", ayuda_cmd),
     "encuesta_libros_cmd": _trace_bot_handler("encuesta_libros", encuesta_libros_cmd),
     "encuesta_temas_cmd": _trace_bot_handler("encuesta_temas", encuesta_temas_cmd),
+    "crear_reunion_cmd": _trace_bot_handler("crear_reunion", crear_reunion_cmd),
+    "cerrar_propuestas_cmd": _trace_bot_handler("cerrar_propuestas", cerrar_propuestas_cmd),
     "fijar_cmd": _trace_bot_handler("fijar", fijar_cmd),
     "desfijar_cmd": _trace_bot_handler("desfijar", desfijar_cmd),
     "preguntas_cmd": _trace_bot_handler("preguntas", preguntas_cmd),

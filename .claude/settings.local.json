@@ -49,7 +49,14 @@
       "Bash(for file:*)",
       "Bash(grep -n [A-Z][a-zá].*[?] /c/Users/david/OneDrive/Escritorio/bot/app/telegram/messaging.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/polling.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/registry.py /c/Users/david/OneDrive/Escritorio/bot/app/telegram/access.py)",
       "Bash(python3:*)",
-      "Bash(grep -i \"token\\\\|secret\\\\|password\\\\|api_key\\\\|api.key\" /c/Users/david/OneDrive/Escritorio/bot/app/web/admin/*.py)"
+      "Bash(grep -i \"token\\\\|secret\\\\|password\\\\|api_key\\\\|api.key\" /c/Users/david/OneDrive/Escritorio/bot/app/web/admin/*.py)",
+      "Bash(for f:*)",
+      "Bash(do wc:*)",
+      "Bash(done)",
+      "Bash(sort -k2)",
+      "Bash(find templates:*)",
+      "Bash(wc -l app/telegram/commands/*.py app/web/admin/*.py)",
+      "Bash(wc -l app/services/*.py app/telegram/*.py)"
     ]
   }
 }

@@ -407,6 +407,7 @@ nav{
 }
 .meet-val{font-size:1.05rem;font-weight:700;color:var(--cream);line-height:1.3}
 .meet-val.big{font-size:1.4rem}
+.meetings-list{display:flex;flex-direction:column;gap:16px}
 .attendees-wrap{margin-top:20px}
 .attendee-chip{
   display:inline-block;padding:4px 11px;border-radius:999px;
@@ -702,8 +703,12 @@ footer a:hover{color:var(--amber)}
   <div class="nav-links">
     <a class="nav-link" href="#libro">Libro</a>
     <a class="nav-link" href="#reunion">Reunión</a>
-    <a class="nav-link" href="#bot">Participa</a>
+    <a class="nav-link" href="#bot">Únete</a>
     <a class="nav-link" href="#faq">FAQ</a>
+    <a class="nav-link" href="https://www.instagram.com/tribudelibros" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:2px"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+      Instagram
+    </a>
     {% if group_invite_link %}
     <a class="nav-cta" href="{{ group_invite_link }}" target="_blank" rel="noopener">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
@@ -741,6 +746,10 @@ footer a:hover{color:var(--amber)}
         </a>
         {% endif %}
         <a class="btn-ghost" href="{% if meeting %}#reunion{% else %}#libro{% endif %}">{% if meeting %}Ver próxima reunión{% else %}Ver lectura actual{% endif %}</a>
+        <a class="btn-ghost" href="https://www.instagram.com/tribudelibros" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+          @tribudelibros
+        </a>
       </div>
       {% if group_invite_link %}
       <a class="hero-qr" href="{{ group_invite_link }}" target="_blank" rel="noopener">
@@ -820,122 +829,93 @@ footer a:hover{color:var(--amber)}
   {% endif %}
 </section>
 
-<!-- PRÓXIMA REUNIÓN -->
-{% if meeting %}
-<div class="divider">§ Próxima cita</div>
+<!-- PRÓXIMAS REUNIONES -->
+{% if upcoming_meetings %}
+<div class="divider">§ Próximas reuniones</div>
 <section class="section" id="reunion">
-  <span class="section-label reveal">Agenda</span>
-  <h2 class="section-title reveal">{{ section_reunion | default("Próxima reunión", true) }}</h2>
-  <p class="section-sub reveal">Quedamos para hablar del libro, compartir opiniones y pasar un buen rato.</p>
-
-  <div class="meeting-card reveal">
-    <div class="meet-item">
-      <span class="meet-label">Reunión</span>
-      <div class="meet-val">{{ meeting.name }}</div>
-    </div>
-    <div class="meet-item">
-      <span class="meet-label">Fecha</span>
-      <div class="meet-val big">
-        {% if meeting.final_date %}
-          {{ meeting.final_date | string | truncate(10, True, '') }}
-        {% else %}
-          Por confirmar
-        {% endif %}
+  <span class="section-label reveal">Agenda del club</span>
+  <h2 class="section-title reveal">{{ section_reunion | default("Próximas reuniones", true) }}</h2>
+  <p class="section-sub reveal">Apúntate al grupo de Telegram para confirmar asistencia.</p>
+  <div class="meetings-list">
+    {% for m in upcoming_meetings %}
+    <div class="meeting-card reveal">
+      <div class="meet-item">
+        <span class="meet-label">Reunión</span>
+        <div class="meet-val">{{ m.name }}</div>
       </div>
+      {% if m.final_date %}
+      <div class="meet-item">
+        <span class="meet-label">Fecha</span>
+        <div class="meet-val big">{{ m.final_date | string | truncate(10, True, '') }}{% if m.meeting_time %} · {{ m.meeting_time }}{% endif %}</div>
+      </div>
+      {% else %}
+      <div class="meet-item">
+        <span class="meet-label">Fecha</span>
+        <div class="meet-val" style="color:var(--muted)">Por confirmar</div>
+      </div>
+      {% endif %}
+      {% if m.location %}
+      <div class="meet-item">
+        <span class="meet-label">Lugar</span>
+        <div class="meet-val">📍 {{ m.location }}</div>
+      </div>
+      {% endif %}
+      {% if m.extras %}
+      <div class="meet-item" style="grid-column:1/-1">
+        <span class="meet-label">Especial</span>
+        <div class="meet-val">✨ {{ m.extras }}</div>
+      </div>
+      {% endif %}
+      {% if m.book_title %}
+      <div class="meet-item" style="grid-column:1/-1">
+        <span class="meet-label">Libro</span>
+        <div class="meet-val">📗 {{ m.book_title }}{% if m.book_author %} — <em>{{ m.book_author }}</em>{% endif %}</div>
+      </div>
+      {% endif %}
     </div>
-    <div class="meet-item">
-      <span class="meet-label">Confirmados</span>
-      <div class="meet-val big" style="color:var(--teal)">{{ attendees | length }} 👥</div>
-    </div>
-    {% if meeting.location %}
-    <div class="meet-item" style="grid-column:1/-1;border-top:1px solid var(--border2);padding-top:18px;margin-top:4px">
-      <span class="meet-label">Lugar</span>
-      <div class="meet-val">📍 {{ meeting.location }}</div>
-    </div>
-    {% endif %}
+    {% endfor %}
   </div>
-
 </section>
 {% endif %}
 
 
-<!-- BOT COMMANDS -->
-<div class="divider">§ Cómo participar</div>
+<!-- CÓMO PARTICIPAR -->
+<div class="divider">§ Únete al club</div>
 <section class="section" id="bot">
-  <span class="section-label reveal">Participa en el club</span>
-  <h2 class="section-title reveal">{{ section_bot | default("¿Cómo participar en el club?", true) }}</h2>
-  <p class="section-sub reveal">Todo ocurre en el grupo de Telegram. Votamos los libros, confirmamos asistencia y compartimos el avance de lectura sin saturar el chat, gracias a un bot que guía cada paso.</p>
-
-  <div class="commands-grid">
-    {% for command in public_commands %}
-    <div class="cmd-card reveal">
-      <span class="cmd-icon">{{ command.emoji }}</span>
-      <span class="cmd-name">{{ command.label }}</span>
-      <div class="cmd-title">{{ command.desc }}</div>
-      <div class="cmd-desc">
-        {% if command.id == 'proponer' %}
-          ¿Has leído algo que le encantaría al club? Escribe el título y el bot busca portada, autor, sinopsis y páginas para añadirlo a las propuestas.
-        {% elif command.id == 'propuestas' %}
-          ¿Qué se está leyendo en el club? Revisa el ranking y usa la encuesta fijada para votar sin perderte en el chat.
-        {% elif command.id == 'reunion' %}
-          ¿Cuándo es la próxima quedada? Consulta fecha, lugar, libro y quién ha confirmado asistencia.
-        {% elif command.id == 'asistir' %}
-          ¿Vas a venir? Confirma tu asistencia y añádete a la lista de la próxima reunión.
-        {% elif command.id == 'asistencia' %}
-          Consulta quién ha confirmado para la próxima reunión y cuántos somos.
-        {% elif command.id == 'tema' %}
-          ¿Se te ocurre una temática interesante? Propón la tuya y el grupo votará si encaja con el siguiente libro.
-        {% elif command.id == 'temas' %}
-          ¿Qué leeremos después? Revisa las temáticas en liza y vota tu favorita en la encuesta del grupo.
-        {% elif command.id == 'recomendar' %}
-          ¿Necesitas ideas? Pide recomendaciones de lectura relacionadas con la temática activa del club.
-        {% else %}
-          ¿Quieres saber más? El menú del bot se adapta a cada momento para mostrarte justo lo que necesitas ahora.
-        {% endif %}
-      </div>
-      <code class="cmd-example">
-        {% if command.id == 'proponer' %}/proponer El nombre del viento
-        {% elif command.id == 'propuestas' %}/propuestas
-        {% elif command.id == 'reunion' %}/reunion
-        {% elif command.id == 'asistir' %}/asistir
-        {% elif command.id == 'asistencia' %}/asistencia
-        {% elif command.id == 'tema' %}/tema Novela histórica
-        {% elif command.id == 'temas' %}/temas
-        {% elif command.id == 'recomendar' %}/recomendar
-        {% else %}{{ command.label }}
-        {% endif %}
-      </code>
-    </div>
-    {% endfor %}
-  </div>
-
-  <div style="margin-top:24px;padding:20px 22px;background:rgba(78,205,196,.05);border:1px solid rgba(78,205,196,.15);border-radius:14px" class="reveal">
-    <div style="font-family:var(--font-mono);font-size:.72rem;color:var(--teal);margin-bottom:6px;letter-spacing:.06em">CONSEJO</div>
-    <div style="font-size:.88rem;color:var(--cream2);line-height:1.6">¿Prefieres no escribir en el grupo? El bot también funciona en <strong style="color:var(--cream)">privado</strong>. Ábrelo directamente, cuéntale dónde estás y él te guía: proponer, votar, confirmar asistencia... todo sin molestar al chat.</div>
+  <span class="section-label reveal">Comunidad</span>
+  <h2 class="section-title reveal">{{ section_bot | default("¿Cómo unirte?", true) }}</h2>
+  <p class="section-sub reveal">El club vive en Telegram. Ahí votamos los libros, confirmamos reuniones y compartimos el avance de lectura.</p>
+  <div class="join-options reveal" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:32px">
+    {% if group_invite_link %}
+    <a class="btn-amber btn-amber--lg" href="{{ group_invite_link }}" target="_blank" rel="noopener">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.15.665-.543.827-1.1.514l-3.05-2.247-1.47 1.414c-.163.162-.3.298-.615.298l.22-3.1 5.63-5.086c.244-.22-.053-.34-.38-.12L7.17 14.607l-3.01-.94c-.654-.204-.666-.654.137-.97l11.74-4.527c.545-.196 1.021.133.525.078z"/></svg>
+      Unirse al grupo de Telegram
+    </a>
+    {% endif %}
+    <a class="btn-ghost" href="https://www.instagram.com/tribudelibros" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+      @tribudelibros en Instagram
+    </a>
   </div>
 </section>
 
 <section class="section" id="faq">
   <span class="section-label reveal">Preguntas frecuentes</span>
   <h2 class="section-title reveal">FAQ rápida para nuevos miembros</h2>
-  <p class="section-sub reveal">Lo justo para entender cómo funciona el club antes de entrar al grupo o escribir al bot.</p>
+  <p class="section-sub reveal">Lo justo para entender cómo funciona el club antes de entrar.</p>
 
   <div class="faq-grid">
     <div class="faq-card reveal">
       <div class="faq-q">¿Cómo funciona?</div>
-      <div class="faq-a">Cada mes elegimos una temática, proponemos libros, votamos en la encuesta fijada de Telegram y quedamos para comentarlo juntos. Todo conectado, mes a mes.</div>
+      <div class="faq-a">Proponemos libros, votamos en la encuesta de Telegram y quedamos para comentarlo juntos. Todo ocurre en el grupo.</div>
     </div>
     <div class="faq-card reveal">
       <div class="faq-q">¿Cada cuánto nos reunimos?</div>
-      <div class="faq-a">Nos reunimos una vez al mes. La fecha se confirma en el grupo de Telegram en cuanto cerramos la votación. La página siempre muestra la próxima cita en cuanto está fijada.</div>
-    </div>
-    <div class="faq-card reveal">
-      <div class="faq-q">¿Dónde se vota?</div>
-      <div class="faq-a">Las votaciones se hacen con encuestas nativas de Telegram, fijadas en el grupo para que no se pierdan. El bot te ayuda a ver el ranking y a localizar la encuesta correcta.</div>
+      <div class="faq-a">Generalmente una vez al mes. La fecha se confirma en el grupo y aparece aquí en cuanto está fijada.</div>
     </div>
     <div class="faq-card reveal">
       <div class="faq-q">¿Cómo me uno?</div>
-      <div class="faq-a">Si tienes enlace de invitación, entra al grupo y ya formas parte del club. Si aún no lo tienes, pídelo a algún miembro o al equipo del club.</div>
+      <div class="faq-a">Usa el enlace de Telegram de esta página o síguenos en Instagram para estar al día y pedir invitación.</div>
     </div>
   </div>
 </section>
@@ -973,6 +953,8 @@ footer a:hover{color:var(--amber)}
       <a href="{{ group_invite_link }}" target="_blank" rel="noopener">Únete al grupo</a>
       &nbsp;·&nbsp;
       {% endif %}
+      <a href="https://www.instagram.com/tribudelibros" target="_blank" rel="noopener">Instagram</a>
+      &nbsp;·&nbsp;
       <a href="#libro">↑ Volver arriba</a>
     </div>
   </div>

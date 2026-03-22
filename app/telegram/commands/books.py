@@ -21,13 +21,13 @@ class BookHandlers:
         if not await self.allowed(update):
             return
         user = update.effective_user
-        cycle_key = db.get_current_cycle_key()
         self.logger.info("/proponer: user=%s id=%d args=%r", user.first_name or user.username, user.id, context.args)
-        if cycle_key in db.get_locked_cycle_keys():
-            guidance = get_soft_guidance("proponer", cycle_key=cycle_key)
-            self.logger.warning("/proponer: propuestas cerradas, rechazado user=%s", user.first_name or user.username)
+
+        # Check for open voting meeting first
+        open_meeting = db.get_open_voting_meeting()
+        if not open_meeting:
             await update.message.reply_text(
-                guidance or "Las propuestas para este ciclo están cerradas. Espera al siguiente ciclo.",
+                "No hay votación de libros abierta en este momento.",
                 parse_mode=None,
             )
             return
@@ -69,7 +69,18 @@ class BookHandlers:
                 return
 
             user_name = update.effective_user.first_name or update.effective_user.username or "alguien"
-            result = db.insert_book(book, user_name, cycle_key=cycle_key, proposed_by_user_id=user.id)
+
+            # Check if already proposed for this meeting
+            existing = db.get_book_proposals_for_meeting(open_meeting["id"])
+            existing_titles = [p["title"].lower() for p in existing]
+            if book["title"].lower() in existing_titles:
+                await wait_msg.delete()
+                db.log_event("bot", f"Propuesta duplicada: {book['title']}", category="command", actor=user_name)
+                await update.message.reply_text(f"{book['title']} ya está propuesto para esta reunión.", parse_mode=None)
+                return
+
+            cycle_key = db.get_current_cycle_key()
+            result = db.insert_book(book, user_name, cycle_key=cycle_key, proposed_by_user_id=user.id, meeting_id=open_meeting["id"])
             await wait_msg.delete()
 
             if not result.get("inserted", True):
@@ -78,7 +89,7 @@ class BookHandlers:
                 return
 
             db.log_event("bot", f"Libro propuesto: {book['title']}", category="book", actor=user_name)
-            self.logger.info("/proponer: exito '%s' por %s", book["title"], user_name)
+            self.logger.info("/proponer: exito '%s' por %s (meeting_id=%s)", book["title"], user_name, open_meeting["id"])
             lines = [f"{self.bold('Libro propuesto')} por {self.italic(user_name)}\n"]
             lines.append(f"{self.bold(book['title'])}")
             if book.get("author"):
@@ -105,28 +116,38 @@ class BookHandlers:
     async def propuestas(self, update, context):
         if not await self.allowed(update):
             return
-        cycle_key = db.get_current_cycle_key()
         self.logger.info("/propuestas: solicitado por user_id=%d", update.effective_user.id)
         try:
-            books = db.get_book_proposals(cycle_key)
+            # Check for open voting meeting first
+            open_meeting = db.get_open_voting_meeting()
+            if open_meeting:
+                books = db.get_book_proposals_for_meeting(open_meeting["id"])
+                header = f"{self.bold('Propuestas para')} {self.esc(open_meeting['name'])}"
+            else:
+                cycle_key = db.get_current_cycle_key()
+                books = db.get_book_proposals(cycle_key)
+                header = f"{self.bold('Propuestas del ciclo')}"
+
             if not books:
-                guidance = get_soft_guidance("propuestas", cycle_key=cycle_key)
+                guidance = get_soft_guidance("propuestas", cycle_key=db.get_current_cycle_key())
                 await update.message.reply_text(
                     guidance or "No hay propuestas todavía. Usa /proponer para añadir la primera.",
                     parse_mode=None,
                 )
                 return
 
-            lines = [f"{self.bold('Propuestas del ciclo')}\n"]
-            for book in books:
-                pos = book.get("cycle_position", book["proposal_id"])
+            lines = [f"{header}\n"]
+            for idx, book in enumerate(books, 1):
+                pos = book.get("cycle_position", idx)
                 author_str = f" - _{self.esc(book['author'])}_" if book.get("author") else ""
-                stars = "*" * min(book["votes"], 5) if book["votes"] > 0 else "."
+                votes = book.get("votes", 0)
+                stars = "*" * min(votes, 5) if votes > 0 else "."
                 lines.append(
                     f"{self.bold(str(pos))}\\. {self.esc(book['title'])}{author_str}\n"
-                    f"   {stars} {self.bold(str(book['votes']))} voto{'s' if book['votes'] != 1 else ''}"
+                    f"   {stars} {self.bold(str(votes))} voto{'s' if votes != 1 else ''}"
                 )
             lines.append("\n_La votación se hace en la encuesta fijada del grupo._")
+            cycle_key = db.get_current_cycle_key()
             if db.get_open_polls("books", cycle_key):
                 lines.append("_Abre el mensaje fijado para votar y usa /resultados para seguir cómo va._")
             else:

@@ -63,8 +63,10 @@ def render_public_page(group_invite_link):
         query_string=request.query_string.decode("utf-8", errors="ignore"),
     )
     current_cycle = db.get_current_cycle_key()
-    winner = db.get_winner_book(current_cycle)
+    current_book = db.get_current_book()
+    winner = current_book
     meeting = db.get_latest_scheduled_meeting(cycle_key=current_cycle)
+    upcoming_meetings = db.get_upcoming_meetings_list(limit=6)
     proposals = db.get_book_proposals(current_cycle)
     top_theme = db.get_top_theme(current_cycle)
     attendees = db.get_attendance(meeting["id"]) if meeting else []
@@ -79,7 +81,9 @@ def render_public_page(group_invite_link):
     return render_template(
         "public.html",
         winner=winner,
+        current_book=current_book,
         meeting=meeting,
+        upcoming_meetings=upcoming_meetings,
         proposals=proposals[:5],
         top_theme=top_theme,
         attendees=attendees,

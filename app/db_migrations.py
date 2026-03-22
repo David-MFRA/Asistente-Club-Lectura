@@ -40,6 +40,7 @@ def apply_migrations(cur):
         ("002_identity_and_indexes", _migration_002_identity_and_indexes),
         ("003_cycles_and_reminders_backfill", _migration_003_cycles_and_reminders_backfill),
         ("004_public_access_and_admin_ip_blocks", _migration_004_public_access_and_admin_ip_blocks),
+        ("005_meetings_simplification", _migration_005_meetings_simplification),
     ]
     for version, func in migrations:
         if version in applied:
@@ -522,6 +523,24 @@ def _migration_003_cycles_and_reminders_backfill(cur):
                 bool(reminder.get("enabled", True)),
             ),
         )
+
+
+def _migration_005_meetings_simplification(cur):
+    cur.execute(
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS voting_state TEXT NOT NULL DEFAULT 'none'"
+    )
+    cur.execute(
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meeting_time TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS extras TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE book_proposals ADD COLUMN IF NOT EXISTS meeting_id INTEGER REFERENCES meetings(id) ON DELETE SET NULL"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_meetings_voting_state ON meetings (voting_state)"
+    )
 
 
 def _migration_004_public_access_and_admin_ip_blocks(cur):

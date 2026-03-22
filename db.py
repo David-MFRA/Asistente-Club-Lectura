@@ -312,22 +312,22 @@ def create_or_get_book(book):
         return dict(cur.fetchone())
 
 
-def insert_book(book, proposed_by="telegram", cycle_key=None, proposed_by_user_id=None):
+def insert_book(book, proposed_by="telegram", cycle_key=None, proposed_by_user_id=None, meeting_id=None):
     cycle_key = cycle_key or get_current_cycle_key()
     ensure_cycle_record(cycle_key)
     book_row  = create_or_get_book(book)
     proposed_by_name, proposed_by_user_id = _normalize_user_identity(proposed_by, proposed_by_user_id)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO book_proposals(book_id, proposed_by, proposed_by_user_id, cycle_key)
-        VALUES(%s,%s,%s,%s)
+        INSERT INTO book_proposals(book_id, proposed_by, proposed_by_user_id, cycle_key, meeting_id)
+        VALUES(%s,%s,%s,%s,%s)
         ON CONFLICT (book_id, cycle_key) DO NOTHING
         RETURNING *
-        """, (book_row["id"], proposed_by_name or "telegram", proposed_by_user_id, cycle_key))
+        """, (book_row["id"], proposed_by_name or "telegram", proposed_by_user_id, cycle_key, meeting_id))
         row = cur.fetchone()
         if row:
-            logger.info("Libro propuesto: «%s» por %s en ciclo %s (book_id=%d, proposal_id=%d)",
-                        book_row["title"], proposed_by_name, cycle_key, book_row["id"], row["id"])
+            logger.info("Libro propuesto: «%s» por %s en ciclo %s meeting_id=%s (book_id=%d, proposal_id=%d)",
+                        book_row["title"], proposed_by_name, cycle_key, meeting_id, book_row["id"], row["id"])
             return {"inserted": True, **dict(row)}
         # Already proposed — return existing
         logger.warning("Libro duplicado ignorado: «%s» por %s en ciclo %s (book_id=%d)",
@@ -533,17 +533,18 @@ def get_theme_previous_cycles(name):
 # MEETINGS
 # =========================================================
 
-def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_id=None, status="draft"):
+def create_meeting(name, final_date=None, cycle_key=None, created_by=None, book_id=None, status="draft", voting_state="none", meeting_time=None, extras=None):
     cycle_key = cycle_key or get_current_cycle_key()
     ensure_cycle_record(cycle_key)
     with get_cursor(commit=True) as cur:
         cur.execute("""
-        INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status)
-        VALUES(%s,%s,%s,%s,%s,%s) RETURNING *
-        """, (name.strip(), cycle_key, final_date, created_by, book_id, status))
-        row = dict(cur.fetchone())
-        logger.info("Reunión creada: «%s» (id=%d) en ciclo %s por %s", name, row["id"], cycle_key, created_by)
-        return row
+        INSERT INTO meetings(name, cycle_key, final_date, created_by, book_id, status, voting_state, meeting_time, extras)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (name.strip(), cycle_key, final_date, created_by, book_id, status, voting_state, meeting_time, extras))
+        row = cur.fetchone()
+        meeting_id = row["id"]
+        logger.info("Reunión creada: «%s» (id=%d) en ciclo %s por %s", name, meeting_id, cycle_key, created_by)
+        return meeting_id
 
 
 def get_meetings(limit=50, cycle_key=None):
@@ -565,6 +566,116 @@ def get_meetings(limit=50, cycle_key=None):
             ORDER BY COALESCE(m.final_date, m.created_at) DESC
             LIMIT %s
             """, (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_open_voting_meeting():
+    """Returns the first meeting with voting_state='open'."""
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM meetings WHERE voting_state = 'open' ORDER BY created_at DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_current_book():
+    """Returns the book linked to the nearest upcoming meeting that has a book_id.
+    Falls back to get_winner_book() if none found."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT b.*, bp.votes
+            FROM meetings m
+            JOIN books b ON b.id = m.book_id
+            LEFT JOIN (
+                SELECT book_id, COUNT(*) as votes FROM book_votes bv
+                JOIN book_proposals bp2 ON bp2.id = bv.proposal_id
+                GROUP BY book_id
+            ) bp ON bp.book_id = b.id
+            WHERE m.book_id IS NOT NULL AND m.status != 'closed'
+            ORDER BY
+                CASE WHEN m.final_date IS NOT NULL THEN 0 ELSE 1 END,
+                m.final_date ASC,
+                m.created_at ASC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return get_winner_book()
+
+
+def get_upcoming_meetings_list(limit=10):
+    """Returns all upcoming non-closed meetings ordered by date."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT m.*, b.title as book_title, b.author as book_author, b.cover as book_cover
+            FROM meetings m
+            LEFT JOIN books b ON b.id = m.book_id
+            WHERE m.status != 'closed'
+            ORDER BY
+                CASE WHEN m.final_date IS NOT NULL THEN 0 ELSE 1 END,
+                m.final_date ASC,
+                m.created_at ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def open_meeting_voting(meeting_id):
+    """Sets voting_state='open' on a meeting."""
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE meetings SET voting_state='open', updated_at=NOW() WHERE id=%s",
+            (meeting_id,),
+        )
+
+
+def close_meeting_voting(meeting_id):
+    """Sets voting_state='closed' on a meeting."""
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE meetings SET voting_state='closed', updated_at=NOW() WHERE id=%s",
+            (meeting_id,),
+        )
+
+
+def get_book_proposals_for_meeting(meeting_id):
+    """Returns book proposals linked to a specific meeting_id."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT bp.id as proposal_id, bp.book_id, bp.proposed_by, bp.created_at,
+                   b.title, b.author, b.cover, b.pages,
+                   COALESCE(v.votes,0) as votes
+            FROM book_proposals bp
+            JOIN books b ON b.id = bp.book_id
+            LEFT JOIN (SELECT proposal_id, COUNT(*) as votes FROM book_votes GROUP BY proposal_id) v
+                ON v.proposal_id = bp.id
+            WHERE bp.meeting_id = %s AND bp.is_active = TRUE
+            ORDER BY votes DESC, bp.created_at ASC
+            """,
+            (meeting_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_all_polls_for_meeting(meeting_id, poll_type='books'):
+    """Returns all polls linked to a meeting_id."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM telegram_polls
+            WHERE meeting_id = %s AND poll_type = %s
+            ORDER BY created_at ASC
+            """,
+            (meeting_id, poll_type),
+        )
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -663,15 +774,18 @@ def set_meeting_final_date(meeting_id, final_date):
         """, (final_date, meeting_id))
 
 
-def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=None, book_id=None, location=None, notes=None):
+def update_meeting(meeting_id, name=None, final_date=None, summary=None, status=None, book_id=None, location=None, notes=None, voting_state=None, meeting_time=None, extras=None):
     fields, values = [], []
-    if name is not None:       fields.append("name = %s");       values.append(name)
-    if final_date is not None: fields.append("final_date = %s"); values.append(final_date)
-    if summary is not None:    fields.append("summary = %s");    values.append(summary)
-    if status is not None:     fields.append("status = %s");     values.append(status)
-    if book_id is not None:    fields.append("book_id = %s");    values.append(book_id)
-    if location is not None:   fields.append("location = %s");   values.append(location or None)
-    if notes is not None:      fields.append("notes = %s");      values.append(notes or None)
+    if name is not None:          fields.append("name = %s");          values.append(name)
+    if final_date is not None:    fields.append("final_date = %s");    values.append(final_date)
+    if summary is not None:       fields.append("summary = %s");       values.append(summary)
+    if status is not None:        fields.append("status = %s");        values.append(status)
+    if book_id is not None:       fields.append("book_id = %s");       values.append(book_id)
+    if location is not None:      fields.append("location = %s");      values.append(location or None)
+    if notes is not None:         fields.append("notes = %s");         values.append(notes or None)
+    if voting_state is not None:  fields.append("voting_state = %s");  values.append(voting_state)
+    if meeting_time is not None:  fields.append("meeting_time = %s");  values.append(meeting_time or None)
+    if extras is not None:        fields.append("extras = %s");        values.append(extras or None)
     if not fields:
         return
     fields.append("updated_at = NOW()")

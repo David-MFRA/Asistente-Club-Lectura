@@ -73,19 +73,17 @@ DEFAULT_MESSAGES = {
         "Usa /asistir para apuntarte a la reunión."
     ),
     "books_open_message": (
-        "📚 <b>Hora de proponer libros</b>\n\n"
-        "{theme_line}"
-        "Propón tus lecturas favoritas para este ciclo:\n"
-        "/proponer titulo del libro\n\n"
-        "💡 Tienes hasta que el admin cierre las propuestas."
+        "📚 <b>¡Hora de proponer libros!</b>\n\n"
+        "Propón tu libro favorito para la próxima reunión:\n"
+        "/proponer título del libro\n\n"
+        "💡 Las propuestas estarán abiertas hasta que el admin las cierre."
     ),
     "reading_reminder_message": (
         "📖 <b>Recordatorio de lectura</b>\n\n"
         "📗 Libro actual: <b>{book_title}</b>\n"
         "{author_line}"
-        "🗓️ Próxima reunión: <b>{meeting_name}</b> ({meeting_date})\n"
-        "📊 Te quedan <b>{days_left} días</b> para leer <b>{pages} páginas</b>.\n"
-        "Con <b>{daily_pages} páginas al día</b> llegas a tiempo."
+        "🗓️ Próxima reunión: <b>{meeting_name}</b> ({meeting_date})\n\n"
+        "¿Cómo vas con la lectura? ¡Nos vemos pronto!"
     ),
     "meeting_reminder_message": (
         "🗓️ <b>Recordatorio de reunión</b>\n\n"

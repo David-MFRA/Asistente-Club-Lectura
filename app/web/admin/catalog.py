@@ -85,7 +85,7 @@ def render_meetings(require_admin):
             if winner:
                 book_id = winner["id"]
 
-            meeting = db.create_meeting(
+            meeting_id = db.create_meeting(
                 name=name,
                 final_date=meeting_date,
                 cycle_key=cycle_key,
@@ -93,10 +93,10 @@ def render_meetings(require_admin):
                 created_by="admin",
             )
             if location:
-                db.update_meeting(meeting_id=meeting["id"], location=location)
+                db.update_meeting(meeting_id=meeting_id, location=location)
             logger.info(
                 "Admin: reunión «%s» creada (id=%d) ciclo=%s book_id=%s",
-                name, meeting["id"], effective_cycle, book_id,
+                name, meeting_id, effective_cycle, book_id,
             )
             if winner:
                 flash(f"Reunión «{name}» creada y libro «{winner['title']}» asignado automáticamente", "success")
@@ -233,9 +233,9 @@ def create_meeting(require_admin, logger):
         flash("El nombre de la reunión es obligatorio", "danger")
         return redirect(url_for("meetings_admin"))
     try:
-        meeting = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
+        meeting_id = db.create_meeting(name=name, final_date=meeting_date, created_by="admin")
         if location:
-            db.update_meeting(meeting_id=meeting["id"], location=location)
+            db.update_meeting(meeting_id=meeting_id, location=location)
         flash(f"Reunión «{name}» creada", "success")
         return redirect(url_for("meetings_admin"))
     except Exception:

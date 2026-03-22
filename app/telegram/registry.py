@@ -34,6 +34,8 @@ def register_handlers(telegram_app, handlers):
     telegram_app.add_handler(CommandHandler("ayuda", handlers["ayuda_cmd"]))
     telegram_app.add_handler(CommandHandler("encuesta_libros", handlers["encuesta_libros_cmd"]))
     telegram_app.add_handler(CommandHandler("encuesta_temas", handlers["encuesta_temas_cmd"]))
+    telegram_app.add_handler(CommandHandler("crear_reunion", handlers["crear_reunion_cmd"]))
+    telegram_app.add_handler(CommandHandler("cerrar_propuestas", handlers["cerrar_propuestas_cmd"]))
     telegram_app.add_handler(CommandHandler("fijar", handlers["fijar_cmd"]))
     telegram_app.add_handler(CommandHandler("desfijar", handlers["desfijar_cmd"]))
     telegram_app.add_handler(CommandHandler("preguntas", handlers["preguntas_cmd"]))
